@@ -16,43 +16,61 @@ Changed history:
                             2024/04/04: 使用Diagrams库重写，采用更现代的图表风格;
                             2024/04/04: 简化实现，使用内置节点类型;
                             2024/04/04: 调整结构与样式，参考样图，底色改为#BFFDCC;
+                            2024/04/04: 更新为方形节点带图标，使用更舒适的淡绿色背景;
+                            2024/04/04: 修复导入错误，使用本地可用的图标;
+                            2024/04/04: 修复节点初始化参数错误;
 ----
 """
 
 from diagrams import Diagram, Cluster, Edge, Node
 from diagrams.onprem.compute import Server
-from diagrams.onprem.database import PostgreSQL
+from diagrams.onprem.database import PostgreSQL, MySQL
 from diagrams.onprem.network import Nginx
 from diagrams.onprem.client import Users
+from diagrams.onprem.workflow import Airflow
 from diagrams.programming.framework import React
 from diagrams.programming.language import Python
 from diagrams.generic.storage import Storage
 from diagrams.generic.compute import Rack
+from diagrams.generic.database import SQL
+from diagrams.generic.os import Windows
+from diagrams.generic.network import Firewall
+from diagrams.generic.place import Datacenter
 
-# 创建自定义节点类 - 分配不同颜色
+# 创建自定义节点类 - 方形节点带颜色
 class ColorNode(Node):
     def __init__(self, label, color):
         super().__init__(label)
         self._attrs["fillcolor"] = color
         self._attrs["style"] = "filled"
-        self._attrs["fontcolor"] = "white"
-        self._attrs["shape"] = "circle"
-        self._attrs["width"] = "1.2"
-        self._attrs["height"] = "1.2"
-        self._attrs["fixedsize"] = "true"
+        self._attrs["fontcolor"] = "#FFFFFF"
+        self._attrs["shape"] = "rect"
+        self._attrs["fontsize"] = "14"
+        self._attrs["width"] = "1.8"
+        self._attrs["height"] = "1.5"
+        self._attrs["margin"] = "0.3"
+        self._attrs["penwidth"] = "2.0"
+        self._attrs["color"] = self._darken_color(color, 20)  # 边框颜色略深
+
+    def _darken_color(self, hex_color, percent):
+        """将颜色加深指定百分比"""
+        h = hex_color.lstrip('#')
+        rgb = tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+        rgb = tuple(max(0, int(c * (100 - percent) / 100)) for c in rgb)
+        return '#{:02x}{:02x}{:02x}'.format(*rgb)
 
 def generate_diagram():
     """
-    生成系统架构图 - 使用中心辐射型结构
+    生成系统架构图 - 使用分层结构
     """
-    # 颜色方案 - 参考样图
+    # 颜色方案 - 更柔和的色彩
     colors = {
-        'core': '#9c27b0',          # 紫色 - 核心
-        'main_meals': '#ff5722',    # 橙色 - 主餐类
-        'snacks': '#8bc34a',        # 绿色 - 零食类
-        'drinking': '#03a9f4',      # 蓝色 - 饮品类
-        'medication': '#f44336',    # 红色 - 药物类
-        'others': '#9e9e9e',        # 灰色 - 其他
+        'core': '#6200ea',          # 深紫色 - 核心
+        'main_meals': '#e65100',    # 深橙色 - 业务层
+        'snacks': '#2e7d32',        # 深绿色 - 表现层
+        'drinking': '#0277bd',      # 深蓝色 - 工具层
+        'medication': '#c62828',    # 深红色 - 数据层
+        'others': '#455a64',        # 深灰蓝色 - 其他
     }
     
     # 开始创建架构图
@@ -61,56 +79,54 @@ def generate_diagram():
         filename="system_architecture",
         outformat="png",
         show=False,
-        direction="TB",  # 改为自上而下的布局
+        direction="TB",  # 自上而下的布局
         graph_attr={
-            "bgcolor": "#BFFDCC",
-            "fontcolor": "#333333",
+            "bgcolor": "#e8f5e9",   # 更柔和的淡绿色背景
+            "fontcolor": "#263238",
             "fontname": "Microsoft YaHei",
-            "fontsize": "20",
+            "fontsize": "22",
             "overlap": "false",
-            "splines": "true",  # 使用样条线
-            "sep": "+20",
+            "splines": "ortho",      # 正交连线
             "nodesep": "0.8",
-            "ranksep": "1.0", 
-            "concentrate": "true", # 合并边
+            "ranksep": "1.0",
+            "pad": "0.5", 
+            "concentrate": "true",   # 合并边
         },
         node_attr={
-            "fontcolor": "white",
             "fontname": "Microsoft YaHei",
-            "fontsize": "14",
         },
         edge_attr={
-            "color": "#666666",
-            "arrowsize": "0.6",
+            "color": "#78909c",      # 更柔和的连线颜色
+            "penwidth": "1.5",
+            "arrowsize": "0.8",
         }
     ):
-        # 创建核心节点
+        # 创建核心节点与各种系统节点
         core_engine = ColorNode("核心引擎", colors['core'])
         
-        # ===== 创建主要分类节点 =====
-        # 业务层节点 - 对应参考图中的橙色节点
-        with Cluster("", graph_attr={"style": "invis"}):
+        # 使用不同的图标类型作为节点
+        datacenter = Datacenter("数据中心")
+        
+        # 创建分层结构
+        with Cluster("业务层", graph_attr={"fontcolor": colors['main_meals'], "style": "dotted", "color": colors['main_meals'], "fontsize": "16"}):
             scene_system = ColorNode("场景系统", colors['main_meals'])
             render_system = ColorNode("渲染系统", colors['main_meals'])
             resource_system = ColorNode("资源系统", colors['main_meals'])
             config_system = ColorNode("配置系统", colors['main_meals'])
         
-        # 表现层节点 - 对应参考图中的绿色节点
-        with Cluster("", graph_attr={"style": "invis"}):
+        with Cluster("表现层", graph_attr={"fontcolor": colors['snacks'], "style": "dotted", "color": colors['snacks'], "fontsize": "16"}):
             ui_system = ColorNode("UI系统", colors['snacks'])
             interaction_system = ColorNode("交互系统", colors['snacks'])
             scene_editor = ColorNode("场景编辑器", colors['snacks'])
             visual_system = ColorNode("视觉系统", colors['snacks'])
         
-        # 工具层节点 - 对应参考图中的蓝色节点
-        with Cluster("", graph_attr={"style": "invis"}):
+        with Cluster("工具层", graph_attr={"fontcolor": colors['drinking'], "style": "dotted", "color": colors['drinking'], "fontsize": "16"}):
             plugin_system = ColorNode("插件系统", colors['drinking'])
             event_system = ColorNode("事件系统", colors['drinking'])
             log_system = ColorNode("日志系统", colors['drinking'])
             api_system = ColorNode("API系统", colors['drinking'])
         
-        # 数据层节点 - 对应参考图中的红色节点
-        with Cluster("", graph_attr={"style": "invis"}):
+        with Cluster("数据层", graph_attr={"fontcolor": colors['medication'], "style": "dotted", "color": colors['medication'], "fontsize": "16"}):
             file_system = ColorNode("文件系统", colors['medication'])
             database = ColorNode("数据库", colors['medication'])
             cache = ColorNode("缓存", colors['medication'])
@@ -120,7 +136,7 @@ def generate_diagram():
         others = ColorNode("其他模块", colors['others'])
         
         # ===== 创建连接 =====
-        # 从核心节点连接到主要分类
+        # 从核心节点连接到各层
         core_engine >> scene_system
         core_engine >> render_system
         core_engine >> resource_system
