@@ -15,10 +15,11 @@ Changed history:
                             2024/04/04: 优化为环树状结构，中心向四周辐射展开;
                             2024/04/04: 使用Diagrams库重写，采用更现代的图表风格;
                             2024/04/04: 简化实现，使用内置节点类型;
+                            2024/04/04: 调整结构与样式，参考样图，底色改为#BFFDCC;
 ----
 """
 
-from diagrams import Diagram, Cluster, Edge
+from diagrams import Diagram, Cluster, Edge, Node
 from diagrams.onprem.compute import Server
 from diagrams.onprem.database import PostgreSQL
 from diagrams.onprem.network import Nginx
@@ -28,10 +29,31 @@ from diagrams.programming.language import Python
 from diagrams.generic.storage import Storage
 from diagrams.generic.compute import Rack
 
+# 创建自定义节点类 - 分配不同颜色
+class ColorNode(Node):
+    def __init__(self, label, color):
+        super().__init__(label)
+        self._attrs["fillcolor"] = color
+        self._attrs["style"] = "filled"
+        self._attrs["fontcolor"] = "white"
+        self._attrs["shape"] = "circle"
+        self._attrs["width"] = "1.2"
+        self._attrs["height"] = "1.2"
+        self._attrs["fixedsize"] = "true"
+
 def generate_diagram():
     """
-    生成系统架构图 - 使用Diagrams库内置节点
+    生成系统架构图 - 使用中心辐射型结构
     """
+    # 颜色方案 - 参考样图
+    colors = {
+        'core': '#9c27b0',          # 紫色 - 核心
+        'main_meals': '#ff5722',    # 橙色 - 主餐类
+        'snacks': '#8bc34a',        # 绿色 - 零食类
+        'drinking': '#03a9f4',      # 蓝色 - 饮品类
+        'medication': '#f44336',    # 红色 - 药物类
+        'others': '#9e9e9e',        # 灰色 - 其他
+    }
     
     # 开始创建架构图
     with Diagram(
@@ -39,17 +61,18 @@ def generate_diagram():
         filename="system_architecture",
         outformat="png",
         show=False,
-        direction="LR",
+        direction="TB",  # 改为自上而下的布局
         graph_attr={
-            "bgcolor": "#121212",
-            "fontcolor": "white",
+            "bgcolor": "#BFFDCC",
+            "fontcolor": "#333333",
             "fontname": "Microsoft YaHei",
             "fontsize": "20",
             "overlap": "false",
-            "splines": "curved",
-            "nodesep": "0.75",
-            "ranksep": "0.75",
-            "pad": "0.5",
+            "splines": "true",  # 使用样条线
+            "sep": "+20",
+            "nodesep": "0.8",
+            "ranksep": "1.0", 
+            "concentrate": "true", # 合并边
         },
         node_attr={
             "fontcolor": "white",
@@ -57,70 +80,76 @@ def generate_diagram():
             "fontsize": "14",
         },
         edge_attr={
-            "color": "#606060",
-            "arrowsize": "0.5",
+            "color": "#666666",
+            "arrowsize": "0.6",
         }
     ):
         # 创建核心节点
-        core_engine = Server("核心引擎")
+        core_engine = ColorNode("核心引擎", colors['core'])
         
-        # 创建业务层节点
-        scene_manager = Server("场景管理器")
-        render_system = Server("渲染系统")
-        resource_system = Server("资源系统")
-        config_system = Server("配置系统")
+        # ===== 创建主要分类节点 =====
+        # 业务层节点 - 对应参考图中的橙色节点
+        with Cluster("", graph_attr={"style": "invis"}):
+            scene_system = ColorNode("场景系统", colors['main_meals'])
+            render_system = ColorNode("渲染系统", colors['main_meals'])
+            resource_system = ColorNode("资源系统", colors['main_meals'])
+            config_system = ColorNode("配置系统", colors['main_meals'])
         
-        # 创建表现层节点
-        ui = React("UI组件")
-        interaction = React("交互系统")
-        scene_editor = React("场景编辑器")
-        visual_effects = React("视觉效果")
+        # 表现层节点 - 对应参考图中的绿色节点
+        with Cluster("", graph_attr={"style": "invis"}):
+            ui_system = ColorNode("UI系统", colors['snacks'])
+            interaction_system = ColorNode("交互系统", colors['snacks'])
+            scene_editor = ColorNode("场景编辑器", colors['snacks'])
+            visual_system = ColorNode("视觉系统", colors['snacks'])
         
-        # 创建数据层节点
-        file_system = Storage("文件系统")
-        database = PostgreSQL("数据库")
-        cache = Rack("缓存")
-        serialization = Python("序列化")
+        # 工具层节点 - 对应参考图中的蓝色节点
+        with Cluster("", graph_attr={"style": "invis"}):
+            plugin_system = ColorNode("插件系统", colors['drinking'])
+            event_system = ColorNode("事件系统", colors['drinking'])
+            log_system = ColorNode("日志系统", colors['drinking'])
+            api_system = ColorNode("API系统", colors['drinking'])
         
-        # 创建工具层和其他节点
-        plugin_system = Python("插件系统")
-        event_system = Python("事件系统")
-        logging = Python("日志系统")
-        api_interface = Nginx("API接口")
-        others = Users("其他模块")
+        # 数据层节点 - 对应参考图中的红色节点
+        with Cluster("", graph_attr={"style": "invis"}):
+            file_system = ColorNode("文件系统", colors['medication'])
+            database = ColorNode("数据库", colors['medication'])
+            cache = ColorNode("缓存", colors['medication'])
+            serialization = ColorNode("序列化", colors['medication'])
         
-        # 连接核心节点到业务层
-        core_engine >> scene_manager
+        # 其他节点
+        others = ColorNode("其他模块", colors['others'])
+        
+        # ===== 创建连接 =====
+        # 从核心节点连接到主要分类
+        core_engine >> scene_system
         core_engine >> render_system
         core_engine >> resource_system
         core_engine >> config_system
-        
-        # 连接核心节点到工具层
-        core_engine >> plugin_system
-        core_engine >> logging
         core_engine >> others
         
-        # 连接业务层到表现层
-        config_system >> ui
-        core_engine >> interaction
-        scene_manager >> scene_editor
-        render_system >> visual_effects
+        # 业务层连接到表现层
+        scene_system >> scene_editor
+        render_system >> visual_system
+        config_system >> ui_system
+        core_engine >> interaction_system
         
-        # 连接业务层到数据层
-        resource_system >> file_system
-        scene_manager >> database
+        # 业务层连接到数据层
+        scene_system >> database
         render_system >> cache
+        resource_system >> file_system
         config_system >> serialization
         
-        # 连接工具层到其他节点
-        interaction >> event_system
-        config_system >> api_interface
+        # 核心连接到工具层
+        core_engine >> plugin_system
+        core_engine >> log_system
+        interaction_system >> event_system
+        config_system >> api_system
         
         # 添加表现层内部连接（用虚线）
-        ui >> Edge(style="dashed") >> interaction
-        interaction >> Edge(style="dashed") >> scene_editor
-        scene_editor >> Edge(style="dashed") >> visual_effects
-        visual_effects >> Edge(style="dashed") >> ui
+        ui_system >> Edge(style="dashed") >> interaction_system
+        interaction_system >> Edge(style="dashed") >> scene_editor
+        scene_editor >> Edge(style="dashed") >> visual_system
+        visual_system >> Edge(style="dashed") >> ui_system
 
 if __name__ == '__main__':
     generate_diagram() 
