@@ -11,6 +11,7 @@ Changed history:
                             2024/04/04: 更新风格为圆角和圆形，使用卡其色调和绿色系;
                             2024/04/04: 更新为中心辐射型结构，核心引擎为中心;
                             2024/04/04: 更新为黑色背景，简化连接线，采用鲜明色彩区分;
+                            2024/04/04: 调整为扁平星形布局，直接从核心连接所有节点;
 ----
 """
 
@@ -18,14 +19,14 @@ import graphviz
 
 def create_system_architecture():
     """
-    创建系统总体架构图，以核心引擎为中心的辐射状结构，黑色背景
+    创建系统总体架构图，扁平星形布局，黑色背景
     
     Returns:
         graphviz.Digraph: 生成的图表对象
     """
     # 创建有向图
     dot = graphviz.Digraph('系统总体架构', 
-                          comment='Hollow-ming系统架构 - 黑色背景简洁风格',
+                          comment='Hollow-ming系统架构 - 扁平星形布局',
                           format='png')
     
     # 设置图表属性
@@ -33,11 +34,11 @@ def create_system_architecture():
              size='16,16', 
              ratio='fill', 
              fontname='Microsoft YaHei',
-             dpi='400',
+             dpi='500',
              splines='true',
-             overlap='false', 
-             ranksep='2.5',
-             nodesep='1.0')
+             overlap='false',
+             sep='0.5',
+             pack='true')
     
     # 定义节点样式
     dot.attr('node', 
@@ -51,7 +52,6 @@ def create_system_architecture():
     dot.attr('edge', 
              color='#777777', 
              penwidth='1.0',
-             dir='forward',
              arrowhead='normal',
              arrowsize='0.7')
     
@@ -59,12 +59,11 @@ def create_system_architecture():
     colors = {
         'bg': '#121212',            # 黑色背景
         'core': '#9c27b0',          # 紫色 - 核心
-        'main_meals': '#ff5722',    # 橙色 - 主餐
-        'snacks': '#8bc34a',        # 绿色 - 零食
-        'drinking': '#03a9f4',      # 蓝色 - 饮品
-        'medication': '#f44336',    # 红色 - 药物
-        'others': '#9e9e9e',        # 灰色 - 其他
-        'edge': '#555555'           # 暗灰 - 连接线
+        'business': '#ff5722',      # 橙色 - 业务层
+        'presentation': '#8bc34a',  # 绿色 - 表现层
+        'data': '#f44336',          # 红色 - 数据层
+        'tools': '#03a9f4',         # 蓝色 - 工具层
+        'others': '#9e9e9e'         # 灰色 - 其他
     }
     
     # 设置图表背景
@@ -78,77 +77,82 @@ def create_system_architecture():
              height='1.8',
              fontsize='16')
     
-    # ===== 业务逻辑层节点 =====
-    business_nodes = [
-        ('scene_manager', '场景管理器', colors['main_meals']),
-        ('render_system', '渲染系统', colors['main_meals']),
-        ('resource_system', '资源系统', colors['main_meals']),
-        ('config_system', '配置系统', colors['main_meals'])
+    # ===== 所有节点定义 =====
+    nodes = {
+        # 业务层节点
+        'scene_manager': {'label': '场景管理器', 'color': colors['business'], 'size': 1.5},
+        'render_system': {'label': '渲染系统', 'color': colors['business'], 'size': 1.5},
+        'resource_system': {'label': '资源系统', 'color': colors['business'], 'size': 1.5},
+        'config_system': {'label': '配置系统', 'color': colors['business'], 'size': 1.5},
+        
+        # 表现层节点
+        'ui': {'label': 'UI组件', 'color': colors['presentation'], 'size': 1.3},
+        'interaction': {'label': '交互系统', 'color': colors['presentation'], 'size': 1.3},
+        'scene_editor': {'label': '场景编辑器', 'color': colors['presentation'], 'size': 1.3},
+        'visual_effects': {'label': '视觉效果', 'color': colors['presentation'], 'size': 1.3},
+        
+        # 数据层节点
+        'file_system': {'label': '文件系统', 'color': colors['data'], 'size': 1.3},
+        'database': {'label': '数据库', 'color': colors['data'], 'size': 1.3},
+        'cache': {'label': '缓存', 'color': colors['data'], 'size': 1.3},
+        'serialization': {'label': '序列化', 'color': colors['data'], 'size': 1.3},
+        
+        # 工具/接口节点
+        'plugin_system': {'label': '插件系统', 'color': colors['tools'], 'size': 1.3},
+        'event_system': {'label': '事件系统', 'color': colors['tools'], 'size': 1.3},
+        'logging': {'label': '日志系统', 'color': colors['tools'], 'size': 1.3},
+        'api_interface': {'label': 'API接口', 'color': colors['tools'], 'size': 1.3},
+        
+        # 其他节点
+        'others': {'label': '其他模块', 'color': colors['others'], 'size': 1.3}
+    }
+    
+    # 创建所有节点
+    for node_id, props in nodes.items():
+        dot.node(node_id, props['label'],
+                fillcolor=props['color'],
+                fixedsize='true',
+                width=str(props['size']),
+                height=str(props['size']))
+    
+    # ===== 节点之间的次要连接 =====
+    secondary_connections = [
+        # 表现层连接到业务层
+        ('ui', 'config_system'),
+        ('interaction', 'core_engine'),
+        ('scene_editor', 'scene_manager'),
+        ('visual_effects', 'render_system'),
+        
+        # 业务层连接到数据层
+        ('resource_system', 'file_system'),
+        ('scene_manager', 'database'),
+        ('render_system', 'cache'),
+        ('config_system', 'serialization'),
+        
+        # 工具层连接
+        ('event_system', 'interaction'),
+        ('api_interface', 'config_system'),
+        
+        # 表现层节点间连接
+        ('ui', 'interaction'),
+        ('interaction', 'scene_editor'),
+        ('scene_editor', 'visual_effects'),
+        ('visual_effects', 'ui')
     ]
     
-    for id, label, color in business_nodes:
-        dot.node(id, label,
-                fillcolor=color,
-                fixedsize='true',
-                width='1.5',
-                height='1.5')
-        dot.edge('core_engine', id)
-    
-    # ===== 表现层节点 =====
-    presentation_nodes = [
-        ('ui', 'UI组件', 'config_system', colors['snacks']),
-        ('interaction', '交互系统', 'core_engine', colors['snacks']),
-        ('scene_editor', '场景编辑器', 'scene_manager', colors['snacks']),
-        ('visual_effects', '视觉效果', 'render_system', colors['snacks'])
+    # 创建所有核心连接 (从核心引擎到各主要节点)
+    primary_nodes = [
+        'scene_manager', 'render_system', 'resource_system', 'config_system',  # 业务层
+        'interaction', 'plugin_system', 'logging', 'others'  # 直接连接核心的节点
     ]
     
-    for id, label, connect_to, color in presentation_nodes:
-        dot.node(id, label,
-                fillcolor=color,
-                fixedsize='true',
-                width='1.3',
-                height='1.3')
-        dot.edge(connect_to, id)
+    # 添加主要连接
+    for node in primary_nodes:
+        dot.edge('core_engine', node, constraint='false')
     
-    # ===== 数据层节点 =====
-    data_nodes = [
-        ('file_system', '文件系统', 'resource_system', colors['medication']),
-        ('database', '数据库', 'scene_manager', colors['medication']),
-        ('cache', '缓存', 'render_system', colors['medication']),
-        ('serialization', '序列化', 'config_system', colors['medication'])
-    ]
-    
-    for id, label, connect_to, color in data_nodes:
-        dot.node(id, label,
-                fillcolor=color,
-                fixedsize='true',
-                width='1.3',
-                height='1.3')
-        dot.edge(connect_to, id)
-    
-    # ===== 工具/接口节点 =====
-    tools_nodes = [
-        ('plugin_system', '插件系统', 'core_engine', colors['drinking']),
-        ('event_system', '事件系统', 'interaction', colors['drinking']),
-        ('logging', '日志系统', 'core_engine', colors['drinking']),
-        ('api_interface', 'API接口', 'config_system', colors['drinking'])
-    ]
-    
-    for id, label, connect_to, color in tools_nodes:
-        dot.node(id, label,
-                fillcolor=color,
-                fixedsize='true',
-                width='1.3',
-                height='1.3')
-        dot.edge(connect_to, id)
-    
-    # ===== 其他节点 =====
-    dot.node('others', '其他模块', 
-             fillcolor=colors['others'],
-             fixedsize='true',
-             width='1.3',
-             height='1.3')
-    dot.edge('core_engine', 'others')
+    # 添加次要连接
+    for src, dst in secondary_connections:
+        dot.edge(src, dst, constraint='false', style='dashed')
     
     # 添加图表说明
     dot.attr(label='Hollow-ming系统架构图 | 2024-04-04', fontsize='16', fontcolor='white')
