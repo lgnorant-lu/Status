@@ -6,7 +6,7 @@
 
 | 图表名称 | 文件路径 | 描述 | 状态 | 更新日期 |
 |---------|---------|------|------|----------|
-| 系统总体架构图 | [Diagrams/Architecture/system_architecture.py](/Diagrams/Architecture/system_architecture.py) | 展示系统三层架构和主要模块 | [计划中] | - |
+| 系统总体架构图 | [Diagrams/Architecture/system_architecture.py](/Diagrams/Architecture/system_architecture.py) | 展示系统三层架构和主要模块 | [已完成] | 2024-04-04 |
 | 模块交互图 | [Diagrams/Architecture/module_interactions.py](/Diagrams/Architecture/module_interactions.py) | 展示各模块之间的交互关系 | [计划中] | - |
 | 部署架构图 | [Diagrams/Architecture/deployment_architecture.py](/Diagrams/Architecture/deployment_architecture.py) | 展示部署架构和组件分布 | [计划中] | - |
 

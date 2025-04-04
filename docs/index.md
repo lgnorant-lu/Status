@@ -1,48 +1,48 @@
-# Hollow-ming项目文档
+# Hollow-ming 文档中心
 
-欢迎来到Hollow-ming项目的文档中心。这里提供了项目的概述、用户手册、开发者指南和API参考。
+欢迎来到 Hollow-ming 文档中心！本文档提供了关于 Hollow-ming 应用的全面指南，包括使用说明、开发指南和 API 参考，帮助您快速掌握和使用 Hollow-ming 的各项功能。
 
-## 概述文档
+## 文档结构
 
-概述文档提供了Hollow-ming项目各个系统的高级视图，帮助您了解项目的整体架构和设计理念。
+本文档分为四个主要部分，涵盖了从基础概念到高级开发的各个方面：
 
-- [配置系统概述](overview/config_system.md) - 配置系统的设计和功能
-- [渲染系统概述](overview/renderer_system.md) - 渲染系统的架构和工作流程
-- [资源系统概述](overview/resource_system.md) - 资源管理系统的设计和功能
-- [交互系统概述](overview/interaction_system.md) - 交互系统的设计和功能
-- [场景系统概述](overview/scene_system.md) - 场景管理系统的设计和功能
-- [图表索引](Diagrams/diagram_index.md) - 项目架构和模块关系的可视化图表
+### 1. 概述文档
 
-## 用户手册
+概述文档提供 Hollow-ming 各系统的整体介绍和设计理念，帮助您了解系统的架构和核心功能：
 
-用户手册提供了使用Hollow-ming项目的详细指南，包括安装、配置和使用方法。
+- [配置系统概述](overview/config_system.md) - 了解配置系统的设计原则和核心组件
+- [渲染系统概述](overview/renderer_system.md) - 探索渲染系统的架构和主要功能
+- [资源系统概述](overview/resource_system.md) - 掌握资源管理系统的设计和优化策略
+- [交互系统概述](overview/interaction_system.md) - 理解用户交互系统的架构和实现
+- [场景系统概述](overview/scene_system.md) - 了解场景管理系统的设计和功能
 
-- [入门指南](user/getting_started.md) - 快速入门Hollow-ming项目
-- [配置指南](user/configuration.md) - 如何配置Hollow-ming项目
-- [故障排除](user/troubleshooting.md) - 常见问题和解决方法
-- [常见问题](user/faq.md) - 用户常见问题解答
+### 2. 用户手册
 
-## 开发者指南
+用户手册面向 Hollow-ming 的终端用户，提供详细的使用说明和功能指南：
 
-开发者指南提供了为Hollow-ming项目开发和扩展功能的详细指南，包括API使用、插件开发和贡献指南。
+- [入门指南](user/getting_started.md) - 快速上手Hollow-ming的基本操作
+- [配置指南](user/configuration.md) - 如何配置和定制Hollow-ming
+- [故障排除](user/troubleshooting.md) - 解决使用过程中可能遇到的问题
+- [常见问题](user/faq.md) - 常见问题的解答和说明
+
+### 3. 开发者指南
+
+开发者指南面向希望扩展或定制 Hollow-ming 功能的开发人员，提供详细的技术文档和开发指南：
 
 - [配置系统开发指南](developer/config_guide.md) - 如何扩展和使用配置系统
-- [渲染系统开发指南](developer/renderer_guide.md) - 如何扩展和使用渲染系统
-- [资源系统开发指南](developer/resources_guide.md) - 如何扩展和使用资源系统
-- [插件开发指南](developer/plugin_development.md) - 如何开发Hollow-ming插件
-- [贡献指南](contributing.md) - 如何为Hollow-ming项目做贡献
-- [更新日志](changelog.md) - 项目版本历史和变更记录
-- [路线图](roadmap.md) - 项目未来规划和开发计划
+- [渲染系统开发指南](developer/renderer_guide.md) - 渲染系统的使用和自定义
+- [资源系统开发指南](developer/resources_guide.md) - 资源管理的最佳实践
+- [插件开发](developer/plugin_development.md) - 插件系统架构和开发指南
 
-## API参考
+### 4. API参考
 
-API参考提供了Hollow-ming项目所有公开API的详细文档，包括类、方法和属性的说明。
+API参考提供 Hollow-ming 各模块的详细 API 文档，适合需要深入了解系统实现的开发者：
 
-- [配置系统API](api/config.md) - 配置系统API参考
-- [渲染系统API](api/renderer.md) - 渲染系统API参考
-- [资源系统API](api/resources.md) - 资源系统API参考
-- [场景系统API](api/scene.md) - 场景系统API参考
-- [交互系统API](api/interaction.md) - 交互系统API参考
+- [配置系统API](api/config.md) - 配置系统的类和方法
+- [渲染系统API](api/renderer.md) - 渲染相关的类和接口
+- [资源系统API](api/resources.md) - 资源管理的API文档
+- [交互系统API](api/interaction.md) - 交互系统的类和方法
+- [场景系统API](api/scene.md) - 场景管理系统API
 
 ## 文档更新
 
