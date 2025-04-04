@@ -22,6 +22,7 @@ Changed history:
                             2024/04/04: 优化模块显示，添加图标，采用浅蓝色分层背景;
                             2024/04/04: 修复图标初始化错误;
                             2024/04/04: 为每个节点添加专有图标，提高节点区分度;
+                            2024/04/04: 重构为中心辐射型结构，核心引擎居中，其他模块环绕;
 ----
 """
 
@@ -88,7 +89,7 @@ class IconNode(Node):
         return '#{:02x}{:02x}{:02x}'.format(*rgb)
 
 def generate_diagram():
-    """生成系统架构图"""
+    """生成中心辐射型系统架构图"""
     
     # 颜色方案
     colors = {
@@ -108,20 +109,25 @@ def generate_diagram():
         filename="system_architecture",
         outformat="png",
         show=False,
-        direction="TB",
+        # 更改为左右方向，便于创建辐射状结构
+        direction="LR",
         graph_attr={
             "bgcolor": "#f5f5f5",       # 浅灰色背景
             "fontcolor": "#333333",
             "fontname": "Microsoft YaHei",
             "fontsize": "20",
-            "ranksep": "1.2",
+            "ranksep": "2.4",           # 增加层级间距
             "nodesep": "0.9",
-            "pad": "0.7",
-            "splines": "polyline",      # 使用折线连接
-            "concentrate": "true",
+            "pad": "1.0",
+            "splines": "curved",        # 使用曲线连接，增强辐射感
+            "overlap": "false",
+            "concentrate": "false",
+            "rankdir": "LR",
+            "compound": "true",        # 允许向集群而不仅仅是节点连线
         },
         node_attr={
             "fontname": "Microsoft YaHei",
+            "fontsize": "13",
         },
         edge_attr={
             "color": "#90a4ae",
@@ -129,28 +135,35 @@ def generate_diagram():
             "arrowsize": "0.7",
         }
     ):
-        # 创建核心节点
-        core_engine = Lambda("核心引擎")
-        core_engine._attrs["style"] = "filled,rounded"
-        core_engine._attrs["fillcolor"] = colors['core']
-        core_engine._attrs["fontcolor"] = "#FFFFFF"
+        # ===== 创建核心区域 =====
+        with Cluster("", graph_attr={"style": "invis"}):
+            # 创建核心节点 - 使用圆形更符合中心辐射的视觉效果
+            core_engine = Lambda("核心引擎")
+            core_engine._attrs["style"] = "filled"
+            core_engine._attrs["shape"] = "circle"
+            core_engine._attrs["fillcolor"] = colors['core']
+            core_engine._attrs["fontcolor"] = "#FFFFFF"
+            core_engine._attrs["width"] = "1.5"
+            core_engine._attrs["height"] = "1.5"
+            core_engine._attrs["fontsize"] = "15"
+            core_engine._attrs["penwidth"] = "2.0"
+            
+            # 创建数据中心节点
+            datacenter = Datacenter("数据中心")
+            datacenter._attrs["fillcolor"] = colors['datacenter']
+            datacenter._attrs["fontcolor"] = "#FFFFFF" 
+            datacenter._attrs["style"] = "filled"
         
-        # 创建数据中心节点
-        datacenter = Datacenter("数据中心")
-        datacenter._attrs["fillcolor"] = colors['datacenter']
-        datacenter._attrs["fontcolor"] = "#FFFFFF" 
-        datacenter._attrs["style"] = "filled"
-
-        # ==== 业务层 ====
+        # ===== 创建业务层（右上方） =====
         with Cluster("业务层", graph_attr={
             "bgcolor": colors['cluster_bg'],
             "style": "filled,rounded",
             "color": colors['business'],
             "fontcolor": colors['business'],
             "fontsize": "16",
-            "margin": "30",
+            "margin": "20",
             "penwidth": "2.0",
-            "label_loc": "t", # 顶部放置标签
+            "rank": "same",
         }):
             config_system = Windows("配置系统")
             config_system._attrs["style"] = "filled,rounded"
@@ -172,16 +185,16 @@ def generate_diagram():
             scene_system._attrs["fillcolor"] = colors['business']
             scene_system._attrs["fontcolor"] = "#FFFFFF"
         
-        # ==== 表现层 ====
+        # ===== 创建表现层（右下方） =====
         with Cluster("表现层", graph_attr={
             "bgcolor": colors['cluster_bg'],
             "style": "filled,rounded",
             "color": colors['presentation'],
             "fontcolor": colors['presentation'],
             "fontsize": "16",
-            "margin": "30",
+            "margin": "20",
             "penwidth": "2.0",
-            "label_loc": "t",
+            "rank": "same",
         }):
             ui_system = React("UI系统")
             ui_system._attrs["style"] = "filled,rounded"
@@ -203,16 +216,16 @@ def generate_diagram():
             visual_system._attrs["fillcolor"] = colors['presentation']
             visual_system._attrs["fontcolor"] = "#FFFFFF"
         
-        # ==== 数据层 ====
+        # ===== 创建数据层（左下方） =====
         with Cluster("数据层", graph_attr={
             "bgcolor": colors['cluster_bg'],
             "style": "filled,rounded",
             "color": colors['data'],
             "fontcolor": colors['data'],
             "fontsize": "16",
-            "margin": "30",
+            "margin": "20",
             "penwidth": "2.0",
-            "label_loc": "t",
+            "rank": "same",
         }):
             file_system = Storage("文件系统")
             file_system._attrs["style"] = "filled,rounded"
@@ -234,16 +247,16 @@ def generate_diagram():
             serialization._attrs["fillcolor"] = colors['data']
             serialization._attrs["fontcolor"] = "#FFFFFF"
         
-        # ==== 工具层 ====
+        # ===== 创建工具层（左上方） =====
         with Cluster("工具层", graph_attr={
             "bgcolor": colors['cluster_bg'],
             "style": "filled,rounded",
             "color": colors['tool'],
             "fontcolor": colors['tool'],
             "fontsize": "16",
-            "margin": "30",
+            "margin": "20",
             "penwidth": "2.0",
-            "label_loc": "t",
+            "rank": "same",
         }):
             plugin_system = Python("插件系统")
             plugin_system._attrs["style"] = "filled,rounded"
@@ -265,58 +278,59 @@ def generate_diagram():
             api_system._attrs["fillcolor"] = colors['tool']
             api_system._attrs["fontcolor"] = "#FFFFFF"
         
-        # 其他模块
-        with Cluster("", graph_attr={"style": "invis"}):
-            others = Rack("其他模块")
-            others._attrs["style"] = "filled,rounded"
-            others._attrs["fillcolor"] = colors['module']
-            others._attrs["fontcolor"] = "#FFFFFF"
+        # 其他模块（单独显示）
+        others = Rack("其他模块")
+        others._attrs["style"] = "filled,rounded"
+        others._attrs["fillcolor"] = colors['module']
+        others._attrs["fontcolor"] = "#FFFFFF"
         
-        # ===== 创建连接 =====
-        # 核心引擎和数据中心
-        core_engine - datacenter
+        # ===== 创建从核心到各层的连接 =====
+        # 数据中心与核心引擎
+        core_engine >> datacenter
         
-        # 核心引擎连接到各层
-        core_engine >> scene_system
-        core_engine >> render_system
-        core_engine >> resource_system
-        core_engine >> config_system
-        core_engine >> others
+        # 从核心引擎到各个系统的连接
+        core_engine >> Edge(minlen="2") >> scene_system
+        core_engine >> Edge(minlen="2") >> render_system
+        core_engine >> Edge(minlen="2") >> resource_system
+        core_engine >> Edge(minlen="2") >> config_system
         
-        # 业务层连接到表现层
+        core_engine >> Edge(minlen="2") >> ui_system
+        core_engine >> Edge(minlen="2") >> interaction_system
+        
+        core_engine >> Edge(minlen="2") >> plugin_system
+        core_engine >> Edge(minlen="2") >> log_system
+        
+        core_engine >> Edge(minlen="2") >> database
+        core_engine >> Edge(minlen="2") >> file_system
+        
+        core_engine >> Edge(minlen="2") >> others
+        
+        # ===== 创建各层内的连接 =====
+        # 业务层连接
         scene_system >> scene_editor
         render_system >> visual_system
         config_system >> ui_system
-        
-        # 核心连接交互系统
-        core_engine >> interaction_system
-        
-        # 业务层连接到数据层
-        scene_system >> database
-        render_system >> cache
         resource_system >> file_system
-        config_system >> serialization
         
-        # 核心连接到工具层
-        core_engine >> plugin_system
-        core_engine >> log_system
-        
-        # 交互系统连接事件系统
-        interaction_system >> event_system
-        
-        # 配置系统连接API系统
-        config_system >> api_system
-        
-        # 添加表现层内部连接（用虚线）
-        ui_system >> Edge(style="dashed") >> interaction_system
-        interaction_system >> Edge(style="dashed") >> scene_editor
-        scene_editor >> Edge(style="dashed") >> visual_system
-        visual_system >> Edge(style="dashed") >> ui_system
-        
-        # 数据中心与数据层连接
+        # 数据层连接
         datacenter >> database
         datacenter >> cache
         datacenter >> file_system
+        
+        # 表现层内部连接（虚线）
+        ui_system - Edge(style="dashed") - interaction_system
+        interaction_system - Edge(style="dashed") - scene_editor
+        scene_editor - Edge(style="dashed") - visual_system
+        visual_system - Edge(style="dashed") - ui_system
+        
+        # 工具层连接
+        interaction_system >> event_system
+        config_system >> api_system
+        
+        # 业务层到数据层的连接
+        scene_system >> database
+        render_system >> cache
+        config_system >> serialization
 
 if __name__ == '__main__':
     generate_diagram() 
