@@ -21,52 +21,56 @@ Changed history:
                             2024/04/04: 修复节点初始化参数错误;
                             2024/04/04: 优化模块显示，添加图标，采用浅蓝色分层背景;
                             2024/04/04: 修复图标初始化错误;
+                            2024/04/04: 为每个节点添加专有图标，提高节点区分度;
 ----
 """
 
 from diagrams import Diagram, Cluster, Edge, Node
 from diagrams.onprem.compute import Server
-from diagrams.onprem.database import PostgreSQL, MySQL
+from diagrams.onprem.database import PostgreSQL, MySQL, Cassandra
 from diagrams.onprem.network import Nginx
 from diagrams.onprem.client import Users
 from diagrams.onprem.workflow import Airflow
-from diagrams.programming.framework import React, Flutter
-from diagrams.programming.language import Python, Go
+from diagrams.onprem.queue import Kafka
+from diagrams.onprem.analytics import Spark
+from diagrams.onprem.monitoring import Grafana
+from diagrams.programming.framework import React, Flutter, Spring
+from diagrams.programming.language import Python, Go, Java
+from diagrams.aws.storage import SimpleStorageServiceS3 as S3
+from diagrams.aws.compute import Lambda
 from diagrams.generic.storage import Storage
 from diagrams.generic.compute import Rack
 from diagrams.generic.database import SQL
-from diagrams.generic.os import Windows
-from diagrams.generic.network import Firewall
+from diagrams.generic.os import Windows, IOS
+from diagrams.generic.network import Firewall, VPN, Router
 from diagrams.generic.place import Datacenter
 
-# 创建自定义节点类 - 方形节点带颜色
-class ColorNode(Node):
-    """彩色方块节点，支持自定义颜色"""
+# 创建带图标的节点类
+class IconNode(Node):
+    """带图标的节点"""
     
-    def __init__(self, label, color):
+    def __init__(self, label, icon, color):
         """
         初始化节点
         
         Args:
             label: 节点标签
+            icon: 图标类
             color: 填充颜色
         """
-        super().__init__(label)
+        # 使用图标类创建节点
+        self.node = icon(label)
         
-        # 设置节点属性
-        self._attrs["shape"] = "box"
-        self._attrs["style"] = "filled,rounded"
-        self._attrs["fillcolor"] = color
-        self._attrs["fontcolor"] = "#FFFFFF"
-        self._attrs["fontsize"] = "13"
-        self._attrs["fontname"] = "Microsoft YaHei"
-        self._attrs["margin"] = "0.2"
-        self._attrs["width"] = "1.2"
-        self._attrs["height"] = "0.8"
-        # 边框颜色，稍微深一点
-        self._attrs["color"] = self._adjust_color(color, -40)
-        self._attrs["penwidth"] = "1.5"
-        
+        # 设置节点样式属性
+        self.node._attrs["style"] = "filled,rounded"
+        self.node._attrs["fillcolor"] = color
+        self.node._attrs["fontcolor"] = "#FFFFFF"
+        self.node._attrs["fontsize"] = "13"
+        self.node._attrs["fontname"] = "Microsoft YaHei"
+        self.node._attrs["margin"] = "0.2"
+        self.node._attrs["penwidth"] = "1.5"
+        self.node._attrs["color"] = self._adjust_color(color, -40)
+    
     def _adjust_color(self, hex_color, amount):
         """
         调整颜色亮度
@@ -94,8 +98,8 @@ def generate_diagram():
         'tool': '#26a69a',          # 青色 - 工具层
         'data': '#ef5350',          # 红色 - 数据层
         'module': '#78909c',        # 灰色 - 其他模块
-        'cluster_bg': '#e3f2fd',    # 浅蓝色 - 分组背景
         'datacenter': '#333333',    # 深灰色 - 数据中心
+        'cluster_bg': '#e3f2fd',    # 浅蓝色 - 分组背景
     }
     
     # 开始创建架构图
@@ -126,7 +130,10 @@ def generate_diagram():
         }
     ):
         # 创建核心节点
-        core_engine = ColorNode("核心引擎", colors['core'])
+        core_engine = Lambda("核心引擎")
+        core_engine._attrs["style"] = "filled,rounded"
+        core_engine._attrs["fillcolor"] = colors['core']
+        core_engine._attrs["fontcolor"] = "#FFFFFF"
         
         # 创建数据中心节点
         datacenter = Datacenter("数据中心")
@@ -145,10 +152,25 @@ def generate_diagram():
             "penwidth": "2.0",
             "label_loc": "t", # 顶部放置标签
         }):
-            config_system = ColorNode("配置系统", colors['business'])
-            render_system = ColorNode("渲染系统", colors['business'])
-            resource_system = ColorNode("资源系统", colors['business'])
-            scene_system = ColorNode("场景系统", colors['business'])
+            config_system = Windows("配置系统")
+            config_system._attrs["style"] = "filled,rounded"
+            config_system._attrs["fillcolor"] = colors['business']
+            config_system._attrs["fontcolor"] = "#FFFFFF"
+            
+            render_system = Spring("渲染系统")
+            render_system._attrs["style"] = "filled,rounded"
+            render_system._attrs["fillcolor"] = colors['business']
+            render_system._attrs["fontcolor"] = "#FFFFFF"
+            
+            resource_system = S3("资源系统")
+            resource_system._attrs["style"] = "filled,rounded"
+            resource_system._attrs["fillcolor"] = colors['business']
+            resource_system._attrs["fontcolor"] = "#FFFFFF"
+            
+            scene_system = Airflow("场景系统")
+            scene_system._attrs["style"] = "filled,rounded"
+            scene_system._attrs["fillcolor"] = colors['business']
+            scene_system._attrs["fontcolor"] = "#FFFFFF"
         
         # ==== 表现层 ====
         with Cluster("表现层", graph_attr={
@@ -161,10 +183,25 @@ def generate_diagram():
             "penwidth": "2.0",
             "label_loc": "t",
         }):
-            ui_system = ColorNode("UI系统", colors['presentation'])
-            interaction_system = ColorNode("交互系统", colors['presentation'])
-            scene_editor = ColorNode("场景编辑器", colors['presentation'])
-            visual_system = ColorNode("视觉系统", colors['presentation'])
+            ui_system = React("UI系统")
+            ui_system._attrs["style"] = "filled,rounded"
+            ui_system._attrs["fillcolor"] = colors['presentation']
+            ui_system._attrs["fontcolor"] = "#FFFFFF"
+            
+            interaction_system = Flutter("交互系统")
+            interaction_system._attrs["style"] = "filled,rounded"
+            interaction_system._attrs["fillcolor"] = colors['presentation']
+            interaction_system._attrs["fontcolor"] = "#FFFFFF"
+            
+            scene_editor = Nginx("场景编辑器")
+            scene_editor._attrs["style"] = "filled,rounded"
+            scene_editor._attrs["fillcolor"] = colors['presentation']
+            scene_editor._attrs["fontcolor"] = "#FFFFFF"
+            
+            visual_system = Grafana("视觉系统")
+            visual_system._attrs["style"] = "filled,rounded"
+            visual_system._attrs["fillcolor"] = colors['presentation']
+            visual_system._attrs["fontcolor"] = "#FFFFFF"
         
         # ==== 数据层 ====
         with Cluster("数据层", graph_attr={
@@ -177,10 +214,25 @@ def generate_diagram():
             "penwidth": "2.0",
             "label_loc": "t",
         }):
-            file_system = ColorNode("文件系统", colors['data'])
-            database = ColorNode("数据库", colors['data'])
-            cache = ColorNode("缓存", colors['data'])
-            serialization = ColorNode("序列化", colors['data'])
+            file_system = Storage("文件系统")
+            file_system._attrs["style"] = "filled,rounded"
+            file_system._attrs["fillcolor"] = colors['data']
+            file_system._attrs["fontcolor"] = "#FFFFFF"
+            
+            database = MySQL("数据库")
+            database._attrs["style"] = "filled,rounded"
+            database._attrs["fillcolor"] = colors['data']
+            database._attrs["fontcolor"] = "#FFFFFF"
+            
+            cache = Cassandra("缓存")
+            cache._attrs["style"] = "filled,rounded"
+            cache._attrs["fillcolor"] = colors['data']
+            cache._attrs["fontcolor"] = "#FFFFFF"
+            
+            serialization = PostgreSQL("序列化")
+            serialization._attrs["style"] = "filled,rounded"
+            serialization._attrs["fillcolor"] = colors['data']
+            serialization._attrs["fontcolor"] = "#FFFFFF"
         
         # ==== 工具层 ====
         with Cluster("工具层", graph_attr={
@@ -193,14 +245,32 @@ def generate_diagram():
             "penwidth": "2.0",
             "label_loc": "t",
         }):
-            plugin_system = ColorNode("插件系统", colors['tool'])
-            event_system = ColorNode("事件系统", colors['tool'])
-            log_system = ColorNode("日志系统", colors['tool'])
-            api_system = ColorNode("API系统", colors['tool'])
+            plugin_system = Python("插件系统")
+            plugin_system._attrs["style"] = "filled,rounded"
+            plugin_system._attrs["fillcolor"] = colors['tool']
+            plugin_system._attrs["fontcolor"] = "#FFFFFF"
+            
+            event_system = Kafka("事件系统")
+            event_system._attrs["style"] = "filled,rounded"
+            event_system._attrs["fillcolor"] = colors['tool']
+            event_system._attrs["fontcolor"] = "#FFFFFF"
+            
+            log_system = Spark("日志系统")
+            log_system._attrs["style"] = "filled,rounded"
+            log_system._attrs["fillcolor"] = colors['tool']
+            log_system._attrs["fontcolor"] = "#FFFFFF"
+            
+            api_system = Firewall("API系统")
+            api_system._attrs["style"] = "filled,rounded"
+            api_system._attrs["fillcolor"] = colors['tool']
+            api_system._attrs["fontcolor"] = "#FFFFFF"
         
         # 其他模块
         with Cluster("", graph_attr={"style": "invis"}):
-            others = ColorNode("其他模块", colors['module'])
+            others = Rack("其他模块")
+            others._attrs["style"] = "filled,rounded"
+            others._attrs["fillcolor"] = colors['module']
+            others._attrs["fontcolor"] = "#FFFFFF"
         
         # ===== 创建连接 =====
         # 核心引擎和数据中心
