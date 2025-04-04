@@ -1,0 +1,344 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Hollow-ming Configuration Schema",
+    "description": "Configuration schema for Hollow-ming application",
+    "type": "object",
+    "required": ["app", "window", "graphics", "audio", "resources", "controls"],
+    "properties": {
+        "app": {
+            "type": "object",
+            "required": ["name", "version", "language", "theme"],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Application name"
+                },
+                "version": {
+                    "type": "string",
+                    "description": "Application version",
+                    "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                },
+                "language": {
+                    "type": "string",
+                    "description": "Application language",
+                    "enum": ["zh_CN", "en_US"]
+                },
+                "theme": {
+                    "type": "string",
+                    "description": "Application theme"
+                },
+                "debug": {
+                    "type": "boolean",
+                    "description": "Debug mode"
+                },
+                "first_run": {
+                    "type": "boolean",
+                    "description": "First run flag"
+                },
+                "update_check": {
+                    "type": "boolean",
+                    "description": "Check for updates on startup"
+                },
+                "update_channel": {
+                    "type": "string",
+                    "description": "Update channel",
+                    "enum": ["stable", "beta", "dev"]
+                }
+            }
+        },
+        "window": {
+            "type": "object",
+            "required": ["width", "height"],
+            "properties": {
+                "width": {
+                    "type": "integer",
+                    "description": "Window width",
+                    "minimum": 320,
+                    "maximum": 7680
+                },
+                "height": {
+                    "type": "integer",
+                    "description": "Window height",
+                    "minimum": 240,
+                    "maximum": 4320
+                },
+                "fullscreen": {
+                    "type": "boolean",
+                    "description": "Fullscreen mode"
+                },
+                "always_on_top": {
+                    "type": "boolean",
+                    "description": "Always on top flag"
+                },
+                "frameless": {
+                    "type": "boolean",
+                    "description": "Frameless window"
+                },
+                "opacity": {
+                    "type": "number",
+                    "description": "Window opacity",
+                    "minimum": 0.1,
+                    "maximum": 1.0
+                },
+                "position_x": {
+                    "type": "integer",
+                    "description": "Window X position"
+                },
+                "position_y": {
+                    "type": "integer",
+                    "description": "Window Y position"
+                },
+                "remember_position": {
+                    "type": "boolean",
+                    "description": "Remember window position"
+                },
+                "minimize_to_tray": {
+                    "type": "boolean",
+                    "description": "Minimize to tray"
+                }
+            }
+        },
+        "graphics": {
+            "type": "object",
+            "properties": {
+                "fps_limit": {
+                    "type": "integer",
+                    "description": "FPS limit",
+                    "minimum": 30,
+                    "maximum": 240
+                },
+                "vsync": {
+                    "type": "boolean",
+                    "description": "Vertical sync"
+                },
+                "effects_level": {
+                    "type": "string",
+                    "description": "Effects quality level",
+                    "enum": ["low", "medium", "high", "ultra"]
+                },
+                "animation_speed": {
+                    "type": "number",
+                    "description": "Animation speed multiplier",
+                    "minimum": 0.1,
+                    "maximum": 2.0
+                },
+                "particle_density": {
+                    "type": "number",
+                    "description": "Particle density",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "shadow_quality": {
+                    "type": "string",
+                    "description": "Shadow quality",
+                    "enum": ["off", "low", "medium", "high"]
+                },
+                "antialiasing": {
+                    "type": "boolean",
+                    "description": "Antialiasing enabled"
+                },
+                "texture_quality": {
+                    "type": "string",
+                    "description": "Texture quality",
+                    "enum": ["low", "medium", "high"]
+                }
+            }
+        },
+        "audio": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Audio enabled"
+                },
+                "master_volume": {
+                    "type": "number",
+                    "description": "Master volume",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "music_volume": {
+                    "type": "number",
+                    "description": "Music volume",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "effects_volume": {
+                    "type": "number",
+                    "description": "Sound effects volume",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "ambient_volume": {
+                    "type": "number",
+                    "description": "Ambient sound volume",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "mute_when_minimized": {
+                    "type": "boolean",
+                    "description": "Mute when minimized"
+                },
+                "audio_device": {
+                    "type": "string",
+                    "description": "Audio device name"
+                }
+            }
+        },
+        "resources": {
+            "type": "object",
+            "properties": {
+                "theme_pack": {
+                    "type": "string",
+                    "description": "Active theme pack"
+                },
+                "preload_enabled": {
+                    "type": "boolean",
+                    "description": "Preload resources"
+                },
+                "cache_size_mb": {
+                    "type": "integer",
+                    "description": "Resource cache size (MB)",
+                    "minimum": 50,
+                    "maximum": 2048
+                },
+                "max_texture_size": {
+                    "type": "integer",
+                    "description": "Maximum texture size",
+                    "enum": [512, 1024, 2048, 4096]
+                },
+                "resource_path": {
+                    "type": "string",
+                    "description": "Resource directory path"
+                },
+                "user_resources_path": {
+                    "type": "string",
+                    "description": "User resources directory path"
+                },
+                "enable_resource_packs": {
+                    "type": "boolean",
+                    "description": "Enable resource packs"
+                }
+            }
+        },
+        "controls": {
+            "type": "object",
+            "properties": {
+                "mouse_sensitivity": {
+                    "type": "number",
+                    "description": "Mouse sensitivity",
+                    "minimum": 0.1,
+                    "maximum": 2.0
+                },
+                "double_click_time": {
+                    "type": "number",
+                    "description": "Double-click time (seconds)",
+                    "minimum": 0.1,
+                    "maximum": 1.0
+                },
+                "enable_touch": {
+                    "type": "boolean",
+                    "description": "Enable touch input"
+                },
+                "touch_sensitivity": {
+                    "type": "number",
+                    "description": "Touch sensitivity",
+                    "minimum": 0.1,
+                    "maximum": 2.0
+                },
+                "enable_gestures": {
+                    "type": "boolean",
+                    "description": "Enable gesture recognition"
+                },
+                "invert_scrolling": {
+                    "type": "boolean",
+                    "description": "Invert scrolling direction"
+                },
+                "hotkeys": {
+                    "type": "object",
+                    "description": "Keyboard shortcuts",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "gameplay": {
+            "type": "object",
+            "properties": {
+                "difficulty": {
+                    "type": "string",
+                    "description": "Game difficulty",
+                    "enum": ["easy", "normal", "hard", "nightmare"]
+                },
+                "auto_save": {
+                    "type": "boolean",
+                    "description": "Auto-save enabled"
+                },
+                "auto_save_interval": {
+                    "type": "integer",
+                    "description": "Auto-save interval (seconds)",
+                    "minimum": 60
+                },
+                "show_hints": {
+                    "type": "boolean",
+                    "description": "Show gameplay hints"
+                },
+                "enable_achievements": {
+                    "type": "boolean",
+                    "description": "Enable achievements"
+                }
+            }
+        },
+        "development": {
+            "type": "object",
+            "properties": {
+                "enable_developer_tools": {
+                    "type": "boolean",
+                    "description": "Enable developer tools"
+                },
+                "show_fps": {
+                    "type": "boolean",
+                    "description": "Show FPS counter"
+                },
+                "show_debug_info": {
+                    "type": "boolean",
+                    "description": "Show debug information"
+                },
+                "log_level": {
+                    "type": "string",
+                    "description": "Logging level",
+                    "enum": ["debug", "info", "warning", "error", "critical"]
+                }
+            }
+        },
+        "network": {
+            "type": "object",
+            "properties": {
+                "enable_analytics": {
+                    "type": "boolean",
+                    "description": "Enable analytics data collection"
+                },
+                "allow_error_reporting": {
+                    "type": "boolean",
+                    "description": "Allow automatic error reporting"
+                },
+                "proxy_enabled": {
+                    "type": "boolean",
+                    "description": "Use network proxy"
+                },
+                "proxy_address": {
+                    "type": "string",
+                    "description": "Proxy server address"
+                },
+                "proxy_port": {
+                    "type": "integer",
+                    "description": "Proxy server port",
+                    "minimum": 0,
+                    "maximum": 65535
+                }
+            }
+        }
+    },
+    "additionalProperties": true
+} 

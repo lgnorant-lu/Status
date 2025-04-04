@@ -1,0 +1,86 @@
+{
+    "app": {
+        "name": "Hollow-ming",
+        "version": "0.1.0",
+        "language": "zh_CN",
+        "theme": "default",
+        "debug": false,
+        "first_run": true,
+        "update_check": true,
+        "update_channel": "stable"
+    },
+    "window": {
+        "width": 800,
+        "height": 600,
+        "fullscreen": false,
+        "always_on_top": false,
+        "frameless": false,
+        "opacity": 1.0,
+        "position_x": -1,
+        "position_y": -1,
+        "remember_position": true,
+        "minimize_to_tray": true
+    },
+    "graphics": {
+        "fps_limit": 60,
+        "vsync": true,
+        "effects_level": "medium",
+        "animation_speed": 1.0,
+        "particle_density": 0.7,
+        "shadow_quality": "medium",
+        "antialiasing": true,
+        "texture_quality": "high"
+    },
+    "audio": {
+        "enabled": true,
+        "master_volume": 0.7,
+        "music_volume": 0.5,
+        "effects_volume": 0.8,
+        "ambient_volume": 0.6,
+        "mute_when_minimized": true,
+        "audio_device": "default"
+    },
+    "resources": {
+        "theme_pack": "default",
+        "preload_enabled": true,
+        "cache_size_mb": 200,
+        "max_texture_size": 2048,
+        "resource_path": "resources",
+        "user_resources_path": "user_resources",
+        "enable_resource_packs": true
+    },
+    "controls": {
+        "mouse_sensitivity": 1.0,
+        "double_click_time": 0.5,
+        "enable_touch": true,
+        "touch_sensitivity": 1.0,
+        "enable_gestures": true,
+        "invert_scrolling": false,
+        "hotkeys": {
+            "toggle_fullscreen": "F11",
+            "screenshot": "F12",
+            "open_settings": "Ctrl+,",
+            "quit": "Alt+F4"
+        }
+    },
+    "gameplay": {
+        "difficulty": "normal",
+        "auto_save": true,
+        "auto_save_interval": 300,
+        "show_hints": true,
+        "enable_achievements": true
+    },
+    "development": {
+        "enable_developer_tools": false,
+        "show_fps": false,
+        "show_debug_info": false,
+        "log_level": "info"
+    },
+    "network": {
+        "enable_analytics": false,
+        "allow_error_reporting": true,
+        "proxy_enabled": false,
+        "proxy_address": "",
+        "proxy_port": 0
+    }
+} 

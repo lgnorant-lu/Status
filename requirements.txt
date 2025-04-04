@@ -1,0 +1,50 @@
+# Hollow-ming 项目依赖
+# 空洞骑士主题系统监控桌宠应用
+
+# UI库
+PyQt6>=6.4.0
+
+# 系统监控
+psutil>=5.9.0
+py-cpuinfo>=8.0.0
+GPUtil>=1.4.0
+
+# 图像处理
+Pillow>=9.2.0
+
+# 测试工具
+pytest>=7.0.0
+pytest-qt>=4.0.0
+pytest-cov>=3.0.0
+
+# 文档生成
+Sphinx>=5.0.0
+
+# 工具库
+pyyaml>=6.0
+requests>=2.28.0
+
+# 图形和数据处理
+numpy>=1.21.0
+matplotlib>=3.5.0
+
+# 数据存储
+# sqlite3>=3.35.0
+
+# 开发工具
+black>=22.1.0
+mypy>=0.931
+flake8>=4.0.1
+
+# 图表生成
+graphviz>=0.19.1
+
+# 打包工具
+pyinstaller>=5.0.0 
+
+# 系统相关
+# win32con    
+# win32gui
+# win32api
+pypiwin32
+pywin32
