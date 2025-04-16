@@ -16,6 +16,9 @@ import math
 import enum
 import time
 
+# 导入 QImage 用于类型提示
+from PyQt6.QtGui import QImage
+
 from status.renderer.drawable import Drawable
 
 class EasingType(enum.Enum):
@@ -57,7 +60,7 @@ class Animator:
         self.duration = max(0.001, duration)  # 避免除零错误
         self.loop = loop
         self.delay = delay
-        self.elapsed_time = 0
+        self.elapsed_time: float = 0.0
         self.state = AnimationState.IDLE
         self.completion_callback = None
         
@@ -438,7 +441,7 @@ class DrawableAnimator:
     
     @staticmethod
     def move_to(drawable: Drawable, x: float, y: float, duration: float, 
-               easing: EasingType = EasingType.EASE_OUT, delay: float = 0.0) -> PropertyAnimation:
+               easing: EasingType = EasingType.EASE_OUT, delay: float = 0.0) -> MultiPropertyAnimation:
         """移动到指定位置
         
         Args:
@@ -450,7 +453,7 @@ class DrawableAnimator:
             delay: 延迟开始时间（秒）
             
         Returns:
-            PropertyAnimation: 属性动画对象
+            MultiPropertyAnimation: 多属性动画对象
         """
         multi_anim = MultiPropertyAnimation(duration, easing, False, delay)
         multi_anim.add_property(drawable, "x", drawable.x, x)
@@ -459,7 +462,7 @@ class DrawableAnimator:
     
     @staticmethod
     def scale_to(drawable: Drawable, scale_x: float, scale_y: float, duration: float,
-                easing: EasingType = EasingType.EASE_OUT, delay: float = 0.0) -> PropertyAnimation:
+                easing: EasingType = EasingType.EASE_OUT, delay: float = 0.0) -> MultiPropertyAnimation:
         """缩放到指定比例
         
         Args:
@@ -471,7 +474,7 @@ class DrawableAnimator:
             delay: 延迟开始时间（秒）
             
         Returns:
-            PropertyAnimation: 属性动画对象
+            MultiPropertyAnimation: 多属性动画对象
         """
         multi_anim = MultiPropertyAnimation(duration, easing, False, delay)
         multi_anim.add_property(drawable, "scale_x", drawable.scale_x, scale_x)
@@ -637,3 +640,76 @@ class AnimationManager:
             int: 动画数量
         """
         return len(self.animations)
+
+class FrameAnimation(Animator):
+    """帧序列动画类，用于播放一系列图像帧。"""
+    
+    def __init__(self, frames: List[QImage], fps: float = 12.0, loop: bool = True,
+                 auto_start: bool = True):
+        """初始化帧序列动画
+
+        Args:
+            frames (List[QImage]): 包含动画帧 (QImage 对象) 的列表。
+            fps (float, optional): 动画的播放帧率 (每秒帧数). Defaults to 12.0.
+            loop (bool, optional): 是否循环播放. Defaults to True.
+            auto_start (bool, optional): 是否自动开始播放. Defaults to True.
+        """
+        if not frames:
+            raise ValueError("帧列表不能为空")
+            
+        self.frames = frames
+        self.frame_count = len(frames)
+        self.fps = max(0.1, fps) # 保证fps大于0
+        self.frame_duration = 1.0 / self.fps
+        self.current_frame_index = 0
+        
+        # 总持续时间 = 帧数 * 每帧持续时间
+        total_duration = self.frame_count * self.frame_duration
+        
+        # 调用父类初始化，但不设置延迟 (delay=0.0)
+        super().__init__(duration=total_duration, loop=loop, delay=0.0, auto_start=auto_start)
+        
+        # 内部计时器，用于帧切换
+        self._frame_timer = 0.0
+
+    def _update_animation(self, dt: float) -> None:
+        """更新动画逻辑，计算当前帧索引。"""
+        # FrameAnimation 不需要缓动，它只按固定速率切换帧
+        # 父类的 elapsed_time 已经处理了播放/暂停/循环
+        
+        # 使用 get_progress 获取考虑了循环和延迟的标准化时间
+        # 注意：Animator 的 get_progress() 在循环时会重置，我们需要自己计时来确定帧
+        # 暂时不依赖 Animator 的进度，而是独立计算帧索引
+        
+        self._frame_timer += dt
+        
+        # 计算应该前进多少帧
+        frames_to_advance = math.floor(self._frame_timer / self.frame_duration)
+        
+        if frames_to_advance > 0:
+            self._frame_timer = self._frame_timer % self.frame_duration # 保留余下的时间
+            
+            new_index = self.current_frame_index + frames_to_advance
+            
+            if self.loop:
+                self.current_frame_index = new_index % self.frame_count
+            else:
+                self.current_frame_index = min(new_index, self.frame_count - 1)
+                # 如果到达最后一帧且不循环，状态会在父类 update 中被设为 COMPLETED
+
+    def get_current_frame(self) -> QImage:
+        """获取当前应显示的 QImage 帧。"""
+        # 添加边界检查以防万一
+        if 0 <= self.current_frame_index < self.frame_count:
+            return self.frames[self.current_frame_index]
+        else:
+            # 如果索引无效（理论上不应发生），返回第一帧或引发错误
+            # logging.warning(f"FrameAnimation: 无效的帧索引 {self.current_frame_index}, 返回第一帧")
+            return self.frames[0] 
+
+    def reset(self) -> None:
+        """重置动画到第一帧并停止。"""
+        self.stop()
+        self.current_frame_index = 0
+        self._frame_timer = 0.0
+        # 父类的 elapsed_time 已经在 stop() 中重置

@@ -22,8 +22,6 @@ Changed history:
                             2024/04/04: 优化模块显示，添加图标，采用浅蓝色分层背景;
                             2024/04/04: 修复图标初始化错误;
                             2024/04/04: 为每个节点添加专有图标，提高节点区分度;
-                            2024/04/04: 重构为中心辐射型结构，核心引擎居中，其他模块环绕;
-                            2024/04/04: 优化中心辐射结构，完善环形排列，调整层次感;
 ----
 """
 
@@ -90,30 +88,17 @@ class IconNode(Node):
         return '#{:02x}{:02x}{:02x}'.format(*rgb)
 
 def generate_diagram():
-    """生成中心辐射型系统架构图 - 优化环形布局"""
+    """生成系统架构图"""
     
     # 颜色方案
     colors = {
-        'core': '#673ab7',          # 紫色 - 核心引擎
-        'datacenter': '#212121',    # 深灰色 - 数据中心
-        
-        # 业务层 - 橙色渐变
-        'business_main': '#f57c00', # 主色
-        'business_sec': '#ff9800',  # 次色
-        
-        # 表现层 - 蓝色渐变
-        'presentation_main': '#1976d2', # 主色 
-        'presentation_sec': '#42a5f5',  # 次色
-        
-        # 工具层 - 青色渐变
-        'tool_main': '#00796b',     # 主色
-        'tool_sec': '#26a69a',      # 次色
-        
-        # 数据层 - 红色渐变
-        'data_main': '#c62828',     # 主色
-        'data_sec': '#ef5350',      # 次色
-        
-        'module': '#546e7a',        # 灰蓝色 - 其他模块
+        'core': '#7e57c2',          # 紫色 - 核心层
+        'business': '#ff7043',      # 橙色 - 业务层
+        'presentation': '#42a5f5',  # 蓝色 - 表现层
+        'tool': '#26a69a',          # 青色 - 工具层
+        'data': '#ef5350',          # 红色 - 数据层
+        'module': '#78909c',        # 灰色 - 其他模块
+        'datacenter': '#333333',    # 深灰色 - 数据中心
         'cluster_bg': '#e3f2fd',    # 浅蓝色 - 分组背景
     }
     
@@ -123,191 +108,212 @@ def generate_diagram():
         filename="system_architecture",
         outformat="png",
         show=False,
-        direction="TB", # 改回上下方向，但改变布局策略
+        direction="TB",
         graph_attr={
-            "bgcolor": "#fafafa",       # 更浅的灰色背景
+            "bgcolor": "#f5f5f5",       # 浅灰色背景
             "fontcolor": "#333333",
             "fontname": "Microsoft YaHei",
             "fontsize": "20",
-            "ranksep": "2.0",           # 增加层级间距
-            "nodesep": "1.0",
-            "pad": "1.2",
-            "splines": "spline",        # 使用曲线连接，增强辐射感
-            "overlap": "false",
-            "concentrate": "false",
-            "center": "true",
-            "margin": "0.6",
-            "compound": "true",        # 允许向集群而不仅仅是节点连线
+            "ranksep": "1.2",
+            "nodesep": "0.9",
+            "pad": "0.7",
+            "splines": "polyline",      # 使用折线连接
+            "concentrate": "true",
         },
         node_attr={
             "fontname": "Microsoft YaHei",
-            "fontsize": "13",
         },
         edge_attr={
             "color": "#90a4ae",
-            "penwidth": "1.0",
+            "penwidth": "1.2",
             "arrowsize": "0.7",
         }
     ):
-        # ===== 创建核心区域 =====
-        # 创建核心节点 - 在正中央
+        # 创建核心节点
         core_engine = Lambda("核心引擎")
-        core_engine._attrs["style"] = "filled"
-        core_engine._attrs["shape"] = "circle"
+        core_engine._attrs["style"] = "filled,rounded"
         core_engine._attrs["fillcolor"] = colors['core']
         core_engine._attrs["fontcolor"] = "#FFFFFF"
-        core_engine._attrs["width"] = "1.8"
-        core_engine._attrs["height"] = "1.8"
-        core_engine._attrs["fontsize"] = "14"
-        core_engine._attrs["penwidth"] = "2.0"
         
         # 创建数据中心节点
         datacenter = Datacenter("数据中心")
         datacenter._attrs["fillcolor"] = colors['datacenter']
         datacenter._attrs["fontcolor"] = "#FFFFFF" 
         datacenter._attrs["style"] = "filled"
-        
-        # ============ 第一层 - 主要系统 ============
-        with Cluster("", graph_attr={"style": "invis"}):
-            # 放置在左上、右上、左下、右下四个主要位置
-            
-            # 业务层 - 主要系统
+
+        # ==== 业务层 ====
+        with Cluster("业务层", graph_attr={
+            "bgcolor": colors['cluster_bg'],
+            "style": "filled,rounded",
+            "color": colors['business'],
+            "fontcolor": colors['business'],
+            "fontsize": "16",
+            "margin": "30",
+            "penwidth": "2.0",
+            "label_loc": "t", # 顶部放置标签
+        }):
             config_system = Windows("配置系统")
             config_system._attrs["style"] = "filled,rounded"
-            config_system._attrs["fillcolor"] = colors['business_main']
+            config_system._attrs["fillcolor"] = colors['business']
             config_system._attrs["fontcolor"] = "#FFFFFF"
             
-            # 表现层 - 主要系统
-            ui_system = React("UI系统")
-            ui_system._attrs["style"] = "filled,rounded"
-            ui_system._attrs["fillcolor"] = colors['presentation_main']
-            ui_system._attrs["fontcolor"] = "#FFFFFF"
-            
-            # 数据层 - 主要系统
-            database = MySQL("数据库")
-            database._attrs["style"] = "filled,rounded"
-            database._attrs["fillcolor"] = colors['data_main']
-            database._attrs["fontcolor"] = "#FFFFFF"
-            
-            # 工具层 - 主要系统
-            plugin_system = Python("插件系统")
-            plugin_system._attrs["style"] = "filled,rounded"
-            plugin_system._attrs["fillcolor"] = colors['tool_main']
-            plugin_system._attrs["fontcolor"] = "#FFFFFF"
-        
-        # ============ 第二层 - 次要系统 ============
-        with Cluster("", graph_attr={"style": "invis"}):
-            # 业务层 - 次要系统
             render_system = Spring("渲染系统")
             render_system._attrs["style"] = "filled,rounded"
-            render_system._attrs["fillcolor"] = colors['business_sec']
+            render_system._attrs["fillcolor"] = colors['business']
             render_system._attrs["fontcolor"] = "#FFFFFF"
             
             resource_system = S3("资源系统")
             resource_system._attrs["style"] = "filled,rounded"
-            resource_system._attrs["fillcolor"] = colors['business_sec']
+            resource_system._attrs["fillcolor"] = colors['business']
             resource_system._attrs["fontcolor"] = "#FFFFFF"
             
             scene_system = Airflow("场景系统")
             scene_system._attrs["style"] = "filled,rounded"
-            scene_system._attrs["fillcolor"] = colors['business_sec']
+            scene_system._attrs["fillcolor"] = colors['business']
             scene_system._attrs["fontcolor"] = "#FFFFFF"
+        
+        # ==== 表现层 ====
+        with Cluster("表现层", graph_attr={
+            "bgcolor": colors['cluster_bg'],
+            "style": "filled,rounded",
+            "color": colors['presentation'],
+            "fontcolor": colors['presentation'],
+            "fontsize": "16",
+            "margin": "30",
+            "penwidth": "2.0",
+            "label_loc": "t",
+        }):
+            ui_system = React("UI系统")
+            ui_system._attrs["style"] = "filled,rounded"
+            ui_system._attrs["fillcolor"] = colors['presentation']
+            ui_system._attrs["fontcolor"] = "#FFFFFF"
             
-            # 表现层 - 次要系统
             interaction_system = Flutter("交互系统")
             interaction_system._attrs["style"] = "filled,rounded"
-            interaction_system._attrs["fillcolor"] = colors['presentation_sec']
+            interaction_system._attrs["fillcolor"] = colors['presentation']
             interaction_system._attrs["fontcolor"] = "#FFFFFF"
             
             scene_editor = Nginx("场景编辑器")
             scene_editor._attrs["style"] = "filled,rounded"
-            scene_editor._attrs["fillcolor"] = colors['presentation_sec']
+            scene_editor._attrs["fillcolor"] = colors['presentation']
             scene_editor._attrs["fontcolor"] = "#FFFFFF"
             
             visual_system = Grafana("视觉系统")
             visual_system._attrs["style"] = "filled,rounded"
-            visual_system._attrs["fillcolor"] = colors['presentation_sec']
+            visual_system._attrs["fillcolor"] = colors['presentation']
             visual_system._attrs["fontcolor"] = "#FFFFFF"
-            
-            # 数据层 - 次要系统
+        
+        # ==== 数据层 ====
+        with Cluster("数据层", graph_attr={
+            "bgcolor": colors['cluster_bg'],
+            "style": "filled,rounded",
+            "color": colors['data'],
+            "fontcolor": colors['data'],
+            "fontsize": "16",
+            "margin": "30",
+            "penwidth": "2.0",
+            "label_loc": "t",
+        }):
             file_system = Storage("文件系统")
             file_system._attrs["style"] = "filled,rounded"
-            file_system._attrs["fillcolor"] = colors['data_sec']
+            file_system._attrs["fillcolor"] = colors['data']
             file_system._attrs["fontcolor"] = "#FFFFFF"
+            
+            database = MySQL("数据库")
+            database._attrs["style"] = "filled,rounded"
+            database._attrs["fillcolor"] = colors['data']
+            database._attrs["fontcolor"] = "#FFFFFF"
             
             cache = Cassandra("缓存")
             cache._attrs["style"] = "filled,rounded"
-            cache._attrs["fillcolor"] = colors['data_sec']
+            cache._attrs["fillcolor"] = colors['data']
             cache._attrs["fontcolor"] = "#FFFFFF"
             
             serialization = PostgreSQL("序列化")
             serialization._attrs["style"] = "filled,rounded"
-            serialization._attrs["fillcolor"] = colors['data_sec']
+            serialization._attrs["fillcolor"] = colors['data']
             serialization._attrs["fontcolor"] = "#FFFFFF"
+        
+        # ==== 工具层 ====
+        with Cluster("工具层", graph_attr={
+            "bgcolor": colors['cluster_bg'],
+            "style": "filled,rounded",
+            "color": colors['tool'],
+            "fontcolor": colors['tool'],
+            "fontsize": "16",
+            "margin": "30",
+            "penwidth": "2.0",
+            "label_loc": "t",
+        }):
+            plugin_system = Python("插件系统")
+            plugin_system._attrs["style"] = "filled,rounded"
+            plugin_system._attrs["fillcolor"] = colors['tool']
+            plugin_system._attrs["fontcolor"] = "#FFFFFF"
             
-            # 工具层 - 次要系统
             event_system = Kafka("事件系统")
             event_system._attrs["style"] = "filled,rounded"
-            event_system._attrs["fillcolor"] = colors['tool_sec']
+            event_system._attrs["fillcolor"] = colors['tool']
             event_system._attrs["fontcolor"] = "#FFFFFF"
             
             log_system = Spark("日志系统")
             log_system._attrs["style"] = "filled,rounded"
-            log_system._attrs["fillcolor"] = colors['tool_sec']
+            log_system._attrs["fillcolor"] = colors['tool']
             log_system._attrs["fontcolor"] = "#FFFFFF"
             
             api_system = Firewall("API系统")
             api_system._attrs["style"] = "filled,rounded"
-            api_system._attrs["fillcolor"] = colors['tool_sec']
+            api_system._attrs["fillcolor"] = colors['tool']
             api_system._attrs["fontcolor"] = "#FFFFFF"
         
         # 其他模块
-        others = Rack("其他模块")
-        others._attrs["style"] = "filled,rounded"
-        others._attrs["fillcolor"] = colors['module']
-        others._attrs["fontcolor"] = "#FFFFFF"
+        with Cluster("", graph_attr={"style": "invis"}):
+            others = Rack("其他模块")
+            others._attrs["style"] = "filled,rounded"
+            others._attrs["fillcolor"] = colors['module']
+            others._attrs["fontcolor"] = "#FFFFFF"
         
         # ===== 创建连接 =====
-        # 核心与数据中心连接
+        # 核心引擎和数据中心
         core_engine - datacenter
         
-        # 连接从核心到关键系统 - 主要连接
-        core_engine >> Edge(constraint="true", minlen="2") >> config_system
-        core_engine >> Edge(constraint="true", minlen="2") >> ui_system  
-        core_engine >> Edge(constraint="true", minlen="2") >> database
-        core_engine >> Edge(constraint="true", minlen="2") >> plugin_system
-        
-        # 连接核心到其他系统 - 次要连接
+        # 核心引擎连接到各层
+        core_engine >> scene_system
         core_engine >> render_system
         core_engine >> resource_system
-        core_engine >> scene_system
-        core_engine >> interaction_system
-        core_engine >> log_system
+        core_engine >> config_system
         core_engine >> others
         
-        # 业务层连接 - 形成树状结构
-        config_system >> api_system
-        config_system >> serialization
+        # 业务层连接到表现层
+        scene_system >> scene_editor
+        render_system >> visual_system
         config_system >> ui_system
         
-        render_system >> visual_system
-        render_system >> cache
+        # 核心连接交互系统
+        core_engine >> interaction_system
         
-        resource_system >> file_system
-        
-        scene_system >> scene_editor
+        # 业务层连接到数据层
         scene_system >> database
+        render_system >> cache
+        resource_system >> file_system
+        config_system >> serialization
         
-        # 表现层内部连接（虚线）
-        ui_system - Edge(style="dashed") - interaction_system
-        interaction_system - Edge(style="dashed") - scene_editor
-        scene_editor - Edge(style="dashed") - visual_system
+        # 核心连接到工具层
+        core_engine >> plugin_system
+        core_engine >> log_system
         
-        # 工具层连接
-        plugin_system >> event_system
+        # 交互系统连接事件系统
         interaction_system >> event_system
         
-        # 数据层连接
+        # 配置系统连接API系统
+        config_system >> api_system
+        
+        # 添加表现层内部连接（用虚线）
+        ui_system >> Edge(style="dashed") >> interaction_system
+        interaction_system >> Edge(style="dashed") >> scene_editor
+        scene_editor >> Edge(style="dashed") >> visual_system
+        visual_system >> Edge(style="dashed") >> ui_system
+        
+        # 数据中心与数据层连接
         datacenter >> database
         datacenter >> cache
         datacenter >> file_system

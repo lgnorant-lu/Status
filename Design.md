@@ -1,259 +1,457 @@
 # 设计文档
 
-## 架构设计
+## 系统架构设计
 
-### 系统总体架构
+### 整体架构
+
+Hollow-ming采用分层架构设计，主要由以下几个层次组成：
+
+1. **核心层（Core Layer）**：提供应用程序的基础设施，包括应用程序生命周期管理、事件系统、配置管理等。
+2. **服务层（Service Layer）**：提供各种通用服务，如资源管理、渲染、监控等。
+3. **功能层（Function Layer）**：实现应用程序的具体功能，如场景管理、交互系统、行为系统等。
+4. **表现层（Presentation Layer）**：负责用户界面和视觉效果。
+
+### 模块划分
+
+1. **核心系统（Core System）**
+   - 应用程序核心（Application Core）
+   - 事件系统（Event System）
+   - 配置管理（Configuration Management）
+   - 调试工具（Debug Tools）
+
+2. **资源管理系统（Resource Management System）**
+   - 资源加载（Resource Loading）
+   - 资源缓存（Resource Caching）
+   - 资源类型抽象（Resource Type Abstraction）
+
+3. **渲染系统（Rendering System）**
+   - 渲染器抽象（Renderer Abstraction）
+   - 精灵系统（Sprite System）
+   - 动画系统（Animation System）
+   - 特效系统（Effect System）
+   - 粒子系统（Particle System）
+
+4. **场景系统（Scene System）**
+   - 场景管理（Scene Management）
+   - 场景转场（Scene Transition）
+
+5. **交互系统（Interaction System）**
+   - 鼠标交互（Mouse Interaction）
+   - 热键管理（Hotkey Management）
+   - 行为触发器（Behavior Trigger）
+   - 拖拽管理（Drag Management）
+   - 事件过滤（Event Filtering）
+   - 事件节流（Event Throttling）
+
+6. **监控系统（Monitoring System）**
+   - 性能监控（Performance Monitoring）
+   - 资源监控（Resource Monitoring）
+   - 性能分析（Performance Profiling）
+
+7. **行为系统（Behavior System）**
+   - 状态机（State Machine）
+   - 行为管理器（Behavior Manager）
+   - 环境感知器（Environment Sensor）
+   - 决策系统（Decision Maker）
+   - 具体行为实现（Behavior Implementations）
+
+8. **UI系统（UI System）**
+   - UI元素（UI Elements）
+   - UI控件（UI Controls）
+   - UI主题（UI Themes）
+
+### 数据流
 
 ```
-+----------------------------------+
-|             应用层                |
-|  +----------------------------+  |
-|  |          场景系统           |  |
-|  +----------------------------+  |
-|  +------------+ +------------+  |
-|  |  交互系统   | |   UI系统    |  |
-|  +------------+ +------------+  |
-+----------------------------------+
-+----------------------------------+
-|             业务层                |
-|  +------------+ +------------+  |
-|  | 系统监控系统 | | 配置系统    |  |
-|  +------------+ +------------+  |
-+----------------------------------+
-+----------------------------------+
-|             基础层                |
-|  +------------+ +------------+  |
-|  |  渲染系统   | | 资源管理系统 |  |
-|  +------------+ +------------+  |
-|  +----------------------------+  |
-|  |          核心引擎           |  |
-|  +----------------------------+  |
-+----------------------------------+
+用户输入 -> 交互系统 -> 事件系统 -> 行为系统/场景系统 -> 渲染系统 -> 显示
 ```
 
-### 架构设计原则
+## 主要模块设计
 
-1. **分层设计**：系统分为基础层、业务层和应用层三层架构
-2. **模块化**：每个功能独立封装为模块，降低耦合度
-3. **事件驱动**：使用事件机制处理系统内通信
-4. **依赖注入**：模块间通过依赖注入实现松耦合
-5. **数据流单向**：确保数据流方向的清晰和可追踪
+### 核心系统
 
-### 模块交互图
+#### 应用程序核心
 
-```
-                 +----------------+
-                 |    核心引擎     |
-                 +----------------+
-                         |
-          +-------------------------------+
-          |              |               |
-+-----------------+ +-----------+ +---------------+
-|    渲染系统     | | 资源管理系统| |   事件系统    |
-+-----------------+ +-----------+ +---------------+
-          |              |               |
-          +-------------------------------+
-                         |
-         +--------------------------------+
-         |               |                |
-+----------------+  +-----------+  +-------------+
-|   系统监控系统  |  | 配置系统   |  |  场景系统   |
-+----------------+  +-----------+  +-------------+
-         |               |                |
-         +--------------------------------+
-                         |
-         +--------------------------------+
-         |               |                |
-+----------------+  +-----------+  +-------------+
-|    交互系统     |  |  UI系统   |  |  应用入口   |
-+----------------+  +-----------+  +-------------+
+应用程序核心负责管理应用程序的生命周期，包括初始化、主循环和清理。
+
+```python
+class Application:
+    def __init__(self):
+        self.running = False
+        self.systems = []
+
+    def initialize(self):
+        # 初始化各个系统
+        pass
+
+    def run(self):
+        self.running = True
+        while self.running:
+            self.update()
+            self.render()
+            self.process_events()
+
+    def shutdown(self):
+        self.running = False
+        # 清理资源
+        pass
 ```
 
-## 核心设计决策
+#### 事件系统
 
-### 1. UI框架选择
+事件系统采用观察者模式，用于系统内部模块之间的通信。
 
-**决策**: 使用PyQt5作为UI框架。
+```python
+class EventManager:
+    def __init__(self):
+        self.listeners = {}
 
-**理由**:
-- 跨平台支持（Windows, MacOS, Linux）
-- 丰富的UI组件和自定义能力
-- 优秀的文档和社区支持
-- 对透明窗口和无边框窗口的良好支持
-- 良好的性能表现
+    def add_listener(self, event_type, listener):
+        if event_type not in self.listeners:
+            self.listeners[event_type] = []
+        self.listeners[event_type].append(listener)
 
-**替代方案**:
-- Pygame: 更适合游戏开发，但UI功能较弱
-- Tkinter: 原生支持但自定义能力有限
-- PySide2: 几乎等同于PyQt5，但许可证不同
+    def remove_listener(self, event_type, listener):
+        if event_type in self.listeners and listener in self.listeners[event_type]:
+            self.listeners[event_type].remove(listener)
 
-### 2. 系统监控方式
+    def dispatch(self, event):
+        if event.type in self.listeners:
+            for listener in self.listeners[event.type]:
+                listener(event)
+```
 
-**决策**: 使用psutil和GPUtil库获取系统数据，定时轮询而非事件触发。
+### 资源管理系统
 
-**理由**:
-- psutil提供跨平台系统信息获取能力
-- 定时轮询简化实现，避免操作系统间差异
-- 轮询间隔可配置，平衡实时性和资源占用
-- 更易于处理历史数据记录
+#### 资源管理器
 
-**轮询频率**:
-- 基础信息: 1秒/次
-- 详细分析: 5秒/次
-- 历史记录: 10分钟/次
+资源管理器负责加载和管理各种资源，包括图片、音频、字体等。
 
-### 3. 数据存储方式
+```python
+class AssetManager:
+    def __init__(self):
+        self.assets = {}
+        self.loaders = {}
 
-**决策**: 使用SQLite存储配置和历史数据。
+    def register_loader(self, asset_type, loader):
+        self.loaders[asset_type] = loader
 
-**理由**:
-- 无需额外数据库服务
-- 单文件便于备份和迁移
-- 足够的性能支持应用需求
-- Python内置支持
+    def load(self, asset_id, asset_path, asset_type):
+        if asset_id in self.assets:
+            return self.assets[asset_id]
 
-**数据表设计**:
-- Settings: 应用配置表
-- Profiles: 用户配置文件表
-- PerformanceHistory: 性能历史记录表
-- Achievements: 成就记录表
+        if asset_type in self.loaders:
+            asset = self.loaders[asset_type].load(asset_path)
+            self.assets[asset_id] = asset
+            return asset
+        
+        return None
 
-### 4. 动画实现方式
+    def unload(self, asset_id):
+        if asset_id in self.assets:
+            del self.assets[asset_id]
+```
 
-**决策**: 使用sprite sheet动画，结合状态机管理动画逻辑。
+### 渲染系统
 
-**理由**:
-- sprite sheet减少资源加载
-- 状态机便于管理复杂的动画转换逻辑
-- 低内存占用，适合长时间运行
-- 动画帧率可调整，平衡流畅度和资源占用
+#### 渲染器
 
-**动画状态**:
-- Idle: 空闲状态
-- Walking: 行走状态
-- Attack: 攻击状态
-- Special: 特殊技能状态
-- Transition: 状态转换动画
+渲染器负责绘制图形和处理渲染状态。
 
-### 5. 场景管理方式
+```python
+class Renderer:
+    def __init__(self):
+        self.drawables = []
 
-**决策**: 使用场景管理器统一管理场景，场景通过工厂模式创建。
+    def add_drawable(self, drawable):
+        self.drawables.append(drawable)
 
-**理由**:
-- 场景管理器负责场景切换和资源管理
-- 工厂模式便于扩展新场景
-- 场景间状态传递清晰可控
-- 场景懒加载减少启动时间和内存占用
+    def remove_drawable(self, drawable):
+        if drawable in self.drawables:
+            self.drawables.remove(drawable)
 
-**场景转换**:
-- 淡入淡出过渡效果
-- 场景预加载减少切换卡顿
-- 保留场景状态，快速切换
+    def render(self):
+        for drawable in sorted(self.drawables, key=lambda d: d.z_order):
+            drawable.draw(self)
+```
 
-### 6. 资源管理策略
+### 场景系统
 
-**决策**: 使用资源池管理图像、音频等资源，实现引用计数和惰性加载。
+#### 场景管理器
 
-**理由**:
-- 避免重复加载同一资源
-- 引用计数自动释放不再使用的资源
-- 惰性加载减少启动时间
-- 资源缓存提高运行时性能
+场景管理器负责管理不同场景之间的切换。
 
-**优化策略**:
-- 内存占用超阈值时释放低优先级资源
-- 预加载频繁使用的资源
-- 图像资源设置不同尺寸版本，根据需要选择
+```python
+class SceneManager:
+    def __init__(self):
+        self.scenes = {}
+        self.current_scene = None
 
-### 7. 事件系统设计
+    def add_scene(self, scene_id, scene):
+        self.scenes[scene_id] = scene
 
-**决策**: 使用观察者模式实现事件系统，支持事件总线。
+    def switch_scene(self, scene_id):
+        if self.current_scene:
+            self.current_scene.exit()
+        
+        if scene_id in self.scenes:
+            self.current_scene = self.scenes[scene_id]
+            self.current_scene.enter()
+```
 
-**理由**:
-- 解耦事件发送者和接收者
-- 支持一对多消息分发
-- 便于跨模块通信
-- 扩展性好，易于添加新事件和监听者
+### 交互系统
 
-**关键事件**:
-- SystemStatusUpdate: 系统状态更新事件
-- SceneChange: 场景切换事件
-- UserInteraction: 用户交互事件
-- ResourceStatus: 资源状态事件
-- ConfigChange: 配置变更事件
+#### 交互管理器
 
-## 代码设计模式
+交互管理器负责处理用户输入和生成交互事件。
 
-### 使用的设计模式
+```python
+class InteractionManager:
+    def __init__(self, event_manager):
+        self.event_manager = event_manager
+        self.mouse_handler = MouseHandler(event_manager)
+        self.hotkey_manager = HotkeyManager(event_manager)
+        self.drag_manager = DragManager(event_manager)
 
-1. **单例模式**
-   - 应用于: 核心引擎、配置管理器、资源管理器
-   - 目的: 确保全局唯一实例，方便访问
+    def process_input(self, input_event):
+        # 处理输入事件
+        pass
+```
 
-2. **观察者模式**
-   - 应用于: 事件系统
-   - 目的: 实现模块间解耦的事件通知机制
+### 监控系统
 
-3. **工厂模式**
-   - 应用于: 场景创建、UI组件创建
-   - 目的: 统一创建复杂对象的接口
+#### 性能监控器
 
-4. **策略模式**
-   - 应用于: 渲染策略、数据处理策略
-   - 目的: 允许运行时切换算法实现
+性能监控器负责收集和分析性能指标。
 
-5. **命令模式**
-   - 应用于: 用户交互处理
-   - 目的: 封装操作请求，支持撤销和重做
+```python
+class PerformanceMonitor:
+    def __init__(self):
+        self.fps = 0
+        self.frame_time = 0
+        self.memory_usage = 0
 
-6. **组合模式**
-   - 应用于: UI组件结构
-   - 目的: 统一处理简单和复杂UI元素
+    def update(self):
+        # 更新性能指标
+        pass
 
-7. **装饰器模式**
-   - 应用于: 图像效果处理
-   - 目的: 动态添加功能到对象
+    def get_report(self):
+        # 生成性能报告
+        pass
+```
 
-## 性能优化策略
+### 行为系统
 
-1. **内存管理**
-   - 使用弱引用和引用计数管理资源
-   - 定期释放不再使用的资源
-   - 大型资源采用懒加载策略
+#### 状态机
 
-2. **渲染优化**
-   - 使用脏区域渲染，只更新变化的区域
-   - 使用图层概念，静态内容和动态内容分离
-   - 低优先级动画在系统负载高时降低帧率
+状态机负责管理桌宠的状态和状态转换。
 
-3. **计算优化**
-   - 监控数据采用增量更新，减少计算量
-   - 重复计算结果缓存
-   - 耗时操作放入独立线程
+```python
+class State:
+    def __init__(self, name, on_enter=None, on_exit=None, duration=0):
+        self.name = name
+        self.on_enter = on_enter
+        self.on_exit = on_exit
+        self.duration = duration
+        self.transitions = []
 
-4. **资源使用**
-   - 图像资源合理压缩
-   - 使用sprite sheet减少状态切换开销
-   - 音效资源适当裁剪和压缩
+    def add_transition(self, to_state, condition):
+        self.transitions.append((to_state, condition))
 
-## 可扩展性设计
+class StateMachine:
+    def __init__(self):
+        self.states = {}
+        self.current_state = None
+        self.history = []
 
-1. **插件系统设计**
-   - 定义插件接口，支持第三方扩展
-   - 提供标准事件钩子
-   - 插件配置和加载机制
+    def add_state(self, state_name, on_enter=None, on_exit=None, duration=0):
+        self.states[state_name] = State(state_name, on_enter, on_exit, duration)
+        return self.states[state_name]
 
-2. **场景扩展机制**
-   - 标准化场景接口
-   - 场景组件可组合和复用
-   - 支持从外部加载自定义场景
+    def add_transition(self, from_state_name, to_state_name, condition):
+        if from_state_name in self.states and to_state_name in self.states:
+            self.states[from_state_name].add_transition(to_state_name, condition)
 
-3. **主题系统**
-   - 主题资源包定义标准
-   - 支持运行时更换主题
-   - 主题继承和覆盖机制
+    def set_state(self, state_name):
+        if state_name in self.states:
+            if self.current_state:
+                if self.current_state.on_exit:
+                    self.current_state.on_exit()
+                self.history.append(self.current_state.name)
 
-4. **自定义指标**
-   - 支持自定义性能指标监控
-   - 自定义指标映射到视觉元素
-   - 提供API接口扩展监控能力 
+            self.current_state = self.states[state_name]
+            
+            if self.current_state.on_enter:
+                self.current_state.on_enter()
+
+    def update(self):
+        if not self.current_state:
+            return
+
+        for to_state, condition in self.current_state.transitions:
+            if condition():
+                self.set_state(to_state)
+                break
+```
+
+#### 行为管理器
+
+行为管理器负责管理桌宠的各种行为。
+
+```python
+class Behavior:
+    def __init__(self, name, priority=0):
+        self.name = name
+        self.priority = priority
+        self.is_running = False
+
+    def can_execute(self):
+        return True
+
+    def execute(self):
+        self.is_running = True
+
+    def interrupt(self):
+        self.is_running = False
+
+class BehaviorManager:
+    def __init__(self):
+        self.behaviors = {}
+        self.current_behavior = None
+
+    def register_behavior(self, behavior_name, behavior_class):
+        self.behaviors[behavior_name] = behavior_class
+
+    def create_behavior(self, behavior_name, **kwargs):
+        if behavior_name in self.behaviors:
+            return self.behaviors[behavior_name](**kwargs)
+        return None
+
+    def execute_behavior(self, behavior):
+        if not behavior.can_execute():
+            return False
+
+        if self.current_behavior:
+            if behavior.priority <= self.current_behavior.priority:
+                return False
+            self.current_behavior.interrupt()
+
+        self.current_behavior = behavior
+        self.current_behavior.execute()
+        return True
+
+    def update(self):
+        if self.current_behavior and self.current_behavior.is_running:
+            self.current_behavior.update()
+```
+
+### UI系统
+
+#### UI管理器
+
+UI管理器负责管理用户界面元素。
+
+```python
+class UIManager:
+    def __init__(self):
+        self.elements = []
+
+    def add_element(self, element):
+        self.elements.append(element)
+
+    def remove_element(self, element):
+        if element in self.elements:
+            self.elements.remove(element)
+
+    def update(self):
+        for element in self.elements:
+            element.update()
+
+    def render(self, renderer):
+        for element in sorted(self.elements, key=lambda e: e.z_order):
+            element.render(renderer)
+```
+
+## 关键算法和数据结构
+
+### 状态机
+
+状态机使用有向图数据结构，其中节点是状态，边是转换条件。
+
+```
+状态A --(条件1)--> 状态B
+      --(条件2)--> 状态C
+状态B --(条件3)--> 状态A
+状态C --(条件4)--> 状态B
+```
+
+### 行为树
+
+行为树使用树形数据结构，用于实现复杂的决策逻辑。
+
+```
+        Root
+       /    \
+  Sequence  Selector
+  /  |  \    /  |  \
+ A   B   C  D   E   F
+```
+
+### 资源缓存
+
+资源缓存使用LRU（最近最少使用）算法进行缓存管理。
+
+### 事件过滤
+
+事件过滤使用责任链模式，每个过滤器可以选择处理或传递事件。
+
+### 粒子系统
+
+粒子系统使用面向数据的设计，将粒子数据存储在连续的内存块中，以提高性能。
+
+## 技术选型
+
+### 编程语言
+
+- **Python**：主要开发语言，具有良好的跨平台性和丰富的库支持。
+
+### 图形渲染
+
+- **PyQt6**：用于窗口管理和图形渲染，提供丰富的GUI组件和OpenGL支持。
+
+### 音频处理
+
+- **pygame**：用于音频播放和处理，提供简单易用的音频API。
+
+### 资源管理
+
+- 自定义资源管理系统，支持异步加载和缓存机制。
+
+### 事件系统
+
+- 基于观察者模式的自定义事件系统，实现模块间的解耦。
+
+### 物理引擎
+
+- 简单的物理系统，使用基础的碰撞检测和响应算法。
+
+## API设计规范
+
+### 命名约定
+
+- **类名**：使用PascalCase（如`AssetManager`）
+- **方法名**：使用snake_case（如`load_asset`）
+- **变量名**：使用snake_case，描述性命名
+- **常量**：使用大写下划线（如`MAX_FPS`）
+
+### 错误处理
+
+- 使用异常机制处理错误
+- 定义自定义异常类型
+- 在适当的地方捕获和记录异常
+
+### 接口设计
+
+- 使用抽象基类定义接口
+- 遵循单一职责原则
+- 保持接口简单和一致 

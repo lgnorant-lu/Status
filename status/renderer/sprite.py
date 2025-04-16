@@ -14,10 +14,12 @@ Changed history:
 from typing import Dict, List, Tuple, Optional, Any, Union
 import math
 import time
+import logging
 
 from status.renderer.renderer_base import RendererBase, Color, Rect, RenderLayer
 from status.renderer.drawable import Drawable
 from status.resources.asset_manager import AssetManager
+from PyQt6.QtGui import QImage, QPixmap
 
 class SpriteFrame:
     """精灵帧类，表示精灵表中的一帧"""
@@ -52,7 +54,7 @@ class SpriteFrame:
             Any: 图像资源
         """
         if self._image is None:
-            self._image = asset_manager.get_image(self.image_path)
+            self._image = asset_manager.load_image(self.image_path)
         return self._image
 
 class SpriteAnimation:
@@ -74,17 +76,17 @@ class SpriteAnimation:
         self.total_frames = len(frames)
         self.total_duration = frame_duration * self.total_frames
     
-    def get_frame(self, time: float) -> Tuple[SpriteFrame, float]:
+    def get_frame(self, time: float) -> Optional[Tuple[SpriteFrame, float]]:
         """根据时间获取当前帧和剩余时间
         
         Args:
             time: 动画时间（秒）
             
         Returns:
-            Tuple[SpriteFrame, float]: 当前帧和该帧已播放时间
+            Optional[Tuple[SpriteFrame, float]]: 当前帧和该帧已播放时间
         """
         if self.total_frames == 0:
-            return None, 0
+            return None
             
         if self.loop:
             # 循环播放时取模
@@ -238,7 +240,8 @@ class Sprite(Drawable):
     """精灵类，用于绘制图像和动画"""
     
     def __init__(self, x: float = 0, y: float = 0, width: float = 0, height: float = 0,
-                image: Optional[Union[str, Any]] = None, layer: RenderLayer = RenderLayer.MIDDLE, priority: int = 0):
+                 image: Optional[Union[str, QImage, QPixmap]] = None, 
+                 layer: RenderLayer = RenderLayer.MIDDLE, priority: int = 0):
         """初始化精灵
         
         Args:
@@ -246,68 +249,77 @@ class Sprite(Drawable):
             y: Y坐标
             width: 宽度，0表示使用图像宽度
             height: 高度，0表示使用图像高度
-            image: 图像路径或图像对象
+            image: 图像路径、QImage 或 QPixmap 对象
             layer: 渲染层级
-            priority: 优先级
+            priority: 渲染优先级
         """
         super().__init__(x, y, width, height, layer, priority)
         
-        self.asset_manager = AssetManager()
-        self.image = None
-        self.image_path = None
-        self.source_rect = None
-        self.flip_h = False
-        self.flip_v = False
+        self.asset_manager = AssetManager.get_instance()
+        self._image: Optional[QPixmap] = None
+        self.image_path: Optional[str] = None
+        self.source_rect: Optional[Rect] = None
+        self.pivot: Optional[Tuple[float, float]] = None
         
-        # 动画相关
-        self.current_animation = None
-        self.animation_time = 0
-        self.playing = False
-        self.animations: Dict[str, SpriteAnimation] = {}
+        # 当前动画相关
+        self.current_animation: Optional[SpriteAnimation] = None
+        self.animation_time: float = 0.0
+        self.paused: bool = False
         
-        # 设置图像
-        if image is not None:
+        # 如果提供了图像，立即设置
+        if image:
             self.set_image(image)
     
-    def set_image(self, image: Union[str, Any]) -> None:
+    @property
+    def image(self) -> Optional[QPixmap]:
+        """获取当前显示的 QPixmap 图像"""
+        if self.current_animation and not self.paused:
+            self._update_animation_frame()
+            
+        return self._image
+        
+    def set_image(self, image: Union[str, QImage, QPixmap]) -> None:
         """设置精灵图像
         
         Args:
-            image: 图像路径或图像对象
+            image: 图像路径、QImage 或 QPixmap 对象
         """
+        self.current_animation = None
+        self.source_rect = None
+        
+        loaded_pixmap = None
         if isinstance(image, str):
-            # 图像路径
             self.image_path = image
-            self.image = self.asset_manager.get_image(image)
-        else:
-            # 图像对象
-            self.image = image
+            try:
+                img_obj = self.asset_manager.load_image(image)
+                if isinstance(img_obj, QImage):
+                    loaded_pixmap = QPixmap.fromImage(img_obj)
+                elif isinstance(img_obj, QPixmap):
+                    loaded_pixmap = img_obj
+                else:
+                     logging.warning(f"Sprite: AssetManager未能加载有效图像 '{image}'")
+            except Exception as e:
+                logging.error(f"Sprite: 加载图像路径 '{image}' 失败: {e}")
+        elif isinstance(image, QImage):
+            loaded_pixmap = QPixmap.fromImage(image)
             self.image_path = None
+        elif isinstance(image, QPixmap):
+            loaded_pixmap = image
+            self.image_path = None
+        else:
+            logging.error(f"Sprite: 不支持的图像类型: {type(image)}")
             
-        # 如果尺寸为0，使用图像尺寸
-        if self.width == 0 or self.height == 0:
-            from PyQt6.QtGui import QImage, QPixmap
-            if isinstance(self.image, QImage):
-                if self.width == 0:
-                    self.width = self.image.width()
-                if self.height == 0:
-                    self.height = self.image.height()
-            elif isinstance(self.image, QPixmap):
-                if self.width == 0:
-                    self.width = self.image.width()
-                if self.height == 0:
-                    self.height = self.image.height()
-            else:
-                # 对于其他类型的图像，尝试获取尺寸
-                try:
-                    if hasattr(self.image, 'width') and hasattr(self.image, 'height'):
-                        if self.width == 0:
-                            self.width = self.image.width
-                        if self.height == 0:
-                            self.height = self.image.height
-                except:
-                    pass
-    
+        if loaded_pixmap and not loaded_pixmap.isNull():
+            self._image = loaded_pixmap
+            if self.width == 0:
+                self.width = self._image.width()
+            if self.height == 0:
+                self.height = self._image.height()
+            if self.pivot is None:
+                self.pivot = (self.width / 2, self.height / 2)
+        else:
+            self._image = None
+            
     def set_source_rect(self, x: float, y: float, width: float, height: float) -> None:
         """设置源矩形（用于精灵表）
         
@@ -355,107 +367,107 @@ class Sprite(Drawable):
         else:
             raise ValueError(f"精灵表中未找到名为 {animation_name} 的动画")
     
-    def play(self, animation_name: str, restart: bool = True) -> bool:
-        """播放指定动画
+    def play(self, animation: SpriteAnimation, restart: bool = False) -> None:
+        """播放精灵动画
         
         Args:
-            animation_name: 动画名称
-            restart: 是否重新开始播放
-            
-        Returns:
-            bool: 是否成功开始播放
+            animation: SpriteAnimation 对象
+            restart: 如果动画已在播放，是否重新开始
         """
-        if animation_name not in self.animations:
-            return False
+        if not animation or not animation.frames:
+            logging.warning(f"Sprite: 尝试播放无效动画")
+            return
             
-        animation = self.animations[animation_name]
-        
-        # 如果是同一个动画且不需要重启，直接返回
-        if animation == self.current_animation and not restart and self.playing:
-            return True
+        if self.current_animation == animation and not restart:
+            self.resume()
+            return
             
         self.current_animation = animation
-        if restart or not self.playing:
-            self.animation_time = 0
-            
-        self.playing = True
-        return True
-    
-    def stop(self) -> None:
-        """停止播放动画"""
-        self.playing = False
-    
+        self.animation_time = 0.0
+        self.paused = False
+        self._update_animation_frame()
+        
     def pause(self) -> None:
-        """暂停播放动画"""
-        self.playing = False
-    
+        """暂停动画"""
+        self.paused = True
+        
     def resume(self) -> None:
-        """恢复播放动画"""
-        if self.current_animation:
-            self.playing = True
+        """恢复动画"""
+        self.paused = False
     
+    def update(self, dt: float) -> None:
+        """更新动画时间
+        
+        Args:
+            dt: 时间增量（秒）
+        """
+        if self.current_animation and not self.paused:
+            self.animation_time += dt
+            
+            if not self.current_animation.loop and self.current_animation.is_finished(self.animation_time):
+                self.pause()
+                
+    def _update_animation_frame(self) -> None:
+        """根据当前动画时间和状态更新精灵帧"""
+        if not self.current_animation:
+            return
+            
+        # 调用 get_frame 并检查返回值
+        frame_data = self.current_animation.get_frame(self.animation_time)
+        
+        if frame_data is not None:
+            # 只有在获取到有效帧数据时才解包和设置
+            frame, frame_time = frame_data
+            if frame: # 再次确认 frame 对象本身有效
+                self.set_frame(frame)
+            else:
+                # 理论上 frame_data 不为 None 时 frame 也不应为 None，但以防万一
+                logging.warning(f"Sprite: get_frame 返回了有效的元组，但帧对象无效")
+                self._image = None
+        else:
+            # 动画可能没有帧或已结束 (get_frame 返回 None)
+            # 可以选择保持最后一帧或清空
+            # logging.debug(f"Sprite: get_frame 未返回有效帧数据")
+            self._image = None # 或者保持 self._image 不变？取决于期望行为
+            
+    def set_frame(self, frame: SpriteFrame) -> None:
+        """设置精灵为精灵表中的特定帧
+        
+        Args:
+            frame: SpriteFrame 对象
+        """
+        self.current_animation = None
+        self.image_path = frame.image_path
+        self.source_rect = frame.source_rect
+        self.pivot = frame.pivot
+        
+        try:
+            img_obj = frame.get_image(self.asset_manager)
+            if isinstance(img_obj, QImage):
+                self._image = QPixmap.fromImage(img_obj)
+            elif isinstance(img_obj, QPixmap):
+                self._image = img_obj
+            else:
+                 logging.warning(f"Sprite: Frame未能加载有效图像 '{self.image_path}'")
+                 self._image = None
+                 
+            if self._image and not self._image.isNull():
+                self.width = frame.source_rect.width
+                self.height = frame.source_rect.height
+            else:
+                 self._image = None
+                 
+        except Exception as e:
+            logging.error(f"Sprite: 加载帧图像 '{self.image_path}' 失败: {e}")
+            self._image = None
+            
     def is_playing(self) -> bool:
         """检查是否正在播放动画
         
         Returns:
             bool: 是否正在播放
         """
-        return self.playing and self.current_animation is not None
-    
-    def update(self, dt: float) -> None:
-        """更新精灵状态
-        
-        Args:
-            dt: 时间增量（秒）
-        """
-        super().update(dt)
-        
-        # 更新动画
-        if self.playing and self.current_animation:
-            self.animation_time += dt
-            
-            # 检查非循环动画是否结束
-            if not self.current_animation.loop and self.current_animation.is_finished(self.animation_time):
-                self.playing = False
-    
-    def draw(self, renderer: RendererBase) -> None:
-        """绘制精灵
-        
-        Args:
-            renderer: 渲染器
-        """
-        if not self.visible or self.opacity <= 0 or not self.image:
-            return
-            
-        # 获取世界坐标和尺寸
-        wx, wy = self.world_position
-        width = self.width * self.scale_x
-        height = self.height * self.scale_y
-        
-        # 如果有动画，使用当前帧
-        source_rect = self.source_rect
-        if self.current_animation:
-            current_frame, _ = self.current_animation.get_frame(self.animation_time)
-            if current_frame:
-                source_rect = current_frame.source_rect
-                
-                # 如果精灵尺寸为0，使用帧尺寸
-                if self.width == 0 or self.height == 0:
-                    width = source_rect.width * self.scale_x
-                    height = source_rect.height * self.scale_y
-        
-        # 绘制图像
-        renderer.draw_image(
-            self.image, 
-            wx, wy, 
-            width, height,
-            source_rect, 
-            self.rotation,
-            (self.origin_x * self.scale_x, self.origin_y * self.scale_y),
-            self.flip_h, 
-            self.flip_v,
-            self.opacity
-        )
+        return self.paused and self.current_animation is not None
 
 class SpriteGroup:
     """精灵组类，用于管理和批量操作一组精灵"""
@@ -570,3 +582,53 @@ class SpriteGroup:
             List[Sprite]: 精灵列表
         """
         return [sprite for sprite in self.sprites if sprite.has_tag(tag)] 
+
+def load_spritesheet_from_json(json_path: str, asset_manager: AssetManager) -> Optional[SpriteSheet]:
+    """从 JSON 文件加载精灵表定义"""
+    try:
+        data = asset_manager.load_json(json_path)
+        if not data:
+            return None
+            
+        image_path = data.get("meta", {}).get("image")
+        if not image_path:
+            raise ValueError("JSON 中缺少 'meta.image' 字段")
+            
+        sheet = SpriteSheet(image_path)
+        
+        frames_data = data.get("frames", {})
+        for name, frame_info in frames_data.items():
+            rect_info = frame_info.get("frame")
+            pivot_info = frame_info.get("pivot")
+            if not rect_info:
+                logging.warning(f"跳过帧 '{name}': 缺少 'frame' 信息")
+                continue
+                
+            x = rect_info.get("x", 0)
+            y = rect_info.get("y", 0)
+            w = rect_info.get("w", 0)
+            h = rect_info.get("h", 0)
+            
+            pivot = None
+            if pivot_info:
+                pivot = (pivot_info.get("x", 0.5) * w, pivot_info.get("y", 0.5) * h)
+                
+            sheet.add_frame(name, x, y, w, h, pivot)
+            
+        animations_data = data.get("meta", {}).get("animations", {})
+        for anim_name, anim_info in animations_data.items():
+            frame_names = anim_info.get("frames")
+            duration = anim_info.get("duration", 0.1)
+            loop = anim_info.get("loop", True)
+            
+            if not frame_names:
+                logging.warning(f"跳过动画 '{anim_name}': 缺少 'frames' 信息")
+                continue
+                
+            sheet.add_animation(anim_name, frame_names, duration, loop)
+            
+        return sheet
+        
+    except Exception as e:
+        logging.error(f"从 JSON 加载精灵表失败 '{json_path}': {e}")
+        return None 

@@ -15,12 +15,17 @@ Changed history:
 
 import os
 import logging
+import typing
 from typing import Dict, Any, Optional, List, Tuple, Union, Set, Callable
 import threading
 import json
 
-from status.resources.resource_loader import ResourceLoader, ResourceType, ResourceError, ImageFormat
+from status.resources import ResourceType, ResourceError, ImageFormat
 from status.resources.cache import Cache, CacheStrategy
+
+# --- 类型检查时导入 --- (避免循环导入)
+if typing.TYPE_CHECKING:
+    from status.resources.resource_loader import ResourceLoader
 
 
 class AssetManager:
@@ -53,8 +58,9 @@ class AssetManager:
         # 默认资源路径
         self.base_path = "resources"
         
-        # 创建资源加载器
-        self.loader = ResourceLoader(self.base_path)
+        # 创建资源加载器 (在需要时导入)
+        from status.resources.resource_loader import ResourceLoader
+        self.loader: 'ResourceLoader' = ResourceLoader()
         
         # 创建缓存（图像、音频和其他分开缓存）
         self.image_cache = Cache(
@@ -306,8 +312,8 @@ class AssetManager:
             
             # 检查是否应该缓存
             if cache_decision and not cache_decision(resource, resource_type):
-                # 如果不应缓存，从缓存中删除
-                cache.delete(cache_key)
+                # 如果不应缓存，从缓存中删除 (使用 remove)
+                cache.remove(cache_key)
             
             return resource
         else:
@@ -849,10 +855,18 @@ class AssetManager:
         # 处理测试中ResourceType.DATA与ResourceType.JSON相同的情况
         resource_type = self.loader._get_resource_type(path)
         if resource_type == ResourceType.OTHER:
-            # 未知类型默认为DATA
-            resource_type = ResourceType.DATA
+            # 未知类型默认为 OTHER (原为 DATA，不存在)
+            pass # 保持 OTHER 类型，或者根据需要处理
+            # resource_type = ResourceType.DATA # <-- 移除：ResourceType.DATA 不存在
         
         try:
+            # 需要确保 load_asset 能处理 resource_type 为 None 的情况（如果_get_resource_type返回None）
+            # 或者在调用前确保 resource_type 不是 None
+            if resource_type is None:
+                 # 如果无法判断类型，可能需要抛出错误或使用默认加载器
+                 self.logger.warning(f"无法自动判断资源类型: {path}, 尝试作为 OTHER 加载")
+                 resource_type = ResourceType.OTHER # 设定一个默认类型
+                 
             return self.load_asset(path, resource_type, use_cache, **kwargs)
         except Exception as e:
             if on_error:
@@ -913,6 +927,82 @@ class AssetManager:
             Any: 加载的JSON数据
         """
         return self.loader.load_json(self._get_full_path(path), **kwargs)
+
+    def load_image_sequence(self, directory_path: str, use_cache: bool = True,
+                            cache_decision: Optional[Callable[[Any, ResourceType], bool]] = None) -> Optional[List[Any]]:
+        """加载指定目录下的所有图像文件作为一个动画序列。
+
+        Args:
+            directory_path (str): 包含图像序列的目录路径 (相对于资源根目录)。
+            use_cache (bool, optional): 是否使用或填充图像缓存. Defaults to True.
+            cache_decision (Optional[Callable[[Any, ResourceType], bool]], optional):
+                自定义函数，决定是否缓存加载的资源。
+                接收加载的资源和资源类型作为参数，返回True表示缓存，False表示不缓存。
+                如果为None，则始终根据use_cache参数决定。
+                Defaults to None.
+
+        Returns:
+            Optional[List[Any]]: 加载的图像 Surface 列表，按自然顺序排序。
+                                如果目录不存在或加载失败，返回 None。
+        """
+        cache_key = self._make_cache_key(directory_path, sequence=True)
+        cache = self._get_cache_for_type(ResourceType.IMAGE) # 图像序列也使用图像缓存
+        
+        if use_cache:
+            cached_sequence = cache.get(cache_key)
+            if cached_sequence is not None:
+                self.logger.debug(f"图像序列缓存命中: {directory_path}")
+                return cached_sequence
+        
+        self.logger.debug(f"加载图像序列: {directory_path}")
+        try:
+            # 注意：这里的ResourceLoader是AssetManager的实例变量self.loader
+            loaded_sequence = self.loader.load_image_sequence(directory_path, use_cache=use_cache)
+            
+            if loaded_sequence is not None and use_cache:
+                should_cache = True
+                if cache_decision:
+                    # 检查每个帧？还是整个序列？这里假设对整个序列做决定
+                    # 注意：cache_decision可能期望单个资源，这里传递列表可能不合适
+                    # 或许应该在ResourceLoader加载单帧时应用cache_decision？
+                    # 暂时简化：如果提供了cache_decision，就用它判断整个序列是否缓存
+                    try:
+                        should_cache = cache_decision(loaded_sequence, ResourceType.IMAGE) # 类型仍是IMAGE
+                    except Exception as e:
+                        self.logger.warning(f"执行 cache_decision 函数时出错 (key: {cache_key}): {e}")
+                        # 出错时默认缓存
+                        should_cache = True 
+                        
+                if should_cache:
+                    cache.put(cache_key, loaded_sequence)
+                    self.logger.debug(f"图像序列已缓存: {directory_path}")
+                else:
+                    self.logger.debug(f"根据 cache_decision，图像序列未缓存: {directory_path}")
+                    
+            return loaded_sequence
+            
+        except Exception as e: # ResourceLoader内部应该已经处理并记录了错误
+            self.logger.error(f"AssetManager 在调用 loader.load_image_sequence 时捕获到错误 (路径: {directory_path}): {e}")
+            # 不再向上抛出，因为loader层应该返回None
+            return None
+
+    def load_font(self, path: str, size: int = 16, use_cache: bool = True) -> Any:
+        """加载字体资源 (修正：添加此方法委托给 loader)
+        
+        Args:
+            path: 字体路径
+            size: 字体大小
+            use_cache: 是否使用缓存
+            
+        Returns:
+            Any: 加载的字体对象 (可能是 pygame.font.Font 或 QFont, 取决于 loader 实现)
+        """
+        try:
+            # 注意：这里假设 ResourceLoader 有 load_font 方法
+            return self.loader.load_font(path, size, use_cache)
+        except Exception as e:
+            self.logger.error(f"AssetManager 加载字体失败 {path} size {size}: {str(e)}")
+            raise # 重新抛出或返回 None
 
 
 # 创建全局单例实例

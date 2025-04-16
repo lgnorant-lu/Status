@@ -233,10 +233,10 @@ class MonitorChartWidget(QWidget):
         critical_y = margin + chart_height - (chart_height * self.critical_threshold / 100)
         
         painter.setPen(QColor(255, 200, 50))  # 黄色警告线
-        painter.drawLine(margin, warning_y, margin + chart_width, warning_y)
+        painter.drawLine(int(margin), int(warning_y), int(margin + chart_width), int(warning_y))
         
         painter.setPen(QColor(255, 50, 50))  # 红色危险线
-        painter.drawLine(margin, critical_y, margin + chart_width, critical_y)
+        painter.drawLine(int(margin), int(critical_y), int(margin + chart_width), int(critical_y))
         
         # 如果没有数据，直接返回
         if not self.data_points:

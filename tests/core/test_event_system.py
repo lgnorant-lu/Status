@@ -2,19 +2,19 @@
 ---------------------------------------------------------------
 File name:                  test_event_system.py
 Author:                     Ignorant-lu
-Date created:               2023/04/03
+Date created:               2025/04/04
 Description:                事件系统测试
 ----------------------------------------------------------------
 
 Changed history:            
-                            2023/04/03: 初始创建;
+                            2025/04/04: 初始创建;
 ----
 """
 
 import pytest
 from unittest.mock import MagicMock, patch, Mock
 
-from status.core.event_system import EventSystem, Event, EventType
+from core.event_system import EventSystem, Event, EventType
 
 class TestEventSystem:
     """事件系统测试用例"""

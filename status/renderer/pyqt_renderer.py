@@ -24,15 +24,26 @@ try:
     HAS_PYQT = True
 except ImportError:
     HAS_PYQT = False
-    # 创建一个占位符
-    class QColor:
-        def __init__(self, *args, **kwargs):
-            pass
+    # 不再需要定义占位符 QColor，因为 HAS_PYQT 会处理未安装的情况
+    # class QColor:
+    #     def __init__(self, *args, **kwargs):
+    #         pass
 
 from status.renderer.renderer_base import (RendererBase, Color, Rect, BlendMode, 
                                           TextAlign, RenderLayer)
-from status.resources.resource_loader import ResourceType
+from status.resources import ResourceType
 from status.resources.asset_manager import AssetManager
+from status.renderer.drawable import Drawable
+
+# 尝试导入 pygame，如果失败则标记
+HAS_PYGAME = False
+try:
+    import pygame
+    from pygame import Surface as PygameSurface # 显式导入并别名
+    HAS_PYGAME = True
+except ImportError:
+    PygameSurface = None # 定义一个占位符
+    pass # Pygame 不是必需的，但如果传入 Surface 会失败
 
 class PyQtRenderer(RendererBase):
     """PyQt6渲染器实现，使用QPainter进行2D渲染"""
@@ -571,13 +582,16 @@ class PyQtRenderer(RendererBase):
         else:
             # 尝试从资源管理器加载字体
             try:
-                font = self.asset_manager.get_font(font_name, font_size)
-                # 如果返回的不是QFont对象（可能是占位符），使用默认字体
+                # 注意：AssetManager 可能需要提供 get_font 或 load_font 返回 QFont
+                font = self.asset_manager.load_font(font_name, font_size)
+                # 如果返回的不是QFont对象（可能是 pygame.font.Font），需要转换或使用默认
                 if not isinstance(font, QFont):
+                    self.logger.warning(f"加载的字体 '{font_name}' 不是 QFont 类型，使用默认字体。")
                     font = QFont(self.default_font)
                     font.setPointSize(font_size)
-            except Exception:
-                # 如果加载失败，使用默认字体
+            except Exception as e:
+                self.logger.error(f"加载字体失败: '{font_name}', 错误: {e}, 使用系统字体。")
+                # 如果加载失败，使用系统字体
                 font = QFont(font_name, font_size)
         
         # 设置字体样式
@@ -588,29 +602,35 @@ class PyQtRenderer(RendererBase):
         return font
     
     def _get_qimage(self, image: Any) -> Optional[QImage]:
-        """获取QImage对象
+        """获取 QImage 对象 (简化版，不再处理 Pygame Surface)。
         
         Args:
-            image: 图像对象（QImage, QPixmap或通过AssetManager加载的图像资源）
+            image: 图像对象 (QImage, QPixmap, 或图像路径字符串)
             
         Returns:
-            Optional[QImage]: Qt图像对象，如果无法获取则为None
+            Optional[QImage]: Qt 图像对象，如果无法获取则为 None
         """
         if isinstance(image, QImage):
             return image
         elif isinstance(image, QPixmap):
             return image.toImage()
-        else:
-            # 尝试从资源管理器加载图像
+        elif isinstance(image, str):
+            # 尝试从资源管理器加载图像 (假设 AssetManager.load_image 返回 QImage)
             try:
-                loaded_image = self.asset_manager.get_image(image)
-                if isinstance(loaded_image, QImage):
-                    return loaded_image
-                elif isinstance(loaded_image, QPixmap):
-                    return loaded_image.toImage()
+                loaded_image_obj = self.asset_manager.load_image(image)
+                if isinstance(loaded_image_obj, QImage):
+                    return loaded_image_obj
+                elif loaded_image_obj is not None: # 检查是否加载了但类型不对
+                    self.logger.warning(f"通过路径 '{image}' 加载了非 QImage 对象: {type(loaded_image_obj)}")
+                    return None # 返回 None 因为类型不匹配
                 else:
-                    self.logger.warning(f"无法从资源加载图像: {image}")
+                    # load_image 内部应该已经记录了错误
+                    # self.logger.warning(f"通过路径 '{image}' 未能加载到图像对象")
                     return None
             except Exception as e:
-                self.logger.error(f"加载图像失败: {e}")
-                return None 
+                self.logger.error(f"通过路径 '{image}' 加载图像失败: {e}")
+                return None
+        else:
+             # 明确记录不支持的类型
+             self.logger.warning(f"不支持的图像类型传递给 _get_qimage: {type(image)}")
+             return None 

@@ -2,13 +2,13 @@
 ---------------------------------------------------------------
 File name:                  test_cache.py
 Author:                     Ignorant-lu
-Date created:               2023/04/03
+Date created:               2025/04/04
 Description:                缓存系统测试
 ----------------------------------------------------------------
 
 Changed history:            
-                            2023/04/03: 初始创建;
-                            2025/04/03: 添加策略测试和并发测试;
+                            2025/04/04: 初始创建;
+                            2025/04/04: 添加策略测试和并发测试;
 ----
 """
 
@@ -18,8 +18,8 @@ import threading
 import random
 from unittest.mock import patch, MagicMock
 
-from status.core.cache import Cache, CacheEntry, CacheFull
-from status.resources.cache import CacheItem, CacheStrategy, CacheItemStatus
+from core.cache import Cache, CacheEntry, CacheFull
+from resources.cache import CacheItem, CacheStrategy, CacheItemStatus
 
 class TestCacheEntry:
     """缓存条目测试用例"""
