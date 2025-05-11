@@ -21,20 +21,20 @@ class Point(Drawable):
     """点元素"""
     
     def __init__(self, x: float, y: float, color: Color = Color(255, 255, 255), 
-                size: float = 1.0, layer: RenderLayer = RenderLayer.MIDDLE, priority: int = 0):
+                point_size: float = 1.0, layer: RenderLayer = RenderLayer.MIDDLE, priority: int = 0):
         """初始化点元素
         
         Args:
             x: X坐标
             y: Y坐标
             color: 颜色
-            size: 点大小
+            point_size: 点大小
             layer: 渲染层级
             priority: 优先级
         """
-        super().__init__(x, y, size, size, layer, priority)
+        super().__init__(x, y, point_size, point_size, layer, priority)
         self.color = color
-        self.size = size
+        self.point_size = point_size
     
     def draw(self, renderer: RendererBase) -> None:
         """绘制点
@@ -53,7 +53,7 @@ class Point(Drawable):
                           int(self.color.a * self.opacity))
         
         # 绘制点
-        renderer.draw_point(wx, wy, draw_color, self.size)
+        renderer.draw_point(wx, wy, draw_color, self.point_size)
 
 class Line(Drawable):
     """线段元素"""

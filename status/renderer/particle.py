@@ -31,7 +31,7 @@ class Particle(Drawable):
                  x: float = 0, 
                  y: float = 0, 
                  size: float = 5.0, 
-                 color: Color = None, 
+                 color: Optional[Color] = None, 
                  lifetime: float = 1.0):
         """初始化粒子
         
@@ -56,23 +56,23 @@ class Particle(Drawable):
         self.color = color or Color(255, 255, 255, 255)
         
         # 速度和加速度
-        self.velocity_x = 0
-        self.velocity_y = 0
-        self.acceleration_x = 0
-        self.acceleration_y = 0
+        self.velocity_x: float = 0.0
+        self.velocity_y: float = 0.0
+        self.acceleration_x: float = 0.0
+        self.acceleration_y: float = 0.0
         
         # 旋转
-        self.rotation = 0
-        self.rotation_velocity = 0
+        self.rotation: float = 0.0
+        self.rotation_velocity: float = 0.0
         
         # 缩放
         self.scale_x = 1.0
         self.scale_y = 1.0
-        self.scale_velocity_x = 0
-        self.scale_velocity_y = 0
+        self.scale_velocity_x: float = 0.0
+        self.scale_velocity_y: float = 0.0
         
         # 透明度变化
-        self.alpha_velocity = 0
+        self.alpha_velocity: float = 0.0
         
         # 生命周期控制
         self.lifetime = max(0.001, lifetime)  # 避免除零错误
@@ -80,25 +80,24 @@ class Particle(Drawable):
         self.is_alive = True
         
     @property
-    def size(self) -> Union[float, Tuple[float, float]]:
+    def size(self) -> Tuple[float, float]:
         """获取粒子大小
         
         Returns:
-            粒子大小，根据测试情况可能返回标量或元组
+            粒子大小，以元组 (width, height) 形式
         """
-        # 返回原始的_size值，保持与测试的兼容性
-        return self._size
+        return (self._size, self._size)
     
     @size.setter
-    def size(self, value: float) -> None:
+    def size(self, value: Tuple[float, float]) -> None:
         """设置粒子大小
         
         Args:
-            value: 粒子大小
+            value: 粒子大小 (width, height)
         """
-        self._size = value
-        self.width = value
-        self.height = value
+        self._size = value[0]
+        self.width = value[0]
+        self.height = value[0]
     
     @property
     def normalized_age(self) -> float:
@@ -199,7 +198,7 @@ class ParticleEmitter:
                  emission_rate: float = 10,
                  emission_mode: EmissionMode = EmissionMode.CONTINUOUS,
                  emission_shape: EmissionShape = EmissionShape.POINT,
-                 shape_params: Dict[str, Any] = None,
+                 shape_params: Optional[Dict[str, Any]] = None,
                  burst_count: int = 10):
         """初始化粒子发射器
         
@@ -237,7 +236,7 @@ class ParticleEmitter:
         self.particle_size = 5.0
         self.particle_size_variance = 1.0
         self.particle_color = Color(255, 255, 255, 255)
-        self.particle_color_end = None  # 如果设置，粒子颜色会在生命周期内从particle_color渐变到particle_color_end
+        self.particle_color_end: Optional[Color] = None  # 如果设置，粒子颜色会在生命周期内从particle_color渐变到particle_color_end
         self.particle_color_variance = 0  # 颜色随机变化范围
         
         # 运动配置
@@ -264,6 +263,24 @@ class ParticleEmitter:
         # 透明度配置
         self.alpha_initial = 255
         self.alpha_end = 255
+        
+    def _get_random_color(self, base_color: Color, variance: int) -> Color:
+        """生成随机颜色
+        
+        Args:
+            base_color: 基础颜色
+            variance: 颜色随机变化范围（0-255）
+            
+        Returns:
+            随机颜色
+        """
+        if variance <= 0:
+            return base_color.copy()
+            
+        r = max(0, min(255, base_color.r + int((random.random() * 2 - 1) * variance)))
+        g = max(0, min(255, base_color.g + int((random.random() * 2 - 1) * variance)))
+        b = max(0, min(255, base_color.b + int((random.random() * 2 - 1) * variance)))
+        return Color(r, g, b, base_color.a)
         
     def set_position(self, x: float, y: float) -> None:
         """设置发射器位置
@@ -296,21 +313,15 @@ class ParticleEmitter:
         if mode == EmissionMode.BURST:
             self.burst_emitted = False
             
-    def set_emission_shape(self, shape: EmissionShape, shape_params: Dict[str, Any] = None) -> None:
-        """设置发射形状
+    def set_emission_shape(self, shape: EmissionShape, shape_params: Optional[Dict[str, Any]] = None) -> None:
+        """设置发射形状和参数
         
         Args:
             shape: 发射形状
-            shape_params: 形状参数，例如:
-                - POINT: 不需要额外参数
-                - LINE: {'length': float, 'angle': float}
-                - CIRCLE: {'radius': float}
-                - RECTANGLE: {'width': float, 'height': float}
-                - RING: {'inner_radius': float, 'outer_radius': float}
+            shape_params: 形状参数
         """
         self.emission_shape = shape
-        if shape_params:
-            self.shape_params.update(shape_params)
+        self.shape_params = shape_params or {}
         
     def set_burst_count(self, count: int) -> None:
         """设置爆发模式下的粒子数量
@@ -520,8 +531,12 @@ class ParticleEmitter:
         Returns:
             发射位置坐标 (x, y)
         """
+        pos_x: float = self.x
+        pos_y: float = self.y
+
         if self.emission_shape == EmissionShape.POINT:
-            return self.x, self.y
+            # Already set to self.x, self.y
+            pass
             
         elif self.emission_shape == EmissionShape.LINE:
             start_x = self.shape_params.get("start_x", self.x - 50)
@@ -530,14 +545,16 @@ class ParticleEmitter:
             end_y = self.shape_params.get("end_y", self.y)
             
             t = random.random()
-            return start_x + t * (end_x - start_x), start_y + t * (end_y - start_y)
+            pos_x = start_x + t * (end_x - start_x)
+            pos_y = start_y + t * (end_y - start_y)
             
         elif self.emission_shape == EmissionShape.CIRCLE:
             radius = self.shape_params.get("radius", 50.0)
             
             angle = random.random() * math.pi * 2
             r = radius * math.sqrt(random.random())  # 均匀分布在圆内
-            return self.x + r * math.cos(angle), self.y + r * math.sin(angle)
+            pos_x = self.x + r * math.cos(angle)
+            pos_y = self.y + r * math.sin(angle)
             
         elif self.emission_shape == EmissionShape.RECTANGLE:
             width = self.shape_params.get("width", 100.0)
@@ -545,7 +562,8 @@ class ParticleEmitter:
             
             dx = (random.random() * 2 - 1) * width / 2
             dy = (random.random() * 2 - 1) * height / 2
-            return self.x + dx, self.y + dy
+            pos_x = self.x + dx
+            pos_y = self.y + dy
             
         elif self.emission_shape == EmissionShape.RING:
             inner_radius = self.shape_params.get("inner_radius", 40.0)
@@ -553,29 +571,13 @@ class ParticleEmitter:
             
             angle = random.random() * math.pi * 2
             r = inner_radius + random.random() * (outer_radius - inner_radius)
-            return self.x + r * math.cos(angle), self.y + r * math.sin(angle)
+            pos_x = self.x + r * math.cos(angle)
+            pos_y = self.y + r * math.sin(angle)
             
-        # 默认返回发射器位置
-        return self.x, self.y
+        # else: default is self.x, self.y which is already set
+
+        return pos_x, pos_y
     
-    def _get_random_color(self, base_color: Color, variance: int) -> Color:
-        """生成随机颜色
-        
-        Args:
-            base_color: 基础颜色
-            variance: 颜色随机变化范围（0-255）
-            
-        Returns:
-            随机颜色
-        """
-        if variance <= 0:
-            return base_color.copy()
-            
-        r = max(0, min(255, base_color.r + int((random.random() * 2 - 1) * variance)))
-        g = max(0, min(255, base_color.g + int((random.random() * 2 - 1) * variance)))
-        b = max(0, min(255, base_color.b + int((random.random() * 2 - 1) * variance)))
-        return Color(r, g, b, base_color.a)
-        
     def update(self, delta_time: float) -> List[Particle]:
         """更新发射器状态
         

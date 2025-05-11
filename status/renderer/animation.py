@@ -17,7 +17,7 @@ import enum
 import time
 
 # 导入 QImage 用于类型提示
-from PyQt6.QtGui import QImage
+from PySide6.QtGui import QImage
 
 from status.renderer.drawable import Drawable
 
@@ -62,7 +62,7 @@ class Animator:
         self.delay = delay
         self.elapsed_time: float = 0.0
         self.state = AnimationState.IDLE
-        self.completion_callback = None
+        self.completion_callback: Optional[Callable[[], None]] = None
         
         if auto_start:
             self.play()
@@ -226,8 +226,8 @@ class Animator:
             s = p / 4
             return -(pow(2, 10 * (progress - 1)) * math.sin((progress - 1 - s) * (2 * math.pi) / p))
         else:
-            # 默认返回线性
-            return progress
+            # 默认返回线性, 理论上所有 EasingType 都应该被覆盖
+            return progress # type: ignore[unreachable]
 
 class PropertyAnimation(Animator):
     """属性动画类，用于平滑过渡对象属性"""
@@ -249,88 +249,80 @@ class PropertyAnimation(Animator):
             auto_start: 是否自动开始播放
         """
         super().__init__(duration, loop, delay, auto_start)
-        
         self.target = target
         self.property_name = property_name
         self.start_value = start_value
         self.end_value = end_value
         self.easing = easing
+        self.current_value = start_value
         
-        # 检查属性类型
+        self._property_type: Optional[type] = None
+        self._interpolate_func: Callable[[float], Any] = lambda p: self.start_value # Default to Any
         self._check_property_type()
     
     def _check_property_type(self) -> None:
-        """检查属性类型，确定差值方法"""
-        # 尝试获取当前属性值
-        try:
-            current_value = getattr(self.target, self.property_name)
-        except AttributeError:
+        """检查属性类型并设置插值函数"""
+        if not hasattr(self.target, self.property_name):
             raise ValueError(f"目标对象 {self.target} 没有属性 {self.property_name}")
+
+        # 检查起始值和结束值类型是否匹配
+        if type(self.start_value) != type(self.end_value):
+            raise ValueError(f"起始值类型 {type(self.start_value)} 和结束值类型 {type(self.end_value)} 不匹配")
             
-        # 根据类型判断插值方法
-        if isinstance(self.start_value, (int, float)) and isinstance(self.end_value, (int, float)):
-            self._interpolate = self._interpolate_number
-        elif isinstance(self.start_value, tuple) and isinstance(self.end_value, tuple):
-            if len(self.start_value) == len(self.end_value):
-                if all(isinstance(x, (int, float)) for x in self.start_value + self.end_value):
-                    self._interpolate = self._interpolate_tuple
-                else:
-                    raise ValueError("元组中的所有元素必须是数字")
-            else:
-                raise ValueError("起始值和结束值的元组长度必须相同")
-        else:
-            raise ValueError(f"不支持的属性类型: {type(self.start_value)}, {type(self.end_value)}")
-    
-    def _interpolate_number(self, progress: float) -> Union[int, float]:
-        """数值插值
+        self._property_type = type(self.start_value)
         
-        Args:
-            progress: 进度值（0.0-1.0）
-            
-        Returns:
-            Union[int, float]: 插值结果
-        """
-        result = self.start_value + progress * (self.end_value - self.start_value)
-        if isinstance(self.start_value, int) and isinstance(self.end_value, int):
-            return int(round(result))
-        return result
-    
-    def _interpolate_tuple(self, progress: float) -> Tuple:
-        """元组插值
-        
-        Args:
-            progress: 进度值（0.0-1.0）
-            
-        Returns:
-            Tuple: 插值结果
-        """
-        result = []
-        for i in range(len(self.start_value)):
-            start = self.start_value[i]
-            end = self.end_value[i]
-            value = start + progress * (end - start)
-            
-            if isinstance(start, int) and isinstance(end, int):
-                value = int(round(value))
+        if isinstance(self.start_value, (int, float)):
+            self._interpolate_func = self._interpolate_number
+        elif isinstance(self.start_value, tuple):
+            # 检查元组内元素类型是否一致，且是否为数值型
+            if not all(isinstance(x, (int, float)) for x in self.start_value) or \
+               not all(isinstance(x, (int, float)) for x in self.end_value):
+                raise ValueError("元组属性动画仅支持数值型元素")
+            if len(self.start_value) != len(self.end_value):
+                raise ValueError("起始元组和结束元组长度不一致")
                 
-            result.append(value)
-            
-        return tuple(result)
+            self._interpolate_func = self._interpolate_tuple
+        else:
+            raise TypeError(f"不支持的属性类型: {self._property_type}")
     
-    def _update_animation(self, dt: float) -> None:
-        """更新动画逻辑
-        
-        Args:
-            dt: 时间增量（秒）
-        """
-        progress = self.get_progress()
+    def _interpolate_number(self, progress: float) -> Any:
+        """插值数值类型属性"""
+        eased_progress = self._apply_easing(progress, self.easing)
+        val = self.start_value + (self.end_value - self.start_value) * eased_progress
+        if self._property_type == int:
+            return int(round(val))
+        return val
+    
+    def _interpolate_tuple(self, progress: float) -> Any:
+        """插值元组类型属性"""
         eased_progress = self._apply_easing(progress, self.easing)
         
-        # 计算当前值
-        current_value = self._interpolate(eased_progress)
+        # 类型守卫，确保 self.start_value 和 self.end_value 是元组
+        if not isinstance(self.start_value, tuple) or not isinstance(self.end_value, tuple):
+            # 理论上不应该发生，因为 _check_property_type 已经检查过了
+            return self.start_value 
+            
+        interpolated_values = []
+        for start, end in zip(self.start_value, self.end_value):
+            val = start + (end - start) * eased_progress
+            # 如果原始元组元素是整数，则四舍五入
+            if isinstance(start, int) and isinstance(end, int):
+                interpolated_values.append(int(round(val)))
+            else:
+                interpolated_values.append(val)
+        return tuple(interpolated_values)
+    
+    def _update_animation(self, dt: float) -> None:
+        """更新动画属性"""
+        progress = self.get_progress()
+        self.current_value = self._interpolate_func(progress)
         
-        # 更新属性
-        setattr(self.target, self.property_name, current_value)
+        try:
+            setattr(self.target, self.property_name, self.current_value)
+        except AttributeError:
+            # 属性可能在运行时被删除
+            self.stop() # 停止动画
+            print(f"警告: 对象 {self.target} 的属性 {self.property_name} 在动画期间丢失。")
 
 class MultiPropertyAnimation(Animator):
     """多属性动画类，同时动画多个属性"""
@@ -378,63 +370,76 @@ class MultiPropertyAnimation(Animator):
             animation._update_animation(dt)
 
 class SequenceAnimation(Animator):
-    """序列动画类，按顺序播放多个动画"""
+    """序列动画类，按顺序播放一组动画"""
     
     def __init__(self, animations: List[Animator], loop: bool = False, auto_start: bool = True):
         """初始化序列动画
         
         Args:
-            animations: 动画列表
+            animations: 要播放的动画列表
             loop: 是否循环播放
             auto_start: 是否自动开始播放
         """
-        # 计算总持续时间
+        # 序列动画的总持续时间是所有子动画持续时间之和
         total_duration = sum(anim.duration + anim.delay for anim in animations)
-        
-        super().__init__(total_duration, loop, 0.0, auto_start)
+        super().__init__(total_duration, loop, False, False) # delay 和 auto_start 由外部控制或序列自身逻辑处理
         
         self.animations = animations
-        self.current_index = 0
-    
-    def _update_animation(self, dt: float) -> None:
-        """更新动画逻辑
-        
-        Args:
-            dt: 时间增量（秒）
-        """
+        self.current_animation_index: int = 0 # Ensure this is an int
+        self.time_accumulator: float = 0.0
+
         if not self.animations:
+            self.state = AnimationState.COMPLETED
             return
+
+        # 确保所有子动画不是自动开始的，由序列动画控制
+        for anim in self.animations:
+            anim.stop() # 先停止，重置状态
+            anim.loop = False # 序列动画的循环由自身控制
+
+        if auto_start:
+            self.play()
             
-        # 计算当前动画
-        time_passed = 0
-        for i, animation in enumerate(self.animations):
-            animation_duration = animation.duration + animation.delay
-            
-            if time_passed + animation_duration >= self.elapsed_time or i == len(self.animations) - 1:
-                # 找到当前动画
-                self.current_index = i
-                
-                # 更新当前动画的时间
-                animation.elapsed_time = self.elapsed_time - time_passed
-                animation.state = AnimationState.PLAYING
-                animation._update_animation(dt)
-                
-                # 确保之前的动画都已完成
-                for j in range(i):
-                    prev_anim = self.animations[j]
-                    prev_anim.elapsed_time = prev_anim.duration + prev_anim.delay
-                    prev_anim.state = AnimationState.COMPLETED
-                    prev_anim._update_animation(0)
-                
-                # 确保之后的动画都未开始
-                for j in range(i + 1, len(self.animations)):
-                    next_anim = self.animations[j]
-                    next_anim.elapsed_time = 0
-                    next_anim.state = AnimationState.IDLE
-                
-                break
-                
-            time_passed += animation_duration
+    def play(self) -> None:
+        super().play()
+        if self.animations and self.current_animation_index < len(self.animations):
+            self.animations[self.current_animation_index].play()
+
+    def _update_animation(self, dt: float) -> None:
+        """更新序列动画"""
+        if not self.animations or self.current_animation_index >= len(self.animations):
+            if self.loop:
+                self.current_animation_index = 0
+                self.time_accumulator = 0.0
+                if self.animations:
+                    self.animations[0].play()
+                else:
+                    self.state = AnimationState.COMPLETED
+                    return
+            else:
+                self.state = AnimationState.COMPLETED
+                return
+
+        current_anim = self.animations[self.current_animation_index]
+        
+        # 更新当前动画
+        # 我们需要将序列动画的整体 dt 分配给当前子动画
+        # 但子动画有自己的计时逻辑，我们主要关心它是否完成
+        current_anim.update(dt) # 让子动画自行处理 dt
+
+        if current_anim.is_completed():
+            self.current_animation_index += 1
+            if self.current_animation_index < len(self.animations):
+                next_anim = self.animations[self.current_animation_index]
+                next_anim.play()
+            elif self.loop:
+                self.current_animation_index = 0
+                self.time_accumulator = 0.0 # 重置累加器
+                self.animations[0].play()
+            else:
+                self.state = AnimationState.COMPLETED
+                if self.completion_callback:
+                    self.completion_callback()
 
 class DrawableAnimator:
     """可绘制对象动画器，提供常用动画创建功能"""

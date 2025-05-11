@@ -19,7 +19,7 @@ import logging
 from status.renderer.renderer_base import RendererBase, Color, Rect, RenderLayer
 from status.renderer.drawable import Drawable
 from status.resources.asset_manager import AssetManager
-from PyQt6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QImage, QPixmap
 
 class SpriteFrame:
     """精灵帧类，表示精灵表中的一帧"""
@@ -285,10 +285,14 @@ class Sprite(Drawable):
         Args:
             image: 图像路径、QImage 或 QPixmap 对象
         """
+        # 重置动画和源矩形相关状态
         self.current_animation = None
         self.source_rect = None
         
+        # 初始化变量以确保所有分支都有定义
         loaded_pixmap = None
+        
+        # 根据不同类型的输入加载图像
         if isinstance(image, str):
             self.image_path = image
             try:
@@ -297,10 +301,10 @@ class Sprite(Drawable):
                     loaded_pixmap = QPixmap.fromImage(img_obj)
                 elif isinstance(img_obj, QPixmap):
                     loaded_pixmap = img_obj
-                else:
-                    logging.warning(f"Sprite: AssetManager未能加载有效图像 '{image}'")
+                # 如果加载失败(None或不是QImage/QPixmap)，loaded_pixmap保持为None
             except Exception as e:
                 logging.error(f"Sprite: 加载图像路径 '{image}' 失败: {e}")
+                # 异常情况下，loaded_pixmap保持为None
         elif isinstance(image, QImage):
             loaded_pixmap = QPixmap.fromImage(image)
             self.image_path = None
@@ -309,18 +313,26 @@ class Sprite(Drawable):
             self.image_path = None
         else:
             logging.error(f"Sprite: 不支持的图像类型: {type(image)}")
-            
-        if loaded_pixmap and not loaded_pixmap.isNull():
+            # 不支持的类型，loaded_pixmap保持为None
+        
+        # 图像处理，适用于所有情况
+        if loaded_pixmap is not None and not loaded_pixmap.isNull():
             self._image = loaded_pixmap
+            # 如果宽高为0，从图像更新
             if self.width == 0:
                 self.width = self._image.width()
             if self.height == 0:
                 self.height = self._image.height()
+            # 如果没有设置锚点，设置为中心
             if self.pivot is None:
                 self.pivot = (self.width / 2, self.height / 2)
         else:
+            # 如果加载失败，清空图像
             self._image = None
-    
+        
+        # 标记为脏以便更新渲染
+        self._dirty = True
+
     def set_source_rect(self, x: float, y: float, width: float, height: float) -> None:
         """设置源矩形（用于精灵表）
         

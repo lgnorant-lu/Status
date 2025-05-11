@@ -414,9 +414,11 @@ class Move(TransformEffect):
         """
         super().__init__(target, duration, loop, auto_start)
         
-        self.start_x, self.start_y = self.original_position
-        self.end_x = end_x
-        self.end_y = end_y
+        self.target: Drawable = target # Explicitly type target for clarity
+        self.start_x: float = target.x if hasattr(target, 'x') else 0.0
+        self.start_y: float = target.y if hasattr(target, 'y') else 0.0
+        self.end_x: float = end_x
+        self.end_y: float = end_y
         
         # 设置更新回调
         self.on_update = self._update_position
@@ -465,9 +467,11 @@ class Scale(TransformEffect):
         """
         super().__init__(target, duration, loop, auto_start)
         
-        self.start_scale_x, self.start_scale_y = self.original_scale
-        self.end_scale_x = end_scale_x
-        self.end_scale_y = end_scale_y
+        self.target: Drawable = target # Explicitly type target for clarity
+        self.start_scale_x: float = target.scale_x if hasattr(target, 'scale_x') else 1.0
+        self.start_scale_y: float = target.scale_y if hasattr(target, 'scale_y') else 1.0
+        self.end_scale_x: float = end_scale_x
+        self.end_scale_y: float = end_scale_y
         
         # 设置更新回调
         self.on_update = self._update_scale
@@ -540,37 +544,50 @@ class Rotate(TransformEffect):
 
 
 class CompositeEffect(Effect):
-    """组合特效，可以组合多个特效"""
+    """组合特效，可以包含多个子特效并按顺序或并行播放"""
     
     def __init__(self, 
-                 effects: List[Effect] = None, 
-                 duration: float = None, 
+                 effects: Optional[List[Effect]] = None, 
+                 duration: Optional[float] = None, 
                  loop: bool = False, 
                  auto_start: bool = True):
         """初始化组合特效
         
         Args:
-            effects: 特效列表
-            duration: 特效持续时间（秒），如果为None则使用最长的特效时间
+            effects: 子特效列表
+            duration: 覆盖子特效的总持续时间（如果为None，则使用子特效的最大持续时间）
             loop: 是否循环播放
             auto_start: 是否自动开始
         """
-        self.effects = effects or []
+        
+        self.effects: List[Effect] = effects or []
         
         # 计算持续时间
-        if duration is None:
-            max_duration = 0.0
-            for effect in self.effects:
-                max_duration = max(max_duration, effect.duration)
-            duration = max_duration
-            
-        super().__init__(duration, loop, False)  # 不自动启动
+        calculated_duration = 0.0
+        if self.effects:
+            for effect_item in self.effects: # Use a different loop variable name
+                # Ensure effect_item.duration is treated as float, even if it could be None from a less typed source
+                item_duration = effect_item.duration if effect_item.duration is not None else 0.0
+                calculated_duration = max(calculated_duration, item_duration)
         
-        # 禁用子特效的自动启动
-        for effect in self.effects:
-            effect.stop()
-            
-        # 自动启动
+        actual_duration = duration if duration is not None else calculated_duration
+        # Ensure a minimum duration to prevent division by zero or other issues
+        super().__init__(actual_duration if actual_duration > 0 else 0.001, loop, auto_start=False) 
+        
+        self._original_effects_loop_states: Dict[Effect, bool] = {}
+
+        # 禁用子特效的自动启动和循环，由CompositeEffect控制
+        for effect_item in self.effects:
+            self._original_effects_loop_states[effect_item] = effect_item.loop
+            effect_item.loop = False 
+            if effect_item.state == EffectState.PLAYING:
+                 effect_item.stop() 
+                 effect_item.elapsed_time = 0.0 
+                 effect_item._state = EffectState.INITIALIZED 
+            elif effect_item.state != EffectState.INITIALIZED:
+                 effect_item.elapsed_time = 0.0 
+                 effect_item._state = EffectState.INITIALIZED
+
         if auto_start:
             self.start()
     
@@ -663,34 +680,39 @@ class CompositeEffect(Effect):
 class EffectManager:
     """特效管理器，管理所有活动特效"""
     
-    _instance = None
+    _instance: Optional['EffectManager'] = None
+    _initialized: bool = False # Class-level flag for singleton initialization
+    _lock = threading.Lock()
     
     def __new__(cls):
         """实现单例模式"""
         if cls._instance is None:
-            cls._instance = super(EffectManager, cls).__new__(cls)
-            cls._instance._initialized = False
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(EffectManager, cls).__new__(cls)
+                    # _initialized is a class member, instance will have it.
+                    # No need to set it here, __init__ will handle it.
         return cls._instance
     
     def __init__(self):
-        """初始化特效管理器"""
-        # 单例模式只初始化一次
-        if self._initialized:
+        """初始化特效管理器，确保只初始化一次"""
+        if EffectManager._initialized: # Check class-level flag
             return
             
         self.logger = logging.getLogger(__name__)
-        self.logger.info("初始化特效管理器")
+        self.logger.info("EffectManager initializing...") # Changed message for clarity
         
         # 特效列表
         self.effects: List[Effect] = []
         
         # 线程锁
-        self.lock = threading.RLock()
+        self.lock = threading.RLock() # Restore instance lock initialization
         
         # 全局暂停控制
         self.paused = False
         
-        self._initialized = True
+        EffectManager._initialized = True # Set class-level flag after initialization
+        self.logger.info("EffectManager initialized.")
     
     def add_effect(self, effect: Effect) -> None:
         """添加特效

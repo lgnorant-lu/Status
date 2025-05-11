@@ -621,16 +621,21 @@ class PySideRenderer(RendererBase):
             QColor(color.r, color.g, color.b, color.a)
         )
     
-    def draw_surface(self, surface: Any, x: float, y: float) -> None:
+    def draw_surface(self, surface: Any, x: float, y: float, opacity: float = 1.0) -> None:
         """绘制表面（QPixmap或QImage）
         
         Args:
             surface: 表面对象
             x: X坐标
             y: Y坐标
+            opacity: 不透明度 (0.0-1.0)
         """
         if not self.painter or not self.painter.isActive():
             return
+
+        original_opacity = self.painter.opacity() # Store original
+        if opacity < 1.0:
+            self.painter.setOpacity(opacity * original_opacity) # Modulate with current painter opacity
             
         if isinstance(surface, QPixmap):
             self.painter.drawPixmap(int(x), int(y), surface)
@@ -638,8 +643,11 @@ class PySideRenderer(RendererBase):
             self.painter.drawImage(int(x), int(y), surface)
         else:
             logger.error(f"不支持的表面类型: {type(surface)}")
+
+        if opacity < 1.0: # Restore original
+            self.painter.setOpacity(original_opacity)
     
-    def draw_surface_scaled(self, surface: Any, x: float, y: float, width: float, height: float) -> None:
+    def draw_surface_scaled(self, surface: Any, x: float, y: float, width: float, height: float, opacity: float = 1.0) -> None:
         """绘制缩放的表面
         
         Args:
@@ -648,9 +656,14 @@ class PySideRenderer(RendererBase):
             y: Y坐标
             width: 宽度
             height: 高度
+            opacity: 不透明度 (0.0-1.0)
         """
         if not self.painter or not self.painter.isActive():
             return
+
+        original_opacity = self.painter.opacity()
+        if opacity < 1.0:
+            self.painter.setOpacity(opacity * original_opacity)
             
         if isinstance(surface, QPixmap):
             self.painter.drawPixmap(
@@ -663,4 +676,7 @@ class PySideRenderer(RendererBase):
                 surface
             )
         else:
-            logger.error(f"不支持的表面类型: {type(surface)}") 
+            logger.error(f"不支持的表面类型: {type(surface)}")
+
+        if opacity < 1.0:
+            self.painter.setOpacity(original_opacity) 

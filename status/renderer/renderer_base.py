@@ -19,7 +19,8 @@ import enum
 from PySide6.QtCore import QObject, Signal
 
 # 创建一个混合元类，解决QObject和ABC的元类冲突
-class QObjectABCMeta(type(QObject), ABCMeta):
+# mypy 可能对此类动态元类支持有限，如果报错，可能需要特殊处理或忽略
+class QObjectABCMeta(type(QObject), ABCMeta):  # type: ignore[misc]
     """混合元类，继承自QObject的元类和ABCMeta"""
     pass
 
@@ -456,5 +457,58 @@ class RendererBase(QObject, ABC, metaclass=QObjectABCMeta):
         
         Returns:
             Dict[str, Any]: 渲染器信息字典
+        """
+        pass
+
+    @abstractmethod
+    def get_width(self) -> int:
+        """获取渲染器目标宽度"""
+        pass
+
+    @abstractmethod
+    def get_height(self) -> int:
+        """获取渲染器目标高度"""
+        pass
+
+    @abstractmethod
+    def set_alpha(self, alpha: float) -> None:
+        """设置全局绘制透明度
+
+        Args:
+            alpha: 透明度 (0.0 完全透明, 1.0 完全不透明)
+        """
+        pass
+
+    @abstractmethod
+    def draw_surface(self, surface: Any, x: float, y: float, opacity: float = 1.0) -> None:
+        """绘制表面/纹理到指定位置
+
+        Args:
+            surface: 要绘制的表面/纹理对象
+            x: 目标位置X坐标
+            y: 目标位置Y坐标
+            opacity: 绘制不透明度 (0.0-1.0)
+        """
+        pass
+
+    @abstractmethod
+    def draw_surface_scaled(
+        self, 
+        surface: Any, 
+        x: float, 
+        y: float, 
+        width: float, 
+        height: float, 
+        opacity: float = 1.0
+    ) -> None:
+        """绘制缩放后的表面/纹理到指定位置和尺寸
+
+        Args:
+            surface: 要绘制的表面/纹理对象
+            x: 目标位置X坐标
+            y: 目标位置Y坐标
+            width: 目标宽度
+            height: 目标高度
+            opacity: 绘制不透明度 (0.0-1.0)
         """
         pass 

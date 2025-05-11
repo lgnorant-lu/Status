@@ -31,7 +31,7 @@ class RendererType(enum.Enum):
 
 class SingletonMeta(type):
     """单例元类，确保RendererManager只有一个实例"""
-    _instances = {}
+    _instances: Dict[Type, Any] = {}
     
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
