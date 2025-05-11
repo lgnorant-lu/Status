@@ -25,7 +25,7 @@ from status.interaction.hotkey_manager import HotkeyManager
 from status.interaction.drag_manager import DragManager
 from status.interaction.behavior_trigger import BehaviorTrigger
 from status.interaction.interaction_event import InteractionEvent, InteractionEventType
-from status.interaction.command.command_manager import CommandManager
+from status.interaction.base_interaction_handler import BaseInteractionHandler
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -42,23 +42,18 @@ class InteractionManager:
             cls._instance = InteractionManager()
         return cls._instance
     
-    def __init__(self):
+    def __init__(self, app_context, settings):
         """初始化交互管理器"""
         if InteractionManager._instance is not None:
             raise RuntimeError("InteractionManager是单例，请使用get_instance()获取实例")
         
-        # 事件管理器
-        self.event_manager = EventManager.get_instance()
-        
-        # 初始化各个交互子系统
-        self.mouse_interaction = None
-        self.tray_icon = None
-        self.context_menu = None
-        self.hotkey_manager = None
-        self.drag_manager = None
-        self.behavior_trigger = None
-        self.command_manager = None
-        self.launcher_manager = None
+        self.logger = logging.getLogger(__name__)
+        self.app_context = app_context
+        self.settings = settings
+        self.event_bus = app_context.event_bus
+        self.interaction_handlers: List[BaseInteractionHandler] = []
+        self.mouse_event_handler = None
+        self.keyboard_event_handler = None
         
         # 初始化标记
         self._initialized = False
@@ -77,53 +72,26 @@ class InteractionManager:
             return True
         
         try:
-            # 初始化鼠标交互
-            self.mouse_interaction = MouseInteraction()
-            self.mouse_interaction.initialize()
+            # Initialize CommandManager if enabled
+            # if self.settings.get('enable_command_processing', False):
+            #     try:
+            #         self.command_manager = CommandManager(self.app_context)
+            #         self.command_manager.initialize()
+            #         self.logger.info("CommandManager initialized.")
+            #     except Exception as e:
+            #         self.logger.error(f"Failed to initialize CommandManager: {e}", exc_info=True)
+            # else:
+            #     self.logger.info("Command processing is disabled.")
+
+            # Initialize other interaction handlers
+            self.mouse_event_handler = MouseInteraction()
+            self.mouse_event_handler.initialize()
             
-            # 初始化托盘图标
-            self.tray_icon = TrayIcon()
-            self.tray_icon.initialize()
-            
-            # 初始化上下文菜单
-            self.context_menu = ContextMenu()
-            self.context_menu.initialize()
-            
-            # 初始化热键管理器
-            self.hotkey_manager = HotkeyManager()
-            self.hotkey_manager.initialize()
-            
-            # 初始化拖拽管理器
-            self.drag_manager = DragManager()
-            self.drag_manager.initialize()
-            
-            # 初始化行为触发器
-            self.behavior_trigger = BehaviorTrigger()
-            self.behavior_trigger.initialize()
-            
-            # 初始化命令管理器
-            self.command_manager = CommandManager.get_instance()
-            self.command_manager.initialize()
-            
-            # 初始化启动器管理器
-            try:
-                from status.launcher import LauncherManager
-                self.launcher_manager = LauncherManager.get_instance()
-                self.launcher_manager.initialize()
-                
-                # 添加启动器热键
-                self.hotkey_manager.register_hotkey(
-                    "Alt+Space",
-                    self._show_launcher,
-                    "显示快捷启动器"
-                )
-                logger.info("快捷启动器已集成")
-            except ImportError:
-                logger.warning("未找到启动器模块，跳过集成")
-                self.launcher_manager = None
+            self.keyboard_event_handler = HotkeyManager()
+            self.keyboard_event_handler.initialize()
             
             # 注册事件监听
-            self.event_manager.add_listener(
+            self.event_bus.add_listener(
                 InteractionEventType.ANY,
                 self._handle_interaction_event
             )
@@ -136,63 +104,47 @@ class InteractionManager:
             logger.error(f"交互管理器初始化失败: {str(e)}")
             return False
     
-    def _handle_interaction_event(self, event: InteractionEvent):
+    def _handle_interaction_event(self, event_type, event_data=None):
         """
         处理交互事件
         
         Args:
-            event: 交互事件
+            event_type: 事件类型
+            event_data: 事件数据
         """
-        # 让各个子系统处理事件
         subsystems = [
-            self.mouse_interaction,
-            self.tray_icon,
-            self.context_menu,
-            self.hotkey_manager,
-            self.drag_manager,
-            self.behavior_trigger,
-            self.command_manager,
-            self.launcher_manager
+            self.mouse_event_handler,
+            self.keyboard_event_handler,
+            # self.command_manager
         ]
         
         for subsystem in subsystems:
             if subsystem and hasattr(subsystem, 'handle_event'):
-                subsystem.handle_event(event)
+                subsystem.handle_event(event_type, event_data)
     
     def shutdown(self):
         """关闭交互管理器及其管理的子系统"""
         logger.info("正在关闭交互管理器")
         
         # 关闭事件监听
-        self.event_manager.remove_listener(
+        self.event_bus.remove_listener(
             InteractionEventType.ANY,
             self._handle_interaction_event
         )
         
         # 关闭各个子系统
-        if self.mouse_interaction:
-            self.mouse_interaction.shutdown()
+        if self.mouse_event_handler:
+            self.mouse_event_handler.shutdown()
         
-        if self.tray_icon:
-            self.tray_icon.shutdown()
+        if self.keyboard_event_handler:
+            self.keyboard_event_handler.shutdown()
         
-        if self.context_menu:
-            self.context_menu.shutdown()
-        
-        if self.hotkey_manager:
-            self.hotkey_manager.shutdown()
-        
-        if self.drag_manager:
-            self.drag_manager.shutdown()
-        
-        if self.behavior_trigger:
-            self.behavior_trigger.shutdown()
-            
-        if self.command_manager:
-            self.command_manager.shutdown()
-        
-        if self.launcher_manager:
-            self.launcher_manager.shutdown()
+        # if self.command_manager:
+        #     try:
+        #         self.command_manager.shutdown()
+        #         self.logger.info("CommandManager shut down.")
+        #     except Exception as e:
+        #         self.logger.error(f"Error shutting down CommandManager: {e}", exc_info=True)
         
         self._initialized = False
         logger.info("交互管理器已关闭")
@@ -307,13 +259,13 @@ class InteractionManager:
         连接各个交互子系统，使它们能够相互协作。
         """
         # 将右键点击连接到上下文菜单
-        self.mouse_interaction.right_click_signal.connect(self.context_menu.show_menu)
+        self.mouse_event_handler.right_click_signal.connect(self.context_menu.show_menu)
         
         # 连接拖拽管理器和鼠标交互
-        self.mouse_interaction.register_drag_manager(self.drag_manager)
+        self.mouse_event_handler.register_drag_manager(self.drag_manager)
         
         # 注册各子系统的事件处理器
-        self.event_manager.register_handler("interaction", self._handle_interaction_event)
+        self.event_bus.register_handler("interaction", self._handle_interaction_event)
         
         logger.debug("InteractionManager connections set up")
     
@@ -357,14 +309,9 @@ class InteractionManager:
         
         # 关闭各交互子系统
         subsystems = [
-            self.mouse_interaction,
-            self.tray_icon,
-            self.context_menu,
-            self.hotkey_manager,
-            self.behavior_trigger,
-            self.drag_manager,
-            self.command_manager,
-            self.launcher_manager
+            self.mouse_event_handler,
+            self.keyboard_event_handler,
+            # self.command_manager
         ]
         
         for subsystem in subsystems:

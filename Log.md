@@ -168,3 +168,11 @@
 - 实现了修复画布指针偏移的功能，统一所有显示模式下的pixmap绘制逻辑，确保与坐标换算一致
 - 相关日志链接: [Logs/2025-04-16_sprite_editor_pointer_offset_fix.md]
 
+## 2025-05-11
+
+### Project Cleanup: Phase 1
+- 执行了第一阶段的项目清理，移除了旧主题的 `assets` 中的部分资源 (`assets/sprites/idle/README.md`, `assets/sprites/idle/generate_idle_frames.py`, `assets/Plan.md`) 和 `status/core/` 下的冗余模块 (`asset_manager.py`, `resource_loader.py`, `cache.py`, `scene_manager.py`)。
+- **更新 (2025-05-12):** 清理范围已扩展，包括根目录下的多个文件和目录、`assets` 内的空子目录、`status/` 内的多个模块（如config, monitor, examples, launcher等）、`status/ui/` 内的部分文件和目录，以及 `tests/` 目录内的大量文件和子目录。同时，对 `status/interaction/interaction_manager.py` 进行了解耦编辑（移除CommandManager引用，但附带linter错误）。
+- **注意**: 部分二进制资源文件（如旧主题的 .png）和非空目录的删除仍需手动完成。
+- **完整详情参见**: [Logs/2025-04-17_project_cleanup_phase1.md]
+

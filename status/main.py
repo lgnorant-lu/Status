@@ -6,7 +6,7 @@ Date created:               2025/04/16
 Description:                Hollow Knight 桌宠主程序入口
 ----------------------------------------------------------------
 
-Changed history:
+Changed history:            
                             2025/04/16: 初始创建，实现基本窗口和Idle动画渲染;
 ----
 """

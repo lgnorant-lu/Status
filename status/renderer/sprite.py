@@ -296,7 +296,7 @@ class Sprite(Drawable):
                     loaded_pixmap = QPixmap.fromImage(img_obj)
                 elif isinstance(img_obj, QPixmap):
                     loaded_pixmap = img_obj
-                else:
+        else:
                      logging.warning(f"Sprite: AssetManager未能加载有效图像 '{image}'")
             except Exception as e:
                 logging.error(f"Sprite: 加载图像路径 '{image}' 失败: {e}")
@@ -311,15 +311,15 @@ class Sprite(Drawable):
             
         if loaded_pixmap and not loaded_pixmap.isNull():
             self._image = loaded_pixmap
-            if self.width == 0:
+                if self.width == 0:
                 self.width = self._image.width()
-            if self.height == 0:
+                if self.height == 0:
                 self.height = self._image.height()
             if self.pivot is None:
                 self.pivot = (self.width / 2, self.height / 2)
-        else:
+            else:
             self._image = None
-            
+    
     def set_source_rect(self, x: float, y: float, width: float, height: float) -> None:
         """设置源矩形（用于精灵表）
         
@@ -386,11 +386,11 @@ class Sprite(Drawable):
         self.animation_time = 0.0
         self.paused = False
         self._update_animation_frame()
-        
+    
     def pause(self) -> None:
         """暂停动画"""
         self.paused = True
-        
+    
     def resume(self) -> None:
         """恢复动画"""
         self.paused = False

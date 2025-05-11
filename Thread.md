@@ -123,3 +123,25 @@
 - 原因: 保证鼠标操作与实际绘制/擦除位置一致，提升用户体验
 - 阻碍因素: 无
 - 状态: 成功
+
+[2025-05-11 任务进度]
+- 已修改: 
+  - assets/sprites/idle/README.md (已删除)
+  - assets/sprites/idle/generate_idle_frames.py (已删除)
+  - assets/Plan.md (已删除)
+  - status/core/asset_manager.py (已删除)
+  - status/core/resource_loader.py (已删除)
+  - status/core/cache.py (已删除)
+  - status/core/scene_manager.py (已删除)
+- 更改: 执行第一阶段项目清理，移除旧主题资源和冗余核心模块。
+- 原因: 为新主题开发做准备，精简项目结构。
+- 阻碍因素: 无法通过工具直接删除二进制文件（如.png）和非空目录，这些需要用户手动处理。
+- 状态: 已完成（项目文件结构清理完成，包括根目录、assets、status内部模块、tests目录。status/interaction/interaction_manager.py 中的 CommandManager 引用已移除，但该文件目前仍有较多linter错误。）
+
+[新增任务 2025-05-12]
+- 模块: 全局/核心
+- 任务: 新主题资源整合与初步UI调整
+- 状态: [计划中]
+- 描述: 根据新的项目主题（例如猫咪主题），开始整合替换新的视觉、音频等资源。并对现有UI进行初步调整以适应新主题风格。
+- 依赖: 项目结构清理完成。
+- 优先级: 高

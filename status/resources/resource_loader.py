@@ -113,7 +113,7 @@ class ResourceLoader:
         if hasattr(mgr, 'reload'):
             return mgr.reload()
         if hasattr(mgr, 'initialize'):
-             return mgr.initialize()
+        return mgr.initialize()
         return False # 如果 manager 无相关方法
     
     def initialize(self) -> bool:
@@ -124,7 +124,7 @@ class ResourceLoader:
         """
         # 初始化资源包管理器
         if hasattr(self.manager, 'initialize'):
-             return self.manager.initialize()
+        return self.manager.initialize()
         return True # 如果 manager 无需初始化，则认为成功
     
     def get_resource_path(self, resource_path: str) -> Optional[str]:
@@ -159,8 +159,8 @@ class ResourceLoader:
         # 优先尝试从 ResourcePackManager 获取资源列表
         resources = []
         if hasattr(self.manager, 'list_resources'):
-             resources = self.manager.list_resources(prefix)
-
+        resources = self.manager.list_resources(prefix)
+        
         # 如果 ResourcePackManager 没有返回任何资源，尝试从文件系统扫描
         if not resources:
             self.logger.debug(f"ResourcePackManager未找到 '{prefix}' 下的资源，尝试扫描文件系统...")
@@ -236,7 +236,7 @@ class ResourceLoader:
             if qimage.loadFromData(content):
                 # 加载成功
                 # 通常不需要 convert_alpha，QImage 会保留透明度
-                if use_cache:
+            if use_cache:
                     self._image_cache[image_path] = qimage
                 return qimage
             else:
@@ -278,7 +278,7 @@ class ResourceLoader:
         # 检查缓存 - 使用 font_path 作为主键，size 作为次级键
         if use_cache and font_path in self._font_cache and size in self._font_cache[font_path]:
             return self._font_cache[font_path][size]
-            
+        
         # cache_key = (font_path, size) # 不再使用元组键
         # if use_cache and cache_key in self._font_cache: # 旧的错误检查方式
         #    return self._font_cache[cache_key]
@@ -373,11 +373,11 @@ class ResourceLoader:
     
     def load_image_sequence(self, directory_path: str, use_cache: bool = True) -> Optional[List[QImage]]:
         """加载指定目录下的所有图像文件作为一个动画序列 (QImage 列表)。
-
+        
         Args:
             directory_path (str): 包含图像序列的目录路径 (相对于资源根目录)。
             use_cache (bool, optional): 是否使用或填充图像缓存. Defaults to True.
-
+            
         Returns:
             Optional[List[QImage]]: 加载的 QImage 列表，按自然顺序排序。
                                         如果目录不存在或加载失败，返回 None。
@@ -388,7 +388,7 @@ class ResourceLoader:
             if not image_paths:
                 self.logger.warning(f"在目录 '{directory_path}' 中未找到图像文件。")
                 return None
-
+            
             # 按自然顺序排序文件名
             image_paths.sort(key=natural_sort_key)
             
@@ -401,7 +401,7 @@ class ResourceLoader:
                 else:
                     # 如果单个帧加载失败，中止
                     self.logger.error(f"加载序列 '{directory_path}' 中的帧 '{img_path}' 失败，序列加载中止。")
-                    return None
+                return None
             
             if frames:
                 self.logger.info(f"成功加载 QImage 序列: {directory_path}, 共 {len(frames)} 帧")
@@ -409,7 +409,7 @@ class ResourceLoader:
             else:
                 self.logger.warning(f"加载 QImage 序列 '{directory_path}' 失败，未成功加载任何帧。")
                 return None
-
+            
         except Exception as e:
             self.logger.exception(f"加载 QImage 序列 '{directory_path}' 时发生意外错误: {e}")
             return None
