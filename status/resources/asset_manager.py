@@ -53,21 +53,22 @@ class AssetManager:
     
     def __init__(self):
         """初始化资源管理器"""
+        if AssetManager._instance is not None:
+            # self.logger.warning("AssetManager 已初始化，将返回现有实例") # logger此时可能未初始化
+            # raise Exception("AssetManager is a singleton") # 或者安静地返回
+            return
+
         self.logger = logging.getLogger("AssetManager")
-        
-        # 默认资源路径
-        self.base_path = "resources"
-        
-        # 创建资源加载器 (在需要时导入)
-        from status.resources.resource_loader import ResourceLoader
-        self.loader: 'ResourceLoader' = ResourceLoader()
-        
-        # 创建缓存（图像、音频和其他分开缓存）
-        self.image_cache = Cache(
-            strategy=CacheStrategy.LRU,
-            max_size=200 * 1024 * 1024,  # 200MB
-            default_ttl=600              # 10分钟
-        )
+        self.base_path: str = "resources"  # 默认基础路径
+        self.loader: ResourceLoader = ResourceLoader() # 每个 AssetManager 实例有自己的加载器
+        self.loader.base_path = self.base_path
+
+        # 内部测试钩子
+        self._load_image: Optional[Callable[..., Any]] = None
+        self._load_json: Optional[Callable[..., Any]] = None
+
+        # 初始化缓存实例
+        self.image_cache: Cache = Cache(strategy=CacheStrategy.LRU, max_items=200, default_ttl=3600) # 图像缓存，1小时TTL
         
         self.audio_cache = Cache(
             strategy=CacheStrategy.LRU,
@@ -275,17 +276,20 @@ class AssetManager:
         if not self.initialized:
             self.initialize()
         
-        # 验证资源类型
-        if resource_type is not None and not isinstance(resource_type, ResourceType):
-            self.logger.error(f"无效的资源类型: {resource_type}")
-            raise ValueError(f"无效的资源类型: {resource_type}")
-        
-        # 自动判断资源类型
-        if resource_type is None:
-            resource_type = self.loader._get_resource_type(path)
+        # 确定最终的资源类型 (确保非None)
+        final_resource_type: ResourceType
+        if resource_type is not None:
+            final_resource_type = resource_type
+        else:
+            inferred_type = self.loader._get_resource_type(path)
+            if inferred_type is not None:
+                final_resource_type = inferred_type
+            else:
+                self.logger.warning(f"load_asset: 无法从路径 \'{path}\' 推断资源类型，将使用 OTHER 类型。")
+                final_resource_type = ResourceType.OTHER
         
         # 获取对应的缓存
-        cache = self._get_cache_for_type(resource_type)
+        cache = self._get_cache_for_type(final_resource_type)
         
         # 生成缓存键
         cache_key = self._make_cache_key(path, **kwargs)
@@ -294,13 +298,14 @@ class AssetManager:
         if use_cache:
             def load_func():
                 try:
-                    resource = self.loader.load_resource(path, resource_type, **kwargs)
+                    # 注意：传递 final_resource_type 给 loader
+                    resource_loaded = self.loader.load_resource(path, final_resource_type, **kwargs)
                     
                     # 应用资源转换
                     if transform and callable(transform):
-                        resource = transform(resource)
+                        resource_loaded = transform(resource_loaded)
                     
-                    return resource
+                    return resource_loaded
                 except ResourceError as e:
                     if "文件不存在" in str(e):
                         self.logger.error(f"文件不存在: {path}")
@@ -310,24 +315,26 @@ class AssetManager:
             # 获取资源
             resource = cache.get(cache_key, loader=load_func)
             
-            # 检查是否应该缓存
-            if cache_decision and not cache_decision(resource, resource_type):
-                # 如果不应缓存，从缓存中删除 (使用 remove)
-                cache.remove(cache_key)
+            # 检查是否应该缓存 - final_resource_type is not None here
+            if cache_decision and not cache_decision(resource, final_resource_type):
+                # 如果不应缓存，从缓存中删除
+                cache.remove_method(cache_key)
             
             return resource
         else:
-            # 直接加载
+            # 直接加载 (use_cache is False here)
             try:
-                resource = self.loader.load_resource(path, resource_type, **kwargs)
+                # 注意：传递 final_resource_type 给 loader
+                resource = self.loader.load_resource(path, final_resource_type, **kwargs)
                 
                 # 应用资源转换
                 if transform and callable(transform):
                     resource = transform(resource)
                 
-                # 缓存决策
-                if use_cache and (cache_decision is None or cache_decision(resource, resource_type)):
-                    cache.put(cache_key, resource)
+                # 当 use_cache is False 时，不应该有放入缓存的逻辑
+                # 移除以下错误的缓存块:
+                # if use_cache and (cache_decision is None or cache_decision(resource, final_resource_type)):
+                #     cache.put(cache_key, resource)
                 
                 return resource
             except ResourceError as e:
@@ -485,7 +492,7 @@ class AssetManager:
             # 重新抛出异常，保持原始类型
             raise
     
-    def preload(self, paths: List[str], callback: Callable[[str, bool], None] = None) -> int:
+    def preload(self, paths: List[str], callback: Optional[Callable[[str, bool], None]] = None) -> int:
         """预加载多个资源，但不使用异步线程
         
         Args:
@@ -534,7 +541,7 @@ class AssetManager:
         
         self.logger.info(f"创建预加载组: {group_name}, 包含 {len(paths)} 个资源")
     
-    def preload_group(self, group_name: str, paths: List[str] = None, **kwargs) -> bool:
+    def preload_group(self, group_name: str, paths: Optional[List[str]] = None, **kwargs) -> bool:
         """预加载资源组
         
         Args:
@@ -559,19 +566,22 @@ class AssetManager:
             raise ValueError(f"预加载组 '{group_name}' 不存在")
         
         group_info = self.preloaded_groups[group_name]
-        paths = group_info["paths"]
+        # paths_local 引用 group_info 中的列表，如果外部 paths 参数为 None
+        paths_local: List[str] = paths if paths is not None else group_info.get("paths", [])
+        if paths is not None: # 如果外部传入了 paths，用它更新 group_info
+             group_info["paths"] = paths_local
+
+        self.logger.info(f"预加载资源组: {group_name}, {len(paths_local)} 个资源")
         
-        self.logger.info(f"预加载资源组: {group_name}, {len(paths)} 个资源")
-        
-        if not paths:
+        if not paths_local: # 使用 paths_local 进行检查和迭代
             # 空组视为成功
             group_info["loaded"] = True
             group_info["success_count"] = 0
             group_info["all_success"] = True
             return True
         
-        success_count = self.preload(paths, **kwargs)
-        all_success = success_count == len(paths)
+        success_count = self.preload(paths_local, **kwargs) # 使用 paths_local
+        all_success = success_count == len(paths_local)
         
         # 更新组信息
         group_info["loaded"] = True
@@ -594,15 +604,15 @@ class AssetManager:
             self.preload_list.remove(path)
         
         # 从所有缓存中移除
-        result1 = self.image_cache.remove(path)
-        result2 = self.audio_cache.remove(path)
-        result3 = self.other_cache.remove(path)
+        result1 = self.image_cache.remove_method(path)
+        result2 = self.audio_cache.remove_method(path)
+        result3 = self.other_cache.remove_method(path)
         
         # 移除所有带参数变体的缓存项
-        for cache in [self.image_cache, self.audio_cache, self.other_cache]:
-            keys_to_remove = [k for k in cache.keys() if k.startswith(path + "?")]
-            for key in keys_to_remove:
-                cache.remove(key)
+        for cache_instance in [self.image_cache, self.audio_cache, self.other_cache]:
+            keys_to_remove = [k for k in cache_instance.keys() if k.startswith(path + "?")]
+            for key_to_remove in keys_to_remove:
+                cache_instance.remove_method(key_to_remove)
         
         return result1 or result2 or result3
     
@@ -679,17 +689,21 @@ class AssetManager:
             "total": total_stats
         }
     
-    def get_resource_info(self, path: str) -> Dict[str, Any]:
+    def get_resource_info(self, path: str) -> Optional[Dict[str, Any]]:
         """获取资源信息
         
         Args:
             path: 资源路径
             
         Returns:
-            Dict[str, Any]: 资源信息
+            Optional[Dict[str, Any]]: 资源信息, 或 None
         """
-        full_path = os.path.join(self.base_path, path)
-        return self.loader.get_resource_info(full_path)
+        # ResourceLoader.get_resource_info 应该负责解析路径
+        # AssetManager 已经通过 set_base_path 设置了 loader.base_path
+        resource_info = self.loader.get_resource_info(path)
+        if resource_info is None:
+            self.logger.debug(f"AssetManager.get_resource_info: 未找到资源信息 for '{path}'")
+        return resource_info
     
     def is_cached(self, path: str) -> bool:
         """检查资源是否已缓存
@@ -700,9 +714,19 @@ class AssetManager:
         Returns:
             bool: 是否已缓存
         """
-        resource_type = self.loader._get_resource_type(path)
-        cache = self._get_cache_for_type(resource_type)
-        return cache.contains(path)
+        resource_type_inferred = self.loader._get_resource_type(path)
+        
+        final_resource_type: ResourceType
+        if resource_type_inferred is not None:
+            final_resource_type = resource_type_inferred
+        else:
+            self.logger.debug(f"is_cached: 无法从路径 '{path}' 推断资源类型，将检查 OTHER 类型缓存。")
+            final_resource_type = ResourceType.OTHER
+            
+        cache = self._get_cache_for_type(final_resource_type)
+        # 使用 _make_cache_key 以确保与加载时使用的键格式一致，特别是对于不带参数的资源
+        cache_key = self._make_cache_key(path)
+        return cache.contains(cache_key)
     
     def get_base_path(self) -> str:
         """获取资源基础路径
@@ -737,23 +761,23 @@ class AssetManager:
             bool: 卸载是否成功
         """
         if group_name not in self.preloaded_groups:
-            self.logger.warning(f"尝试卸载不存在的资源组: {group_name}")
+            self.logger.warning(f"预加载组 '{group_name}' 不存在")
             return False
         
-        group_info = self.preloaded_groups[group_name]
-        
-        # 从缓存中删除组中的资源
-        for path in group_info["paths"]:
-            # 尝试不同的资源类型
-            for cache in [self.image_cache, self.audio_cache, self.other_cache]:
-                cache_key = self._make_cache_key(path)
-                cache.remove(cache_key)
-        
-        # 删除组信息
-        del self.preloaded_groups[group_name]
-        
-        self.logger.info(f"资源组已卸载: {group_name}")
-        return True
+        paths_to_unload = self.preloaded_groups.pop(group_name, [])
+        all_unloaded = True
+        if paths_to_unload:
+            self.logger.info(f"开始卸载预加载组: '{group_name}' ({len(paths_to_unload)} 个资源)")
+            for path in paths_to_unload:
+                if not self.unload(path): # unload already calls cache.remove_method internally
+                    # self.logger.warning(f"卸载组 '{group_name}' 中的资源 '{path}' 失败")
+                    # all_unloaded = False # 即使单个失败，也继续卸载其他，不将整体标记为失败
+                    pass # unload 方法会记录自己的日志
+            self.logger.info(f"预加载组 '{group_name}' 卸载完成")
+        else:
+            self.logger.info(f"预加载组 '{group_name}' 为空，无需卸载")
+            
+        return all_unloaded
     
     def get_preloaded_groups(self) -> List[str]:
         """获取所有预加载的资源组名称
@@ -890,7 +914,7 @@ class AssetManager:
         # 否则合并路径
         return os.path.join(self.base_path, relative_path)
 
-    def _load_image(self, path: str, **kwargs) -> Any:
+    def _actual_load_image_impl(self, path: str, **kwargs) -> Any:
         """内部方法：直接加载图像，供测试替换用
         
         Args:
@@ -916,7 +940,7 @@ class AssetManager:
         # 正常情况下调用实际的加载方法
         return self.loader.load_image(self._get_full_path(path), **kwargs)
 
-    def _load_json(self, path: str, **kwargs) -> Any:
+    def _actual_load_json_impl(self, path: str, **kwargs) -> Any:
         """内部方法：直接加载JSON，供测试替换用
         
         Args:

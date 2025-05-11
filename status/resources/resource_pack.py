@@ -8,6 +8,7 @@ Description:                资源包管理，提供资源包加载和切换功�
 
 Changed history:            
                             2025/04/03: 初始创建;
+                            2025/05/12: 修复类型提示;
 ----
 """
 
@@ -16,11 +17,12 @@ import json
 import logging
 import zipfile
 import shutil
-from typing import Dict, Any, List, Optional, Set, Tuple
+from typing import Dict, Any, List, Optional, Set, Tuple, cast, TypeVar, Type
 from enum import Enum, auto
 import threading
 
 from status.core.config import config_manager
+from status.core.types import PathLike
 
 
 class ResourcePackFormat(Enum):
@@ -62,27 +64,27 @@ class ResourcePackMetadata:
             data: 元数据字典
         """
         # 必需字段
-        self.id = data.get("id", "")
-        self.name = data.get("name", "")
-        self.version = data.get("version", "1.0.0")
-        self.description = data.get("description", "")
-        self.format = ResourcePackFormat(data.get("format", 1))
+        self.id: str = data.get("id", "")
+        self.name: str = data.get("name", "")
+        self.version: str = data.get("version", "1.0.0")
+        self.description: str = data.get("description", "")
+        self.format: ResourcePackFormat = ResourcePackFormat(data.get("format", 1))
         
         # 可选字段
-        self.author = data.get("author", "")
-        self.website = data.get("website", "")
-        self.license = data.get("license", "")
-        self.dependencies = data.get("dependencies", [])
-        self.tags = data.get("tags", [])
-        self.preview_image = data.get("preview_image", "")
-        self.created_at = data.get("created_at", "")
-        self.updated_at = data.get("updated_at", "")
+        self.author: str = data.get("author", "")
+        self.website: str = data.get("website", "")
+        self.license: str = data.get("license", "")
+        self.dependencies: List[str] = data.get("dependencies", [])
+        self.tags: List[str] = data.get("tags", [])
+        self.preview_image: str = data.get("preview_image", "")
+        self.created_at: str = data.get("created_at", "")
+        self.updated_at: str = data.get("updated_at", "")
         
         # 资源覆盖设置
-        self.override_settings = data.get("override_settings", {})
+        self.override_settings: Dict[str, Any] = data.get("override_settings", {})
         
         # 原始数据
-        self.raw_data = data
+        self.raw_data: Dict[str, Any] = data
     
     def validate(self) -> bool:
         """验证元数据
@@ -144,16 +146,16 @@ class ResourcePackMetadata:
 class ResourcePack:
     """资源包类"""
     
-    def __init__(self, path: str, pack_type: ResourcePackType):
+    def __init__(self, path: PathLike, pack_type: ResourcePackType):
         """初始化资源包
         
         Args:
             path: 资源包路径
             pack_type: 资源包类型
         """
-        self.path = path
-        self.type = pack_type
-        self.logger = logging.getLogger("Status.ResourcePack")
+        self.path: PathLike = path
+        self.type: ResourcePackType = pack_type
+        self.logger: logging.Logger = logging.getLogger("Status.ResourcePack")
         
         # 资源包元数据
         self.metadata: Optional[ResourcePackMetadata] = None
@@ -165,10 +167,10 @@ class ResourcePack:
         self.file_mapping: Dict[str, str] = {}
         
         # 是否已加载
-        self.loaded = False
+        self.loaded: bool = False
         
         # 加载锁
-        self._load_lock = threading.Lock()
+        self._load_lock: threading.Lock = threading.Lock()
     
     def load(self) -> bool:
         """加载资源包
@@ -184,7 +186,7 @@ class ResourcePack:
         
         with self._load_lock:
             if self.loaded:
-                return True
+                return True # type: ignore[unreachable]
             
             try:
                 self._load_metadata()
@@ -211,11 +213,11 @@ class ResourcePack:
             ResourcePackLoadError: 加载失败时抛出
         """
         metadata_path = ""
-        metadata_content = None
+        metadata_content: Optional[Dict[str, Any]] = None
         
         try:
             if self.type == ResourcePackType.DIRECTORY:
-                metadata_path = os.path.join(self.path, "pack.json")
+                metadata_path = os.path.join(str(self.path), "pack.json")
                 
                 if not os.path.exists(metadata_path):
                     raise ResourcePackLoadError(f"资源包元数据文件不存在: {metadata_path}")
@@ -227,7 +229,7 @@ class ResourcePack:
                 if not zipfile.is_zipfile(self.path):
                     raise ResourcePackLoadError(f"无效的ZIP资源包: {self.path}")
                 
-                with zipfile.ZipFile(self.path, "r") as zip_file:
+                with zipfile.ZipFile(str(self.path), "r") as zip_file:
                     if "pack.json" not in zip_file.namelist():
                         raise ResourcePackLoadError(f"ZIP资源包中缺少元数据文件: {self.path}")
                     
@@ -236,23 +238,25 @@ class ResourcePack:
             
             elif self.type == ResourcePackType.BUILTIN:
                 # 内置资源包，元数据可能是硬编码的
-                if os.path.exists(os.path.join(self.path, "pack.json")):
-                    with open(os.path.join(self.path, "pack.json"), "r", encoding="utf-8") as f:
+                metadata_path = os.path.join(str(self.path), "pack.json")
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, "r", encoding="utf-8") as f:
                         metadata_content = json.load(f)
                 else:
                     # 为内置资源包生成默认元数据
-                    name = os.path.basename(self.path)
+                    name = os.path.basename(str(self.path))
                     metadata_content = {
                         "id": f"builtin.{name}",
                         "name": f"内置资源包 ({name})",
                         "version": "1.0.0",
                         "description": "内置默认资源包",
                         "format": 1,
-                        "author": "Status Team"
+                        "author": "Status-Ming",
+                        "license": "MIT"
                     }
             
-            if metadata_content is None:
-                raise ResourcePackLoadError("无法加载资源包元数据")
+            if not metadata_content:
+                raise ResourcePackLoadError(f"无法加载资源包元数据: {self.path}")
             
             # 创建元数据对象
             self.metadata = ResourcePackMetadata(metadata_content)
@@ -263,161 +267,138 @@ class ResourcePack:
         except json.JSONDecodeError as e:
             raise ResourcePackLoadError(f"资源包元数据格式错误: {str(e)}")
         except Exception as e:
+            # 重新抛出异常以便上层处理
             if isinstance(e, ResourcePackError):
                 raise
             else:
-                raise ResourcePackLoadError(f"加载资源包元数据时出错: {str(e)}")
+                raise ResourcePackLoadError(f"加载资源包元数据失败: {str(e)}")
     
     def _scan_files(self) -> None:
-        """扫描资源包中的文件
+        """扫描资源文件
+        
+        扫描资源包中的所有文件，并建立文件映射
         
         Raises:
             ResourcePackLoadError: 扫描失败时抛出
         """
         try:
             if self.type == ResourcePackType.DIRECTORY:
-                self._scan_directory(self.path)
-            
+                self._scan_directory(str(self.path))
             elif self.type == ResourcePackType.ZIP:
-                self._scan_zip(self.path)
-            
+                self._scan_zip(str(self.path))
             elif self.type == ResourcePackType.BUILTIN:
-                self._scan_directory(self.path)
+                self._scan_directory(str(self.path))
             
-            # 确保 metadata 已加载
-            if self.metadata: 
-                self.logger.debug(f"资源包 '{self.metadata.id}' 包含 {len(self.files)} 个资源文件")
-            else:
-                self.logger.debug(f"资源包 (路径: {self.path}) 包含 {len(self.files)} 个资源文件，但元数据未加载")
+            self.logger.debug(f"资源包 '{self.metadata.id if self.metadata else 'unknown'}' 文件扫描完成，共 {len(self.files)} 个文件")
         except Exception as e:
-            raise ResourcePackLoadError(f"扫描资源包文件时出错: {str(e)}")
+            self.logger.error(f"扫描资源包文件失败: {str(e)}")
+            # 重新抛出异常以便上层处理
+            if isinstance(e, ResourcePackError):
+                raise
+            else:
+                raise ResourcePackLoadError(f"扫描资源包文件失败: {str(e)}")
     
     def _scan_directory(self, directory: str) -> None:
-        """扫描目录类型资源包
+        """扫描目录
         
         Args:
             directory: 目录路径
-            
-        Raises:
-            ResourcePackLoadError: 扫描失败时抛出
         """
-        if not os.path.isdir(directory):
-            raise ResourcePackLoadError(f"资源包路径不是目录: {directory}")
-        
-        # 遍历目录
         for root, _, files in os.walk(directory):
-            # 跳过元数据和其他特殊文件
-            if os.path.basename(root) in [".git", "__pycache__"]:
-                continue
-            
             for file in files:
-                if file in ["pack.json", ".gitignore", "README.md"]:
+                # 跳过元数据文件
+                if file == "pack.json" and root == directory:
                     continue
                 
                 file_path = os.path.join(root, file)
-                relative_path = os.path.relpath(file_path, directory)
+                # 计算相对路径
+                rel_path = os.path.relpath(file_path, directory)
+                # 统一使用正斜杠
+                rel_path = rel_path.replace("\\", "/")
                 
-                # 转换为统一的路径格式（使用正斜杠）
-                relative_path = relative_path.replace("\\", "/")
-                
-                self.files.append(relative_path)
-                self.file_mapping[relative_path] = file_path
+                self.files.append(rel_path)
+                self.file_mapping[rel_path] = file_path
     
     def _scan_zip(self, zip_path: str) -> None:
-        """扫描ZIP类型资源包
+        """扫描ZIP文件
         
         Args:
             zip_path: ZIP文件路径
-            
-        Raises:
-            ResourcePackLoadError: 扫描失败时抛出
         """
-        if not zipfile.is_zipfile(zip_path):
-            raise ResourcePackLoadError(f"无效的ZIP资源包: {zip_path}")
-        
-        try:
-            with zipfile.ZipFile(zip_path, "r") as zip_file:
-                # 过滤出资源文件（排除元数据和其他特殊文件）
-                for file_info in zip_file.infolist():
-                    file_path = file_info.filename
-                    
-                    # 跳过目录和特殊文件
-                    if file_path.endswith("/") or file_path in ["pack.json", ".gitignore", "README.md"]:
-                        continue
-                    
-                    # 跳过隐藏文件和特殊目录
-                    parts = file_path.split("/")
-                    if any(part.startswith(".") or part in ["__pycache__"] for part in parts):
-                        continue
-                    
-                    self.files.append(file_path)
-                    self.file_mapping[file_path] = f"zip:{zip_path}!{file_path}"
-        except Exception as e:
-            raise ResourcePackLoadError(f"扫描ZIP资源包时出错: {str(e)}")
+        with zipfile.ZipFile(zip_path, "r") as zip_file:
+            for file_info in zip_file.infolist():
+                # 跳过目录和元数据文件
+                if file_info.filename.endswith("/") or file_info.filename == "pack.json":
+                    continue
+                
+                # 统一使用正斜杠
+                rel_path = file_info.filename.replace("\\", "/")
+                
+                self.files.append(rel_path)
+                # 对于ZIP文件，映射存储完整路径
+                self.file_mapping[rel_path] = f"{zip_path}:{rel_path}"
     
     def get_file_path(self, relative_path: str) -> Optional[str]:
-        """获取资源文件的实际路径
+        """获取文件实际路径
         
         Args:
             relative_path: 相对路径
             
         Returns:
-            Optional[str]: 实际路径，如果不存在则返回None
+            Optional[str]: 实际路径，如果文件不存在则返回None
         """
-        # 统一路径格式
+        # 统一使用正斜杠
         relative_path = relative_path.replace("\\", "/")
         
         return self.file_mapping.get(relative_path)
     
     def has_file(self, relative_path: str) -> bool:
-        """检查资源包是否包含指定文件
+        """判断文件是否存在
         
         Args:
             relative_path: 相对路径
             
         Returns:
-            bool: 是否包含文件
+            bool: 文件是否存在
         """
-        # 统一路径格式
+        # 统一使用正斜杠
         relative_path = relative_path.replace("\\", "/")
         
         return relative_path in self.file_mapping
     
     def get_file_content(self, relative_path: str) -> Optional[bytes]:
-        """获取资源文件内容
+        """获取文件内容
         
         Args:
             relative_path: 相对路径
             
         Returns:
-            Optional[bytes]: 文件内容，如果不存在则返回None
-            
-        Raises:
-            ResourcePackError: 读取失败时抛出
+            Optional[bytes]: 文件内容，如果文件不存在则返回None
         """
-        # 统一路径格式
+        # 统一使用正斜杠
         relative_path = relative_path.replace("\\", "/")
         
-        # 检查文件是否存在
-        if not self.has_file(relative_path):
+        # 获取实际文件路径
+        file_path = self.file_mapping.get(relative_path)
+        
+        if not file_path:
             return None
         
-        file_path = self.file_mapping[relative_path]
-        
         try:
-            # 处理ZIP文件中的资源
-            if file_path.startswith("zip:"):
-                zip_path, internal_path = file_path[4:].split("!", 1)
+            # 处理ZIP文件
+            if self.type == ResourcePackType.ZIP:
+                # ZIP文件的路径格式为 "zip_path:file_path"
+                zip_path, inner_path = file_path.split(":", 1)
                 
                 with zipfile.ZipFile(zip_path, "r") as zip_file:
-                    return zip_file.read(internal_path)
-            
-            # 处理普通文件
+                    return zip_file.read(inner_path)
             else:
+                # 直接打开文件
                 with open(file_path, "rb") as f:
                     return f.read()
         except Exception as e:
-            raise ResourcePackError(f"读取资源文件失败: {str(e)}")
+            self.logger.error(f"读取文件失败: {relative_path}, 错误: {str(e)}")
+            return None
     
     def get_info(self) -> Dict[str, Any]:
         """获取资源包信息
@@ -425,86 +406,85 @@ class ResourcePack:
         Returns:
             Dict[str, Any]: 资源包信息
         """
-        return {
-            "id": self.metadata.id if self.metadata else "",
-            "name": self.metadata.name if self.metadata else "",
-            "version": self.metadata.version if self.metadata else "",
-            "description": self.metadata.description if self.metadata else "",
-            "author": self.metadata.author if self.metadata else "",
-            "type": self.type.name,
-            "path": self.path,
-            "file_count": len(self.files),
-            "format": self.metadata.format.value if self.metadata else 0,
-            "loaded": self.loaded
-        }
+        if not self.metadata:
+            return {"id": "", "name": "未知资源包", "error": "未加载元数据"}
+        
+        info = self.metadata.to_dict()
+        
+        # 添加额外信息
+        info["file_count"] = len(self.files)
+        info["path"] = str(self.path)
+        info["type"] = self.type.name
+        
+        return info
     
     def __str__(self) -> str:
-        """获取资源包字符串表示
+        """字符串表示
         
         Returns:
-            str: 资源包字符串表示
+            str: 字符串表示
         """
         if self.metadata:
             return f"ResourcePack(id={self.metadata.id}, name={self.metadata.name}, version={self.metadata.version})"
         else:
-            return f"ResourcePack(path={self.path}, type={self.type.name}, loaded={self.loaded})"
+            return f"ResourcePack(path={self.path}, type={self.type.name}, unloaded)"
     
     def __repr__(self) -> str:
-        """获取资源包字符串表示
+        """表示
         
         Returns:
-            str: 资源包字符串表示
+            str: 表示
         """
         return self.__str__()
+
+
+T = TypeVar('T')
 
 
 class ResourcePackManager:
     """资源包管理器"""
     
     # 单例实例
-    _instance = None
-    _lock = threading.Lock()
+    _instance: Optional['ResourcePackManager'] = None
+    _lock: threading.Lock = threading.Lock()
     
     @classmethod
     def get_instance(cls) -> 'ResourcePackManager':
-        """获取资源包管理器实例
+        """获取单例实例
         
         Returns:
-            ResourcePackManager: 资源包管理器实例
+            ResourcePackManager: 单例实例
         """
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = cls()
-        
         return cls._instance
     
     def __init__(self):
         """初始化资源包管理器"""
-        # 防止直接实例化
-        if ResourcePackManager._instance is not None:
-            raise RuntimeError("ResourcePackManager是单例类，请使用get_instance()获取实例")
-        
-        self.logger = logging.getLogger("Status.ResourcePackManager")
+        # 是否已初始化
+        self.initialized: bool = False
         
         # 资源包目录
-        self.builtin_dir = os.path.join(os.path.dirname(__file__), "..", "..", "resources")
-        self.user_dir = os.path.expanduser(config_manager.get("resources.packs_directory", "~/.status/packs"))
+        self.builtin_dir: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets")
+        self.user_dir: str = os.path.join(os.path.expanduser("~"), ".status", "resources", "packs")
         
-        # 确保用户资源包目录存在
-        os.makedirs(self.user_dir, exist_ok=True)
-        
-        # 已加载的资源包
+        # 资源包列表
         self.resource_packs: Dict[str, ResourcePack] = {}
         
-        # 资源路径映射（资源相对路径 -> 处理后的资源包路径）
-        self.resource_path_map: Dict[str, str] = {}
-        
-        # 激活的资源包列表，按优先级排序（高优先级在前）
+        # 激活的资源包列表（ID），顺序代表优先级，索引越小优先级越高
         self.active_packs: List[str] = []
         
-        # 是否已初始化
-        self.initialized = False
+        # 资源路径映射（资源相对路径 -> 实际文件路径）
+        self.resource_path_map: Dict[str, str] = {}
+        
+        # 日志
+        self.logger: logging.Logger = logging.getLogger("Status.ResourcePackManager")
+        
+        # 确保用户资源包目录存在
+        if self.user_dir:
+            os.makedirs(self.user_dir, exist_ok=True)
         
         # 初始化锁
         self._init_lock = threading.Lock()
@@ -520,7 +500,7 @@ class ResourcePackManager:
         
         with self._init_lock:
             if self.initialized:
-                return True
+                return True # type: ignore[unreachable]
             
             self.logger.info("正在初始化资源包管理器...")
             
@@ -635,12 +615,14 @@ class ResourcePackManager:
                         self.logger.info(f"用户资源包 {pack.metadata.name} 覆盖了内置资源包 {existing_pack.metadata.name}")
                         self.resource_packs[pack.metadata.id] = pack
                     else:
-                        # 否则根据版本号决定
-                        if pack.metadata.version > existing_pack.metadata.version:
+                        # 根据版本号决定是否更新
+                        if pack.metadata and existing_pack.metadata and pack.metadata.version > existing_pack.metadata.version:
                             self.logger.info(f"更新资源包: {existing_pack.metadata.name} ({existing_pack.metadata.version}) -> {pack.metadata.name} ({pack.metadata.version})")
                             self.resource_packs[pack.metadata.id] = pack
                         else:
-                            self.logger.info(f"跳过加载旧版本资源包: {pack.metadata.name} ({pack.metadata.version}), 已存在: {existing_pack.metadata.version}")
+                            self.logger.info(f"跳过加载旧版本资源包: {pack.metadata.name if pack.metadata else 'unknown'} ({pack.metadata.version if pack.metadata else 'unknown'}), 已存在: {existing_pack.metadata.version if existing_pack.metadata else 'unknown'}")
+                            # 跳过当前包的处理
+                            continue
                 else:
                     # 添加到已加载资源包列表
                     self.resource_packs[pack.metadata.id] = pack
@@ -725,52 +707,64 @@ class ResourcePackManager:
         """添加资源包
         
         Args:
-            pack_path: 资源包路径
+            pack_path: 资源包路径（ZIP文件或目录）
             
         Returns:
-            Optional[str]: 成功时返回资源包ID，失败时返回None
+            Optional[str]: 资源包ID，如果添加失败则返回None
             
         Raises:
-            ResourcePackError: 加载失败时抛出
+            ResourcePackError: 添加资源包失败时抛出
         """
+        # 确保已初始化
+        if not self.initialized:
+            self.initialize()
+        
+        # 检查路径是否存在
+        if not os.path.exists(pack_path):
+            self.logger.error(f"添加资源包失败: 路径不存在 {pack_path}")
+            return None
+        
         try:
-            # 确保已初始化
-            if not self.initialized:
-                self.initialize()
-            
             # 判断资源包类型
+            pack_type: ResourcePackType
             if os.path.isdir(pack_path):
                 pack_type = ResourcePackType.DIRECTORY
-            elif os.path.isfile(pack_path) and pack_path.endswith(".zip"):
+            elif zipfile.is_zipfile(pack_path):
                 pack_type = ResourcePackType.ZIP
             else:
-                raise ResourcePackError(f"不支持的资源包类型: {pack_path}")
+                self.logger.error(f"添加资源包失败: 无法识别的资源包类型 {pack_path}")
+                return None
             
             # 创建资源包
             pack = ResourcePack(pack_path, pack_type)
             
             # 加载资源包
             pack.load()
- 
-            if not pack.metadata: # 检查 metadata 是否加载成功
-                raise ResourcePackError(f"添加资源包失败: 无法加载元数据 {pack_path}")
+            
+            # 检查资源包是否加载成功
+            if not pack.metadata:
+                self.logger.error(f"添加资源包失败: 无法加载元数据 {pack_path}")
+                return None
             
             # 检查是否已存在同ID资源包
             if pack.metadata.id in self.resource_packs:
                 existing_pack = self.resource_packs[pack.metadata.id]
-                if not existing_pack.metadata: # 确保 existing_pack 的 metadata 也存在
-                    self.logger.warning(f"已存在的资源包 {existing_pack.path} 元数据丢失，将覆盖它")
-                    self.resource_packs[pack.metadata.id] = pack
-                    self.logger.info(f"新资源包 {pack.metadata.name} 覆盖了元数据丢失的现有包")
+                
+                # 判断是否为同一资源包
+                if os.path.samefile(str(existing_pack.path), pack_path):
+                    self.logger.info(f"资源包已存在，无需重复加载: {pack.metadata.id}")
                     return pack.metadata.id
                 
                 # 根据版本号决定是否更新
-                if pack.metadata.version > existing_pack.metadata.version:
+                if pack.metadata and existing_pack.metadata and pack.metadata.version > existing_pack.metadata.version:
                     self.logger.info(f"更新资源包: {existing_pack.metadata.name} ({existing_pack.metadata.version}) -> {pack.metadata.name} ({pack.metadata.version})")
                     self.resource_packs[pack.metadata.id] = pack
                 else:
-                    self.logger.info(f"跳过加载旧版本资源包: {pack.metadata.name} ({pack.metadata.version}), 已存在: {existing_pack.metadata.version}")
-                    return existing_pack.metadata.id # 返回已存在包的ID
+                    self.logger.info(f"跳过加载旧版本资源包: {pack.metadata.name if pack.metadata else 'unknown'} ({pack.metadata.version if pack.metadata else 'unknown'}), 已存在: {existing_pack.metadata.version if existing_pack.metadata else 'unknown'}")
+                    # 返回已存在包的ID，确保返回类型为 Optional[str]
+                    if existing_pack.metadata:
+                        return existing_pack.metadata.id
+                    return None
             else:
                 # 添加到已加载资源包列表
                 self.resource_packs[pack.metadata.id] = pack
@@ -786,8 +780,7 @@ class ResourcePackManager:
                     shutil.copy2(pack_path, target_path)
                     self.logger.info(f"已复制资源包到用户目录: {target_path}")
             
-            if not pack.metadata: 
-                raise ResourcePackError(f"添加资源包失败: 无法加载元数据以返回ID {pack_path}")
+            # pack.metadata 此时必定不为 None
             return pack.metadata.id
         except Exception as e:
             self.logger.error(f"添加资源包失败: {str(e)}")
@@ -1024,30 +1017,29 @@ class ResourcePackManager:
             self.logger.error(f"设置资源包优先级失败: {pack_id}, 错误: {str(e)}")
             return False
     
-    def get_resource_path(self, resource_path: str) -> Optional[str]:
-        """获取资源文件的实际路径
+    def get_resource_path(self, path: str) -> Optional[str]:
+        """获取资源文件实际路径
         
         Args:
-            resource_path: 资源相对路径
+            path: 资源相对路径
             
         Returns:
-            Optional[str]: 实际路径，如果不存在则返回None
+            Optional[str]: 资源文件实际路径，如果资源不存在则返回None
         """
         # 确保已初始化
         if not self.initialized:
             self.initialize()
         
-        # 统一路径格式
-        resource_path = resource_path.replace("\\", "/")
+        # 统一使用正斜杠
+        path = path.replace("\\", "/")
         
-        # 查找资源路径映射
-        return self.resource_path_map.get(resource_path)
+        return self.resource_path_map.get(path)
     
-    def get_resource_content(self, resource_path: str) -> Optional[bytes]:
+    def get_resource_content(self, path: str) -> Optional[bytes]:
         """获取资源文件内容
         
         Args:
-            resource_path: 资源相对路径
+            path: 资源相对路径
             
         Returns:
             Optional[bytes]: 文件内容，如果不存在则返回None
@@ -1060,10 +1052,10 @@ class ResourcePackManager:
             self.initialize()
         
         # 统一路径格式
-        resource_path = resource_path.replace("\\", "/")
+        path = path.replace("\\", "/")
         
         # 获取实际路径
-        file_path = self.get_resource_path(resource_path)
+        file_path = self.get_resource_path(path)
         
         if file_path is None:
             return None
@@ -1083,11 +1075,11 @@ class ResourcePackManager:
         except Exception as e:
             raise ResourcePackError(f"读取资源文件失败: {str(e)}")
     
-    def has_resource(self, resource_path: str) -> bool:
+    def has_resource(self, path: str) -> bool:
         """检查资源是否存在
         
         Args:
-            resource_path: 资源相对路径
+            path: 资源相对路径
             
         Returns:
             bool: 资源是否存在
@@ -1097,10 +1089,10 @@ class ResourcePackManager:
             self.initialize()
         
         # 统一路径格式
-        resource_path = resource_path.replace("\\", "/")
+        path = path.replace("\\", "/")
         
         # 查找资源路径映射
-        return resource_path in self.resource_path_map
+        return path in self.resource_path_map
     
     def list_resources(self, prefix: str = "") -> List[str]:
         """列出资源

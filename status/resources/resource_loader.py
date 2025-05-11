@@ -8,6 +8,7 @@ Description:                资源加载工具模块
 
 Changed history:            
                             2025/04/04: 初始创建;
+                            2025/05/12: 修复类型提示;
 ----
 """
 
@@ -17,79 +18,169 @@ import json
 import logging
 import importlib.util
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Union, Set, Tuple
+from typing import Dict, Any, List, Optional, Union, Set, Tuple, TypeVar, Callable, cast, Type, Protocol, overload, runtime_checkable, TYPE_CHECKING
 from functools import lru_cache
 
-# 尝试导入PySide6相关模块
-try:
-    from PySide6.QtGui import QImage, QPixmap, QFont, QFontDatabase # 假设 QFont 也可能在 PySide 中使用
-    # from PySide6.QtMultimedia import QSoundEffect # 如果用 PySide 加载音效
-    HAS_GUI = True
-except ImportError:
-    HAS_GUI = False
+# 全局标志
+HAS_GUI = False
+
+# PySide6类型定义
+if TYPE_CHECKING:
+    # 类型检查时导入
+    from PySide6.QtGui import QImage, QFont, QFontDatabase, QPixmap
+else:
+    # 运行时尝试导入
+    try:
+        from PySide6.QtGui import QImage, QPixmap, QFont, QFontDatabase
+        HAS_GUI = True
+    except ImportError:
+        HAS_GUI = False
+        # 为类型检查器定义占位类
+        class QImage:
+            def loadFromData(self, data: bytes) -> bool: ...
+            def isNull(self) -> bool: ...
+        class QFont:
+            def setPointSize(self, size: int) -> None: ...
+        class QFontDatabase:
+            @staticmethod
+            def addApplicationFontFromData(data: bytes) -> int: ...
+            @staticmethod
+            def applicationFontFamilies(font_id: int) -> List[str]: ...
+            @staticmethod
+            def addApplicationFont(file_path: str) -> int: ...
+
+# 导入核心类型
+from status.core.types import PathLike
+from status.resources import ResourceType # 添加导入
 
 # 配置日志
 logger = logging.getLogger(__name__)
 
-def natural_sort_key(s):
+def natural_sort_key(s: str) -> List[Union[int, str]]:
     """用于文件的自然排序 (如 frame1.png, frame2.png, ..., frame10.png)"""
     return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', str(s))]
+
+# 用于类型标注的声明
+T = TypeVar('T')
+
+# 资源管理器接口
+@runtime_checkable
+class ResourceManager(Protocol):
+    """资源管理器接口，供ResourceLoader使用"""
+    def has_resource(self, path: str) -> bool: ...
+    def get_resource_content(self, path: str) -> Optional[bytes]: ...
+    def get_resource_path(self, path: str) -> Optional[str]: ...
+    def list_resources(self, prefix: str = "") -> List[str]: ...
+    def reload(self) -> bool: ...
+    def initialize(self) -> bool: ...
 
 class ResourceLoader:
     """资源加载类，提供统一的资源加载接口"""
     
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化资源加载器"""
-        self.logger = logging.getLogger("Status.ResourceLoader")
-        self._manager = None # 资源管理器实例，如 ResourcePackManager
+        self.logger: logging.Logger = logging.getLogger("Status.ResourceLoader")
+        self._manager: Optional[ResourceManager] = None # 资源管理器实例，如 ResourcePackManager
+        self.base_path: Optional[str] = None # 资源的基础路径
         
         # 缓存
-        self._image_cache = {}      # 图像缓存
-        self._sound_cache = {}      # 音效缓存
-        self._font_cache = {}       # 字体缓存
-        self._json_cache = {}       # JSON数据缓存
-        self._text_cache = {}       # 文本缓存
+        self._image_cache: Dict[str, Any] = {}       # 图像缓存
+        self._sound_cache: Dict[str, Any] = {}         # 音效缓存
+        self._font_cache: Dict[Tuple[str, int], Any] = {}  # 字体缓存
+        self._json_cache: Dict[str, Dict[str, Any]] = {}    # JSON数据缓存
+        self._text_cache: Dict[str, str] = {}          # 文本缓存
         
         # 缓存控制
-        self._max_image_cache = 100  # 最大图像缓存数量
-        self._max_sound_cache = 50   # 最大音效缓存数量
-        self._max_font_cache = 20    # 最大字体缓存数量
-        self._max_json_cache = 50    # 最大JSON缓存数量
-        self._max_text_cache = 50    # 最大文本缓存数量
+        self._max_image_cache: int = 100  # 最大图像缓存数量
+        self._max_sound_cache: int = 50   # 最大音效缓存数量
+        self._max_font_cache: int = 20    # 最大字体缓存数量
+        self._max_json_cache: int = 50    # 最大JSON缓存数量
+        self._max_text_cache: int = 50    # 最大文本缓存数量
         
         # 加载默认资源包管理器
         self._load_default_manager()
     
-    def _load_default_manager(self):
+    def _get_resource_type(self, path: str) -> Optional[ResourceType]:
+        """根据文件路径推断资源类型。"""
+        ext = os.path.splitext(path)[1].lower()
+        if ext in (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".svg", ".webp"):
+            return ResourceType.IMAGE
+        elif ext in (".wav", ".mp3", ".ogg", ".flac"):
+            return ResourceType.AUDIO
+        elif ext == ".json":
+            return ResourceType.JSON
+        elif ext in (".txt", ".md", ".csv", ".xml", ".html", ".css", ".js"):
+            return ResourceType.TEXT
+        elif ext in (".ttf", ".otf"):
+            return ResourceType.FONT
+        # 将之前未定义的特定类型归为 OTHER
+        elif ext in (".zip", ".pet_anim", ".pet_config"):
+            self.logger.debug(f"路径 '{path}' 的扩展名 {ext} 归类为 OTHER")
+            return ResourceType.OTHER
+        else:
+            self.logger.debug(f"无法从路径 '{path}' 推断主要资源类型，扩展名: {ext}，归类为 OTHER")
+            return ResourceType.OTHER
+    
+    def _load_default_manager(self) -> None:
         """尝试加载默认的资源管理器"""
         try:
             # 尝试导入资源包管理器
             from status.resources.resource_pack import ResourcePackManager
-            self._manager = ResourcePackManager.get_instance()
-            self.logger.info("已加载ResourcePackManager作为默认资源管理器")
+            pack_manager = ResourcePackManager.get_instance()
+            # 使用 isinstance 检查确保兼容 ResourceManager 协议
+            if hasattr(pack_manager, 'has_resource') and hasattr(pack_manager, 'get_resource_content'):
+                self._manager = pack_manager
+                self.logger.info("已加载ResourcePackManager作为默认资源管理器")
+            else:
+                self.logger.warning("ResourcePackManager不符合ResourceManager接口要求")
         except ImportError:
             self.logger.warning("无法加载ResourcePackManager，将使用文件系统作为备选")
             self._manager = None
     
-    def set_manager(self, manager):
-        # 运行时切换资源管理器实例，便于测试和mock
+    def set_manager(self, manager: Optional[ResourceManager]) -> None:
+        """运行时切换资源管理器实例，便于测试和mock
+        
+        Args:
+            manager: 资源管理器实例
+        """
         self._manager = manager
 
     @property
-    def manager(self):
+    def manager(self) -> Optional[ResourceManager]:
+        """获取当前资源管理器
+        
+        Returns:
+            Optional[ResourceManager]: 当前资源管理器
+        """
         return self._manager
 
-    def has_resource(self, path):
+    def has_resource(self, path: str) -> bool:
+        """检查资源是否存在
+        
+        Args:
+            path: 资源路径
+            
+        Returns:
+            bool: 资源是否存在
+        """
         # 如果 manager 没有 has_resource, 或者返回 False, 尝试文件系统
         mgr = self.manager
         if mgr and hasattr(mgr, 'has_resource') and mgr.has_resource(path):
             return True
         return os.path.exists(path)
 
-    def get_resource_content(self, path):
+    def get_resource_content(self, path: str) -> Optional[bytes]:
+        """获取资源内容
+        
+        Args:
+            path: 资源路径
+            
+        Returns:
+            Optional[bytes]: 资源内容，如果资源不存在则返回None
+        """
         # 优先尝试 manager
         mgr = self.manager
-        content = None
+        content: Optional[bytes] = None
         
         if mgr and hasattr(mgr, 'get_resource_content'):
             content = mgr.get_resource_content(path)
@@ -104,7 +195,7 @@ class ResourceLoader:
         
         return content
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         """清空所有缓存"""
         self._image_cache.clear()
         self._sound_cache.clear()
@@ -112,14 +203,27 @@ class ResourceLoader:
         self._json_cache.clear()
         self._text_cache.clear()
 
-    def reload(self):
-        """重新加载资源管理器并清空缓存"""
+    def reload(self) -> bool:
+        """重新加载资源管理器并清空缓存
+        
+        Returns:
+            bool: 是否重新加载成功
+        """
         mgr = self.manager
         self.clear_cache()
+        
         if mgr and hasattr(mgr, 'reload'):
-            return mgr.reload()
+            try:
+                return bool(mgr.reload())
+            except Exception:
+                return False
+                
         if mgr and hasattr(mgr, 'initialize'):
-            return mgr.initialize()
+            try:
+                return bool(mgr.initialize())
+            except Exception:
+                return False
+                
         return False # 如果 manager 无相关方法
     
     def initialize(self) -> bool:
@@ -130,7 +234,10 @@ class ResourceLoader:
         """
         # 初始化资源包管理器
         if self.manager and hasattr(self.manager, 'initialize'):
-            return self.manager.initialize()
+            try:
+                return bool(self.manager.initialize())
+            except Exception:
+                return False
         return True # 如果 manager 无需初始化，则认为成功
     
     def get_resource_path(self, resource_path: str) -> Optional[str]:
@@ -143,7 +250,7 @@ class ResourceLoader:
             resource_path: 资源路径
             
         Returns:
-            str: 资源的实际文件系统路径，或None（如果资源不存在）
+            Optional[str]: 资源的实际文件系统路径，或None（如果资源不存在）
         """
         mgr = self.manager
         
@@ -169,7 +276,7 @@ class ResourceLoader:
         Returns:
             List[str]: 符合条件的资源路径列表
         """
-        resources = []
+        resources: List[str] = []
         if self.manager and hasattr(self.manager, 'list_resources'):
             resources = self.manager.list_resources(prefix)
         
@@ -203,7 +310,37 @@ class ResourceLoader:
         
         return sorted(resources, key=natural_sort_key)
     
-    def load_image(self, image_path: str, use_cache: bool = True) -> Optional[QImage]:
+    def load_resource(self, path: str, resource_type: Optional[ResourceType] = None, use_cache: bool = True, **kwargs: Any) -> Any:
+        """通用资源加载方法。
+
+        Args:
+            path: 资源路径。
+            resource_type: 显式指定的资源类型。如果为None，则尝试从路径推断。
+            use_cache: 是否使用缓存。
+            **kwargs: 传递给特定加载方法的额外参数。
+        
+        Returns:
+            加载的资源，如果加载失败则为 None。
+        """
+        r_type = resource_type if resource_type is not None else self._get_resource_type(path)
+
+        if r_type == ResourceType.IMAGE:
+            return self.load_image(path, use_cache=use_cache, **kwargs)
+        elif r_type == ResourceType.AUDIO:
+            return self.load_sound(path, use_cache=use_cache)
+        elif r_type == ResourceType.JSON:
+            return self.load_json(path, use_cache=use_cache, encoding=kwargs.get('encoding', 'utf-8'))
+        elif r_type == ResourceType.TEXT:
+            return self.load_text(path, use_cache=use_cache, encoding=kwargs.get('encoding', 'utf-8'))
+        elif r_type == ResourceType.FONT:
+            return self.load_font(path, size=kwargs.get('size', 16), use_cache=use_cache)
+        # ANIMATION, CONFIG, ARCHIVE 等会通过 _get_resource_type 映射为 OTHER (或其他已定义类型)
+        # 因此这里不需要单独处理它们，它们会进入下面的 else 分支
+        else: # ResourceType.OTHER 或 r_type 为 None (如果 _get_resource_type 返回 None)
+            self.logger.warning(f"load_resource: 无法加载未知或不支持的资源类型 ({r_type}) for path: {path}")
+            return None
+
+    def load_image(self, image_path: str, use_cache: bool = True) -> Optional[Any]:
         """加载图像资源
         
         Args:
@@ -211,7 +348,7 @@ class ResourceLoader:
             use_cache: 是否使用缓存
             
         Returns:
-            QImage: 加载的图像对象，或None（如果加载失败）
+            Optional[Any]: 加载的图像对象，或None（如果加载失败）
         """
         if not HAS_GUI:
             self.logger.error("QImage未导入，无法加载图像")
@@ -248,25 +385,24 @@ class ResourceLoader:
                     return None
             
             except Exception as e:
-                self.logger.error(f"处理图像数据时出错: {e}")
+                self.logger.error(f"加载图像失败: {image_path}, 错误: {e}")
                 return None
-            
-        # 尝试从文件路径加载
+        
+        # 直接从文件路径加载
         try:
             qimage = QImage(real_path)
             
             if qimage.isNull():
-                self.logger.error(f"加载图像失败: {real_path}")
+                self.logger.error(f"QImage加载图像失败: {image_path}")
                 return None
                 
-            # 加载成功
             if use_cache:
                 self._image_cache[image_path] = qimage
                 
             return qimage
             
         except Exception as e:
-            self.logger.error(f"加载图像时出错: {e}")
+            self.logger.error(f"加载图像失败: {image_path}, 错误: {e}")
             return None
     
     def load_sound(self, sound_path: str, use_cache: bool = True) -> Optional[Any]:
@@ -277,10 +413,12 @@ class ResourceLoader:
             use_cache: 是否使用缓存
             
         Returns:
-            Any: 加载的音效对象，或None（如果加载失败）
+            Optional[Any]: 加载的音效对象，或None（如果加载失败）
         """
-        # 实际实现等待添加 QSoundEffect 或其他音效引擎
-        self.logger.warning("音效加载功能尚未实现")
+        # 此方法还未实现或者需要根据实际使用的音效库来实现
+        # TODO: 实现音效加载功能，如使用 pygame.mixer 或 PySide6.QtMultimedia 等
+        self.logger.warning("load_sound方法未实现")
+        return None
     
     def load_font(self, font_path: str, size: int = 16, use_cache: bool = True) -> Optional[Any]:
         """加载字体资源
@@ -291,89 +429,121 @@ class ResourceLoader:
             use_cache: 是否使用缓存
             
         Returns:
-            QFont: 加载的字体对象，或None（如果加载失败）
+            Optional[Any]: 加载的字体对象，或None（如果加载失败）
         """
         if not HAS_GUI:
             self.logger.error("QFont未导入，无法加载字体")
             return None
             
-        # 缓存键包含字体路径和大小
-        cache_key = f"{font_path}_{size}"
+        # 缓存键
+        cache_key = (font_path, size)
         
         # 如果启用缓存且已在缓存中，直接返回
         if use_cache and cache_key in self._font_cache:
             return self._font_cache[cache_key]
-        
+            
         # 获取资源实际路径
         real_path = self.get_resource_path(font_path)
-            
+        
+        # 如果获取不到实际路径，尝试直接从内容加载
         if not real_path:
-            self.logger.error(f"找不到字体: {font_path}")
-            return None
-            
-        # 尝试加载字体
-        try:
-            font = QFont()
-            font_database = QFontDatabase()
-            
-            # 从文件加载字体
-            font_id = font_database.addApplicationFont(real_path)
-            
-            if font_id != -1:
-                # 获取字体族名称
-                font_families = font_database.applicationFontFamilies(font_id)
-                if font_families:
-                    font.setFamily(font_families[0])
-                    font.setPointSize(size)
-            else:
-                # 如果 addApplicationFont 失败，尝试使用系统字体作为后备
-                font.setFamily("Arial") # 或者其他通用的后备字体
+            content = self.get_resource_content(font_path)
+            if not content:
+                self.logger.error(f"找不到字体: {font_path}")
+                return None
+                
+            # 从二进制数据加载QFont
+            try:
+                # 使用QFontDatabase从内存加载字体
+                if TYPE_CHECKING:
+                    from PySide6.QtGui import QFontDatabase
+                font_id = QFontDatabase.addApplicationFontFromData(content)
+                if font_id == -1:
+                    self.logger.error(f"从内存加载字体失败: {font_path}")
+                    return None
+                    
+                # 获取字体族
+                families = QFontDatabase.applicationFontFamilies(font_id)
+                if not families:
+                    self.logger.error(f"无法获取字体族: {font_path}")
+                    return None
+                    
+                font = QFont(families[0])
                 font.setPointSize(size)
-                self.logger.warning(f"无法通过 addApplicationFont 加载字体 {real_path}，使用后备字体 Arial")
+                
+                if use_cache:
+                    self._font_cache[cache_key] = font
+                    
+                return font
             
-            # 加入缓存
+            except Exception as e:
+                self.logger.error(f"加载字体失败: {font_path}, 错误: {e}")
+                return None
+        
+        # 直接从文件路径加载
+        try:
+            # 使用QFontDatabase加载字体文件
+            if TYPE_CHECKING:
+                from PySide6.QtGui import QFontDatabase
+            font_id = QFontDatabase.addApplicationFont(real_path)
+            if font_id == -1:
+                self.logger.error(f"加载字体失败: {font_path}")
+                return None
+                
+            # 获取字体族
+            families = QFontDatabase.applicationFontFamilies(font_id)
+            if not families:
+                self.logger.error(f"无法获取字体族: {font_path}")
+                return None
+                
+            font = QFont(families[0])
+            font.setPointSize(size)
+            
             if use_cache:
                 self._font_cache[cache_key] = font
-            
+                
             return font
             
         except Exception as e:
-            self.logger.error(f"加载字体时出错: {e}")
+            self.logger.error(f"加载字体失败: {font_path}, 错误: {e}")
             return None
     
-    def load_json(self, json_path: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
+    def load_json(self, json_path: str, use_cache: bool = True, encoding: str = "utf-8") -> Optional[Dict[str, Any]]:
         """加载JSON资源
         
         Args:
             json_path: JSON资源路径
             use_cache: 是否使用缓存
+            encoding: 文件编码
             
         Returns:
-            Dict[str, Any]: 解析后的JSON数据，或None（如果加载失败）
+            Optional[Dict[str, Any]]: 加载的JSON数据，或None（如果加载失败）
         """
         # 如果启用缓存且已在缓存中，直接返回
-        if use_cache and json_path in self._json_cache:
-            return self._json_cache[json_path]
-        
-        # 先尝试加载文本内容
-        text_content = self.load_text(json_path, use_cache=False) # 重命名以避免与内置text冲突
+        cache_key = f"{json_path}_{encoding}" # 缓存键应考虑编码
+        if use_cache and cache_key in self._json_cache:
+            return self._json_cache[cache_key]
             
-        if not text_content:
-            self.logger.error(f"无法加载JSON文件内容: {json_path}")
+        # 获取资源内容
+        content = self.get_resource_content(json_path)
+        if not content:
+            self.logger.error(f"找不到JSON文件: {json_path}")
             return None
             
-        # 解析JSON
+        # 解析JSON数据
         try:
-            data = json.loads(text_content)
+            json_data = json.loads(content.decode(encoding))
             
-            # 加入缓存
             if use_cache:
-                self._json_cache[json_path] = data
-            
-            return data
+                self._json_cache[cache_key] = json_data
+                
+            return json_data
             
         except json.JSONDecodeError as e:
-            self.logger.error(f"解析JSON时出错: {json_path}, {e}")
+            self.logger.error(f"JSON解析失败: {json_path}, 错误: {e}")
+            return None
+        except Exception as e:
+            self.logger.error(f"加载JSON失败: {json_path}, 错误: {e}")
             return None
     
     def load_text(self, text_path: str, encoding: str = "utf-8", use_cache: bool = True) -> Optional[str]:
@@ -385,76 +555,110 @@ class ResourceLoader:
             use_cache: 是否使用缓存
             
         Returns:
-            str: 加载的文本内容，或None（如果加载失败）
+            Optional[str]: 加载的文本内容，或None（如果加载失败）
         """
-        # 如果启用缓存且已在缓存中，直接返回
+        # 缓存键（包含编码信息）
         cache_key = f"{text_path}_{encoding}"
+        
+        # 如果启用缓存且已在缓存中，直接返回
         if use_cache and cache_key in self._text_cache:
             return self._text_cache[cache_key]
-        
-        # 获取资源二进制内容
-        binary_content = self.get_resource_content(text_path)
             
-        if not binary_content:
+        # 获取资源内容
+        content = self.get_resource_content(text_path)
+        if not content:
             self.logger.error(f"找不到文本文件: {text_path}")
             return None
             
-        # 尝试解码文本
+        # 解码文本
         try:
-            decoded_text = binary_content.decode(encoding)
+            text = content.decode(encoding)
             
-            # 加入缓存
             if use_cache:
-                self._text_cache[cache_key] = decoded_text
-            
-            return decoded_text
+                self._text_cache[cache_key] = text
+                
+            return text
             
         except UnicodeDecodeError as e:
-            self.logger.error(f"解码文本文件时出错: {text_path}, {e}")
+            self.logger.error(f"文本解码失败: {text_path}, 编码: {encoding}, 错误: {e}")
+            return None
+        except Exception as e:
+            self.logger.error(f"加载文本失败: {text_path}, 错误: {e}")
             return None
     
-    def load_image_sequence(self, directory_path: str, use_cache: bool = True) -> Optional[List[QImage]]:
+    def load_image_sequence(self, directory_path: str, use_cache: bool = True) -> Optional[List[Any]]:
         """加载图像序列
         
+        加载目录中所有图像，按自然排序排序（如: frame1.png, frame2.png, ..., frame10.png）
+        
         Args:
-            directory_path: 包含图像序列的目录路径
+            directory_path: 图像序列目录路径
             use_cache: 是否使用缓存
             
         Returns:
-            List[QImage]: 图像序列，或None（如果加载失败）
+            Optional[List[Any]]: 加载的图像序列，或None（如果加载失败）
         """
-        if not HAS_GUI:
-            self.logger.error("QImage未导入，无法加载图像序列")
-            return None
-            
-        # 列出目录中的图像资源
+        # 列出目录中的所有图像
         image_files = self.list_resources(directory_path, resource_type="image")
         
         if not image_files:
-            self.logger.error(f"未找到图像序列: {directory_path}")
+            self.logger.error(f"目录中没有图像: {directory_path}")
             return None
-    
-        # 加载并排序图像
-        images = []
-        for image_file in sorted(image_files, key=natural_sort_key):
-            # 构建完整路径
-            if directory_path.endswith("/") or directory_path.endswith("\\"):
-                image_path = f"{directory_path}{image_file}"
-            else:
-                image_path = f"{directory_path}/{image_file}"
-                
-            # 加载图像
-            image = self.load_image(image_path, use_cache=use_cache)
+            
+        # 加载每个图像
+        images: List[Any] = []
+        for image_file in image_files:
+            full_path = os.path.join(directory_path, image_file) if not image_file.startswith(directory_path) else image_file
+            image = self.load_image(full_path, use_cache)
+            
             if image:
                 images.append(image)
-            
+                
         if not images:
-            self.logger.error(f"图像序列加载失败: {directory_path}")
+            self.logger.error(f"没有成功加载任何图像: {directory_path}")
             return None
             
-        self.logger.info(f"已加载图像序列，共 {len(images)} 帧，来自 {directory_path}")
         return images
 
+    def get_resource_info(self, path: str) -> Optional[Dict[str, Any]]:
+        """获取资源的基本信息。
+
+        Args:
+            path: 资源路径。
+
+        Returns:
+            一个包含资源信息的字典 (例如，大小，类型，修改时间)，如果资源不存在则为 None。
+            信息字典可能包含: 'path', 'type', 'size_bytes', 'last_modified', 'full_path'。
+        """
+        actual_path = self.get_resource_path(path) # 尝试通过管理器获取实际路径
+        if not actual_path:
+            # 如果管理器未返回路径，但路径本身可能就是个直接的文件系统路径
+            if os.path.exists(path):
+                actual_path = path
+            else:
+                self.logger.debug(f"get_resource_info: 资源不存在于任何已知位置: {path}")
+                return None
+
+        if not os.path.exists(actual_path):
+            self.logger.debug(f"get_resource_info: 实际路径不存在: {actual_path} (原始路径: {path})")
+            return None
+
+        try:
+            resource_type = self._get_resource_type(actual_path)
+            size_bytes = os.path.getsize(actual_path)
+            last_modified = os.path.getmtime(actual_path)
+            
+            info: Dict[str, Any] = {
+                'path': path, # 原始请求路径
+                'full_path': actual_path, # 实际文件系统路径
+                'type': resource_type.value if resource_type else "unknown", # 使用枚举值
+                'size_bytes': size_bytes,
+                'last_modified': last_modified
+            }
+            return info
+        except Exception as e:
+            self.logger.error(f"获取资源 '{path}' (实际: '{actual_path}') 信息失败: {e}")
+            return None
 
 # 创建资源加载器实例
 # resource_loader = ResourceLoader() # 实例应由 AssetManager 创建和管理

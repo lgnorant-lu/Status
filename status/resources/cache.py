@@ -8,13 +8,14 @@ Description:                缓存系统，实现资源缓存逻辑，优化资�
 
 Changed history:            
                             2025/04/03: 初始创建;
+                            2025/05/12: 修复类型提示;
 ----
 """
 
 import time
 import logging
 import threading
-from typing import Dict, Any, Optional, List, Tuple, Callable
+from typing import Dict, Any, Optional, List, Tuple, Callable, cast
 from enum import Enum, auto
 import weakref
 import gc
@@ -67,15 +68,15 @@ class CacheItem:
         """
         # 对于某些已知类型，使用其内部方法或属性来获取大小
         if hasattr(obj, 'nbytes'):  # 例如numpy数组
-            return obj.nbytes
+            return int(obj.nbytes)  # 确保返回int类型
         elif hasattr(obj, 'width') and hasattr(obj, 'height'):  # QImage或类似的图像对象
             # 估计图像大小：宽x高x像素深度（假设4字节RGBA）
-            return obj.width() * obj.height() * 4
+            return int(obj.width() * obj.height() * 4)
         elif hasattr(obj, 'size'):  # PIL.Image或具有size属性的对象
             if isinstance(obj.size, tuple) and len(obj.size) >= 2:
                 # 假设是PIL图像，size是(width, height)
-                width, height = obj.size
-                return width * height * 4  # 假设4字节RGBA
+                width, height = obj.size[0], obj.size[1]  # 只取前两个元素
+                return int(width * height * 4)  # 假设4字节RGBA
         elif isinstance(obj, (bytes, bytearray)):
             return len(obj)
         elif isinstance(obj, str):
@@ -148,8 +149,14 @@ class Cache:
         self._loading_locks: Dict[str, threading.Lock] = {}
         self._logger = logging.getLogger("Cache")
         
+        # 将核心方法定义为可调用的实例变量，并用内部实现初始化
+        self.get: Callable[..., Any] = self._default_get_impl
+        self.put: Callable[..., None] = self._default_put_impl
+        self.clear: Callable[..., int] = self._default_clear_impl
+        self.remove_method: Callable[[str], bool] = self._default_remove_impl # Renamed to avoid conflict with list.remove
+        
         # 启动自动清理任务
-        self._cleanup_timer = None
+        self._cleanup_timer: Optional[threading.Timer] = None
         self._start_cleanup_task()
     
     def _start_cleanup_task(self) -> None:
@@ -158,13 +165,20 @@ class Cache:
             def cleanup_task():
                 self.cleanup()
                 # 重新调度自身
-                self._cleanup_timer = threading.Timer(self.cleanup_interval, cleanup_task)
-                self._cleanup_timer.daemon = True
-                self._cleanup_timer.start()
+                if self._cleanup_timer is None:
+                    self._cleanup_timer = threading.Timer(self.cleanup_interval, cleanup_task)
+                    self._cleanup_timer.daemon = True
+                    self._cleanup_timer.start()
+                else:
+                    self._cleanup_timer = threading.Timer(self.cleanup_interval, cleanup_task)
+                    self._cleanup_timer.daemon = True
+                    self._cleanup_timer.start()
             
             self._cleanup_timer = threading.Timer(self.cleanup_interval, cleanup_task)
             self._cleanup_timer.daemon = True
             self._cleanup_timer.start()
+            # 无需到达此处
+            return
     
     def _stop_cleanup_task(self) -> None:
         """停止自动清理任务"""
@@ -176,19 +190,9 @@ class Cache:
         """析构函数，确保清理任务被停止"""
         self._stop_cleanup_task()
     
-    def get(self, key: str, default: Any = None, loader: Optional[Callable[[], Any]] = None, 
+    def _default_get_impl(self, key: str, default: Any = None, loader: Optional[Callable[[], Any]] = None, 
             ttl: Optional[float] = None) -> Any:
-        """获取缓存项，如果不存在则返回默认值或使用加载器加载
-        
-        Args:
-            key: 缓存键
-            default: 默认值
-            loader: 加载器函数，当缓存项不存在时调用
-            ttl: 生存时间（秒）
-            
-        Returns:
-            Any: 缓存值或默认值
-        """
+        """获取缓存项的默认实现"""
         with self._lock:
             # 检查缓存项是否存在
             item = self._cache.get(key)
@@ -205,91 +209,50 @@ class Cache:
             
             # 如果存在但处于加载状态，等待加载完成
             if item is not None and item.status == CacheItemStatus.LOADING:
-                # 获取该键的加载锁
                 loading_lock = self._loading_locks.get(key)
                 if loading_lock is not None:
-                    # 释放缓存锁，避免死锁
                     self._lock.release()
                     try:
-                        # 等待加载完成
                         loading_lock.acquire()
                         loading_lock.release()
-                        # 重新获取缓存锁
                         self._lock.acquire()
-                        # 重新获取缓存项
                         item = self._cache.get(key)
                         if item is not None and item.status == CacheItemStatus.READY:
                             item.access()
                             return item.value
                     except Exception as e:
-                        # 处理异常
                         self._logger.error(f"等待加载缓存项时发生错误: {str(e)}")
-                        # 确保重新获取缓存锁
-                        if not self._lock._is_owned():
-                            self._lock.acquire()
+                        if not hasattr(self._lock, '_is_owned') or not getattr(self._lock, '_is_owned', lambda: False)(): self._lock.acquire()
             
-            # 如果不存在且有加载器，使用加载器加载
             if item is None and loader is not None:
-                # 创建加载锁
                 loading_lock = threading.Lock()
                 loading_lock.acquire()
                 self._loading_locks[key] = loading_lock
-                
-                # 创建一个临时的缓存项，标记为正在加载
                 temp_item = CacheItem(key, None, ttl or self.default_ttl)
                 temp_item.status = CacheItemStatus.LOADING
                 self._cache[key] = temp_item
-                
-                # 释放缓存锁
                 self._lock.release()
-                
                 try:
-                    # 调用加载器
                     value = loader()
-                    
-                    # 重新获取缓存锁
                     self._lock.acquire()
-                    
-                    # 创建缓存项并添加到缓存
-                    item = CacheItem(key, value, ttl or self.default_ttl)
-                    self._add_item(key, item)
-                    
+                    new_item_obj = CacheItem(key, value, ttl or self.default_ttl)
+                    self._add_item(key, new_item_obj)
+                    item = new_item_obj
                 except Exception as e:
-                    # 处理加载异常
                     self._logger.error(f"加载缓存项时发生错误: {str(e)}")
-                    
-                    # 重新获取缓存锁
-                    if not self._lock._is_owned():
-                        self._lock.acquire()
-                    
-                    # 将临时缓存项标记为错误
+                    if not hasattr(self._lock, '_is_owned') or not getattr(self._lock, '_is_owned', lambda: False)(): self._lock.acquire()
                     temp_item.status = CacheItemStatus.ERROR
-                    
                 finally:
-                    # 移除加载锁并释放它
                     loading_lock.release()
                     self._loading_locks.pop(key, None)
-                
-                # 如果成功加载，返回值
                 if item is not None and item.status == CacheItemStatus.READY:
                     return item.value
-            
-            # 返回默认值
             return default
     
-    def put(self, key: str, value: Any, ttl: Optional[float] = None) -> None:
-        """添加或更新缓存项
-        
-        Args:
-            key: 缓存键
-            value: 缓存值
-            ttl: 生存时间（秒）
-        """
+    def _default_put_impl(self, key: str, value: Any, ttl: Optional[float] = None) -> None:
+        """添加或更新缓存项的默认实现"""
         with self._lock:
-            # 创建缓存项
             item = CacheItem(key, value, ttl or self.default_ttl)
-            
-            # 添加到缓存
             self._add_item(key, item)
     
     def _add_item(self, key: str, item: CacheItem) -> None:
@@ -316,9 +279,9 @@ class Cache:
         Args:
             key: 缓存键
         """
-        item = self._cache.pop(key, None)
-        if item is not None:
-            self._current_size -= item.size
+        item_popped = self._cache.pop(key, None)
+        if item_popped is not None:
+            self._current_size -= item_popped.size
     
     def _ensure_capacity(self, required_size: int) -> None:
         """确保缓存有足够的空间
@@ -339,8 +302,8 @@ class Cache:
         # 首先移除已过期的项
         expired_keys = [k for k, v in self._cache.items() if v.is_expired()]
         if expired_keys:
-            for key in expired_keys[:1]:  # 每次只移除一项，避免一次性移除太多
-                self._remove_item(key)
+            for key_to_evict_expired in expired_keys[:1]:  # 每次只移除一项，避免一次性移除太多
+                self._remove_item(key_to_evict_expired)
             return
         
         # 根据策略选择要逐出的项
@@ -359,26 +322,22 @@ class Cache:
         # 移除选中的项
         self._remove_item(key_to_evict)
     
-    def remove(self, key: str) -> bool:
-        """从缓存中移除一个项
-        
-        Args:
-            key: 缓存键
-            
-        Returns:
-            bool: 是否成功移除
-        """
+    def _default_remove_impl(self, key: str) -> bool:
+        """从缓存中移除一个项的默认实现"""
         with self._lock:
             if key in self._cache:
                 self._remove_item(key)
                 return True
             return False
     
-    def clear(self) -> None:
-        """清空缓存"""
+    def _default_clear_impl(self) -> int:
+        """清空缓存并返回移除数量的默认实现"""
         with self._lock:
+            cleared_count = len(self._cache)
             self._cache.clear()
             self._current_size = 0
+            self._logger.info(f"缓存已清空，移除了 {cleared_count} 个条目")
+            return cleared_count
     
     def cleanup(self) -> int:
         """清理过期的缓存项
