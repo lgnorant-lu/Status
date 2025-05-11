@@ -8,18 +8,33 @@ Description:                测试配置和钩子
 
 Changed history:            
                             2025/04/04: 初始创建;
+                            2025/05/16: 添加对PySide6的支持;
+                            2025/05/16: 优化PySide6支持，确保QtTest可用;
 ----
 """
 
 # 在测试开始前加载模拟模块，确保它们在其他模块导入之前就已经准备好
 import sys
 import os
+import logging
+import pytest
+from pathlib import Path
+
+# 添加项目根目录到sys.path，确保可以导入项目模块
+sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
 # 导入模拟模块
 from tests.mocks import *
 
-# 添加项目根目录到sys.path，确保可以导入项目模块
-sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
+# 检查PySide6模块是否已加载
+if 'PySide6' in sys.modules and 'PySide6.QtWidgets' in sys.modules:
+    # 确保QApplication在PySide6模块中
+    if hasattr(sys.modules['PySide6.QtWidgets'], 'QApplication'):
+        print("PySide6模块已正确加载（包含QApplication）")
+    else:
+        print("警告：PySide6.QtWidgets模块中缺少QApplication类")
+else:
+    print("PySide6模块未加载或不完整")
 
 # 确保PyQt6的模拟模块已经在sys.modules中
 if 'PyQt6' in sys.modules and 'PyQt6.QtWidgets' in sys.modules:
@@ -30,40 +45,7 @@ if 'PyQt6' in sys.modules and 'PyQt6.QtWidgets' in sys.modules:
         print("警告：PyQt6.QtWidgets模块中缺少QApplication类")
 else:
     print("警告：PyQt6模拟模块未完全加载")
-    
-    # 强制重新加载模拟模块
-    from tests.mocks import QApplication, QSystemTrayIcon, QMenu, QIcon, QAction, QObject, pyqtSignal
-    
-    # 创建模拟模块
-    class QtWidgets:
-        QSystemTrayIcon = QSystemTrayIcon
-        QMenu = QMenu
-        QApplication = QApplication
-    
-    class QtGui:
-        QIcon = QIcon
-        QAction = QAction
-    
-    class QtCore:
-        QObject = QObject
-        pyqtSignal = pyqtSignal
-    
-    class PyQt6:
-        QtWidgets = QtWidgets
-        QtGui = QtGui
-        QtCore = QtCore
-    
-    # 添加到sys.modules中
-    sys.modules['PyQt6'] = PyQt6
-    sys.modules['PyQt6.QtWidgets'] = PyQt6.QtWidgets
-    sys.modules['PyQt6.QtGui'] = PyQt6.QtGui
-    sys.modules['PyQt6.QtCore'] = PyQt6.QtCore
-    
-    print("已手动重新加载PyQt6模拟模块")
-
-import logging
-import pytest
-from pathlib import Path
+    # 这是正常的，因为我们现在专注于PySide6，PyQt6模块已经在mocks.py中映射到PySide6
 
 # 获取项目根目录
 project_root = Path(__file__).parent.parent

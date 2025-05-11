@@ -100,6 +100,7 @@
 
 ## 行为系统
 - [详细日志](Logs/behavior_system_changes.md)
+- [2025-05-14] [行为系统] Emotion System 修复与测试 - 详见 [Logs/Behavior/2025-05-14_emotion_system_fix_and_test.md]
 - 版本: 0.1.0
 - 最近更新: 2023-11-12
 - 相关任务: 桌宠行为系统基础实现

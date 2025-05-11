@@ -20,7 +20,7 @@ from typing import Dict, Any, List, Optional, Set, Tuple
 from enum import Enum, auto
 import threading
 
-from status.config import config_manager
+from status.core.config import config_manager
 
 
 class ResourcePackFormat(Enum):
@@ -153,7 +153,7 @@ class ResourcePack:
         """
         self.path = path
         self.type = pack_type
-        self.logger = logging.getLogger("Hollow-ming.ResourcePack")
+        self.logger = logging.getLogger("Status.ResourcePack")
         
         # 资源包元数据
         self.metadata: Optional[ResourcePackMetadata] = None
@@ -188,6 +188,10 @@ class ResourcePack:
             
             try:
                 self._load_metadata()
+                # 确保 metadata 已加载
+                if not self.metadata:
+                    # _load_metadata 内部应该抛出异常，但作为安全检查
+                    raise ResourcePackLoadError("元数据加载失败，无法继续加载资源包")
                 self._scan_files()
                 self.loaded = True
                 self.logger.info(f"资源包 '{self.metadata.name}' (ID: {self.metadata.id}) 加载成功")
@@ -244,7 +248,7 @@ class ResourcePack:
                         "version": "1.0.0",
                         "description": "内置默认资源包",
                         "format": 1,
-                        "author": "Hollow-ming Team"
+                        "author": "Status Team"
                     }
             
             if metadata_content is None:
@@ -280,7 +284,11 @@ class ResourcePack:
             elif self.type == ResourcePackType.BUILTIN:
                 self._scan_directory(self.path)
             
-            self.logger.debug(f"资源包 '{self.metadata.id}' 包含 {len(self.files)} 个资源文件")
+            # 确保 metadata 已加载
+            if self.metadata: 
+                self.logger.debug(f"资源包 '{self.metadata.id}' 包含 {len(self.files)} 个资源文件")
+            else:
+                self.logger.debug(f"资源包 (路径: {self.path}) 包含 {len(self.files)} 个资源文件，但元数据未加载")
         except Exception as e:
             raise ResourcePackLoadError(f"扫描资源包文件时出错: {str(e)}")
     
@@ -477,11 +485,11 @@ class ResourcePackManager:
         if ResourcePackManager._instance is not None:
             raise RuntimeError("ResourcePackManager是单例类，请使用get_instance()获取实例")
         
-        self.logger = logging.getLogger("Hollow-ming.ResourcePackManager")
+        self.logger = logging.getLogger("Status.ResourcePackManager")
         
         # 资源包目录
         self.builtin_dir = os.path.join(os.path.dirname(__file__), "..", "..", "resources")
-        self.user_dir = os.path.expanduser(config_manager.get("resources.packs_directory", "~/.hollow-ming/packs"))
+        self.user_dir = os.path.expanduser(config_manager.get("resources.packs_directory", "~/.status/packs"))
         
         # 确保用户资源包目录存在
         os.makedirs(self.user_dir, exist_ok=True)
@@ -565,10 +573,13 @@ class ResourcePackManager:
                 # 加载资源包
                 pack.load()
                 
-                # 添加到已加载资源包列表
-                self.resource_packs[pack.metadata.id] = pack
-                
-                self.logger.info(f"已加载内置资源包: {pack.metadata.name} (ID: {pack.metadata.id})")
+                # 确保 metadata 已加载
+                if pack.metadata:
+                    # 添加到已加载资源包列表
+                    self.resource_packs[pack.metadata.id] = pack
+                    self.logger.info(f"已加载内置资源包: {pack.metadata.name} (ID: {pack.metadata.id})")
+                else:
+                    self.logger.error(f"加载内置资源包元数据失败: {item_path}")
             except Exception as e:
                 self.logger.error(f"加载内置资源包失败: {item_path}, 错误: {str(e)}")
     
@@ -605,17 +616,26 @@ class ResourcePackManager:
                 # 加载资源包
                 pack.load()
                 
+                # 确保 metadata 已加载
+                if not pack.metadata:
+                    self.logger.error(f"加载用户资源包元数据失败: {item_path}")
+                    continue
+                
                 # 检查是否已存在同ID资源包
                 if pack.metadata.id in self.resource_packs:
                     existing_pack = self.resource_packs[pack.metadata.id]
-                    
+                    if not existing_pack.metadata: # 确保 existing_pack 的 metadata 也存在
+                        self.logger.warning(f"已存在的资源包 {existing_pack.path} 元数据丢失，将覆盖它")
+                        self.resource_packs[pack.metadata.id] = pack
+                        self.logger.info(f"用户资源包 {pack.metadata.name} 覆盖了元数据丢失的现有包")
+                        continue
+
                     # 如果内置资源包，则用户资源包优先
                     if existing_pack.type == ResourcePackType.BUILTIN:
                         self.logger.info(f"用户资源包 {pack.metadata.name} 覆盖了内置资源包 {existing_pack.metadata.name}")
                         self.resource_packs[pack.metadata.id] = pack
                     else:
                         # 否则根据版本号决定
-                        # 简单比较版本号，实际可能需要更复杂的版本比较逻辑
                         if pack.metadata.version > existing_pack.metadata.version:
                             self.logger.info(f"更新资源包: {existing_pack.metadata.name} ({existing_pack.metadata.version}) -> {pack.metadata.name} ({pack.metadata.version})")
                             self.resource_packs[pack.metadata.id] = pack
@@ -624,7 +644,6 @@ class ResourcePackManager:
                 else:
                     # 添加到已加载资源包列表
                     self.resource_packs[pack.metadata.id] = pack
-                    
                     self.logger.info(f"已加载用户资源包: {pack.metadata.name} (ID: {pack.metadata.id})")
             except Exception as e:
                 self.logger.error(f"加载用户资源包失败: {item_path}, 错误: {str(e)}")
@@ -670,7 +689,7 @@ class ResourcePackManager:
         for pack_id in reversed(self.active_packs):
             pack = self.resource_packs.get(pack_id)
             
-            if pack is None:
+            if pack is None or not pack.metadata: # 增加对 pack.metadata 的检查
                 continue
             
             # 遍历资源包中的所有文件
@@ -679,7 +698,9 @@ class ResourcePackManager:
                 resource_path = file_path
                 
                 # 将资源路径映射到资源包文件路径
-                self.resource_path_map[resource_path] = pack.get_file_path(file_path)
+                actual_file_path = pack.get_file_path(file_path)
+                if actual_file_path: # 确保路径不是None
+                    self.resource_path_map[resource_path] = actual_file_path
         
         self.logger.debug(f"已更新资源路径映射，共 {len(self.resource_path_map)} 个资源")
     
@@ -730,10 +751,18 @@ class ResourcePackManager:
             
             # 加载资源包
             pack.load()
+ 
+            if not pack.metadata: # 检查 metadata 是否加载成功
+                raise ResourcePackError(f"添加资源包失败: 无法加载元数据 {pack_path}")
             
             # 检查是否已存在同ID资源包
             if pack.metadata.id in self.resource_packs:
                 existing_pack = self.resource_packs[pack.metadata.id]
+                if not existing_pack.metadata: # 确保 existing_pack 的 metadata 也存在
+                    self.logger.warning(f"已存在的资源包 {existing_pack.path} 元数据丢失，将覆盖它")
+                    self.resource_packs[pack.metadata.id] = pack
+                    self.logger.info(f"新资源包 {pack.metadata.name} 覆盖了元数据丢失的现有包")
+                    return pack.metadata.id
                 
                 # 根据版本号决定是否更新
                 if pack.metadata.version > existing_pack.metadata.version:
@@ -741,24 +770,24 @@ class ResourcePackManager:
                     self.resource_packs[pack.metadata.id] = pack
                 else:
                     self.logger.info(f"跳过加载旧版本资源包: {pack.metadata.name} ({pack.metadata.version}), 已存在: {existing_pack.metadata.version}")
-                    return existing_pack.metadata.id
+                    return existing_pack.metadata.id # 返回已存在包的ID
             else:
                 # 添加到已加载资源包列表
                 self.resource_packs[pack.metadata.id] = pack
-                
                 self.logger.info(f"已加载资源包: {pack.metadata.name} (ID: {pack.metadata.id})")
             
             # 如果是用户资源包，复制到用户资源包目录
             if pack_type == ResourcePackType.ZIP:
-                # 目标路径
+                if not pack.metadata: 
+                     raise ResourcePackError(f"添加资源包失败: 无法加载元数据用于确定目标路径 {pack_path}")
                 target_path = os.path.join(self.user_dir, f"{pack.metadata.id}.zip")
                 
-                # 检查是否需要复制
                 if os.path.normpath(pack_path) != os.path.normpath(target_path):
-                    # 复制文件
                     shutil.copy2(pack_path, target_path)
                     self.logger.info(f"已复制资源包到用户目录: {target_path}")
             
+            if not pack.metadata: 
+                raise ResourcePackError(f"添加资源包失败: 无法加载元数据以返回ID {pack_path}")
             return pack.metadata.id
         except Exception as e:
             self.logger.error(f"添加资源包失败: {str(e)}")
@@ -1142,7 +1171,7 @@ class ResourcePackManager:
                 "version": "1.0.0",
                 "description": f"自定义资源包 {name}",
                 "format": 1,
-                "author": "用户",
+                "author": "Status Team",
                 "created_at": "",  # 可以添加当前时间
                 "updated_at": ""
             }

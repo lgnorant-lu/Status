@@ -14,7 +14,7 @@ Changed history:
 
 import unittest
 from unittest.mock import Mock, patch, MagicMock
-from PyQt6.QtCore import QRect, QPoint
+from PySide6.QtCore import QRect, QPoint
 
 # 导入被测试的模块
 from status.behavior.decision_maker import (

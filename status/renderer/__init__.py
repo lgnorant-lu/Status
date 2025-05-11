@@ -8,6 +8,7 @@ Description:                渲染模块初始化文件
 
 Changed history:            
                             2025/04/03: 初始创建;
+                            2025/05/11: 从PyQt迁移到PySide;
 ----
 """
 
@@ -23,7 +24,7 @@ from status.renderer.renderer_base import (
 from status.renderer.renderer_manager import RendererManager
 
 # 特定渲染器实现
-from status.renderer.pyqt_renderer import PyQtRenderer
+from status.renderer.pyside_renderer import PySideRenderer
 
 # 绘制相关
 from status.renderer.drawable import (
@@ -75,7 +76,7 @@ __all__ = [
     'RenderLayer',
     
     # 特定渲染器
-    'PyQtRenderer',
+    'PySideRenderer',
     
     # 绘制相关
     'Drawable',

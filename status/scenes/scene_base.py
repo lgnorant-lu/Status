@@ -29,7 +29,7 @@ class SceneBase(ABC):
         self.name = name
         self.active = False
         self.initialized = False
-        self.logger = logging.getLogger(f"Hollow-ming.Scenes.{scene_id}")
+        self.logger = logging.getLogger(f"Status.Scenes.{scene_id}")
         self.data = {}  # 场景数据存储
         
         # 场景元素列表，将在子类中填充

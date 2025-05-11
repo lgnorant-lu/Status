@@ -14,7 +14,7 @@
    - [已完成] 检测桌宠移动至屏幕边界
    - [计划中] 支持简单点击反馈
 5. MVP验收
-   - [已完成] 桌面出现可拖动、Idle动画循环的小骑士
+   - [计划中] 桌面出现可拖动、Idle动画循环的桌面宠物角色
    - [计划中] 交互与动画流畅不卡顿
    - [计划中] 资源热加载与异常容错
 
@@ -52,7 +52,7 @@
 - [计划中] 4.4 交互事件与动画状态联动
 
 ### 5. MVP验收目标
-- [已完成] 5.1 桌面出现可拖动、Idle动画循环的小骑士
+- [已完成] 5.1 桌面出现可拖动、Idle动画循环的桌面宠物角色
 - [计划中] 5.2 交互与动画流畅不卡顿
 - [计划中] 5.3 资源热加载与异常容错
 
@@ -145,3 +145,10 @@
 - 描述: 根据新的项目主题（例如猫咪主题），开始整合替换新的视觉、音频等资源。并对现有UI进行初步调整以适应新主题风格。
 - 依赖: 项目结构清理完成。
 - 优先级: 高
+
+[2025-05-14 任务进度]
+- 已修改: status/behavior/emotion_system.py, tests/behavior/test_emotion_system.py
+- 更改: 修复了EmotionSystem和EmotionalEvent中关于事件强度的双重应用问题，取消了recent_events更新的注释，更新了EmotionSystem.update中的last_update_time。
+- 原因: 解决emotion_system相关单元测试失败（包括最初的determine_emotion失败和后续引入的process_event, update, EmotionalEvent测试失败）。
+- 阻碍因素: 对事件强度处理的逻辑理解和实现与单元测试预期存在偏差，以及日志和时间更新逻辑缺失。
+- 状态: 成功 (tests/behavior/test_emotion_system.py 所有测试通过)

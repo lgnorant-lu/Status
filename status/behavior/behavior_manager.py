@@ -9,11 +9,12 @@ Description:                桌宠行为管理器
 Changed history:            
                             2025/04/04: 初始创建;
                             2025/04/04: 添加行为系统集成;
+                            2025/05/16: 修复文件编码问题;
+                            2025/05/16: 移除循环引用问题;
 ----
 """
 
 import logging
-from status.behavior.basic_behaviors import BehaviorRegistry, initialize_behaviors
 
 
 class BehaviorManager:
@@ -39,6 +40,8 @@ class BehaviorManager:
     def _initialize_behaviors(self):
         """初始化行为注册表"""
         try:
+            # 延迟导入，避免循环引用
+            from status.behavior.basic_behaviors import initialize_behaviors
             initialize_behaviors()
             self.logger.info("行为注册表初始化完成")
         except Exception as e:
@@ -61,9 +64,14 @@ class BehaviorManager:
             self.current_behavior.stop()
             
         try:
+            # 延迟导入，避免循环引用
+            from status.behavior.basic_behaviors import BehaviorRegistry
             registry = BehaviorRegistry.get_instance()
             self.current_behavior = registry.create(behavior_id, **(params or {}))
-            self.current_behavior.start(params)
+            
+            # 确保params不为None
+            behavior_params = params or {}
+            self.current_behavior.start(behavior_params)
             
             # 记录行为历史
             self.behavior_history.append({
@@ -129,5 +137,7 @@ class BehaviorManager:
         Returns:
             list: 行为ID列表
         """
+        # 延迟导入，避免循环引用
+        from status.behavior.basic_behaviors import BehaviorRegistry
         registry = BehaviorRegistry.get_instance()
         return list(registry.behaviors.keys()) 

@@ -13,8 +13,8 @@ Changed history:
 """
 
 import logging
-from PyQt6.QtCore import QObject, QRect, pyqtSignal, Qt
-from PyQt6.QtGui import QMouseEvent
+from PySide6.QtCore import QObject, QRect, pyqtSignal, Qt
+from PySide6.QtGui import QMouseEvent
 from status.core.events import EventManager
 from status.interaction.interaction_event import InteractionEvent, InteractionEventType
 from status.interaction.event_throttler import TimeThrottler

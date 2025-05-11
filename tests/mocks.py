@@ -3,22 +3,31 @@
 File name:                  mocks.py
 Author:                     Ignorant-lu
 Date created:               2025/04/04
-Description:                用于测试的PyQt6模拟模块
+Description:                用于测试的Qt模拟模块
 ----------------------------------------------------------------
 
 Changed history:            
                             2025/04/04: 初始创建;
+                            2025/05/16: 添加对PySide6的支持;
+                            2025/05/16: 专注于PySide6支持，移除PyQt6依赖;
+                            2025/05/16: 改进PyQt6->PySide6映射，解决DLL加载错误;
 ----
 """
 
-# 模拟PyQt6相关的类和枚举，用于单元测试
+# 模拟Qt相关的类和枚举，用于单元测试
 
 import sys
+import types
 from enum import Enum, auto
 
-# 如果PyQt6不存在，就创建模拟类
+# 尝试导入PySide6类，失败时使用模拟类
 try:
-    from PyQt6.QtWidgets import QSystemTrayIcon
+    from PySide6.QtWidgets import QSystemTrayIcon, QMenu, QApplication
+    from PySide6.QtGui import QIcon, QAction
+    from PySide6.QtCore import QObject, Signal
+    # 为保持兼容性，为Signal创建pyqtSignal别名
+    pyqtSignal = Signal
+    print("PySide6模块已正确加载（包含QApplication）")
 except ImportError:
     # 模拟QSystemTrayIcon
     class QSystemTrayIcon:
@@ -81,10 +90,6 @@ except ImportError:
             """激活信号，模拟为方法"""
             pass
 
-# 如果PyQt6不存在，就创建模拟QIcon类
-try:
-    from PyQt6.QtGui import QIcon
-except ImportError:
     # 模拟QIcon
     class QIcon:
         """模拟的QIcon类，用于测试"""
@@ -103,11 +108,6 @@ except ImportError:
             """从主题创建图标"""
             return QIcon()
 
-# 如果PyQt6不存在，就创建模拟QMenu和QAction类
-try:
-    from PyQt6.QtWidgets import QMenu, QApplication
-    from PyQt6.QtGui import QAction
-except ImportError:
     # 模拟QMenu
     class QMenu:
         """模拟的QMenu类，用于测试"""
@@ -117,6 +117,7 @@ except ImportError:
             self.parent = parent
             self.actions = []
             self.submenus = []
+            self.title = ""  # 添加title属性
         
         def addAction(self, action):
             """添加动作"""
@@ -236,10 +237,6 @@ except ImportError:
             """触发信号，模拟为方法"""
             pass
 
-# 如果PyQt6不存在，就创建模拟QObject和信号
-try:
-    from PyQt6.QtCore import QObject, pyqtSignal
-except ImportError:
     # 模拟QObject
     class QObject:
         """模拟的QObject类，用于测试"""
@@ -248,9 +245,9 @@ except ImportError:
             """初始化"""
             pass
     
-    # 模拟pyqtSignal
-    class pyqtSignal:
-        """模拟的pyqtSignal类，用于测试"""
+    # 模拟Signal/pyqtSignal
+    class Signal:
+        """模拟的Signal类，用于测试"""
         
         def __init__(self, *args):
             """初始化"""
@@ -258,46 +255,112 @@ except ImportError:
             self.callbacks = []
         
         def connect(self, callback):
-            """连接回调"""
+            """连接回调函数"""
             self.callbacks.append(callback)
         
         def disconnect(self, callback=None):
-            """断开回调"""
-            if callback:
-                if callback in self.callbacks:
-                    self.callbacks.remove(callback)
-            else:
+            """断开回调函数"""
+            if callback is None:
                 self.callbacks.clear()
+            elif callback in self.callbacks:
+                self.callbacks.remove(callback)
         
         def emit(self, *args):
-            """发射信号"""
+            """发送信号"""
             for callback in self.callbacks:
                 callback(*args)
+    
+    # 为兼容性保留pyqtSignal别名
+    pyqtSignal = Signal
 
-# 将模拟模块添加到sys.modules中
+# 创建模拟的PySide6模块，如果真实模块不存在或不完整
+if 'PySide6' not in sys.modules:
+    # 创建模拟的PySide6模块结构
+    pyside6_module = types.ModuleType('PySide6')
+    sys.modules['PySide6'] = pyside6_module
+    
+    # 创建子模块
+    widgets_module = types.ModuleType('PySide6.QtWidgets')
+    gui_module = types.ModuleType('PySide6.QtGui')
+    core_module = types.ModuleType('PySide6.QtCore')
+    test_module = types.ModuleType('PySide6.QtTest')  # 添加测试模块
+    
+    # 将类添加到各个模块
+    widgets_module.QSystemTrayIcon = QSystemTrayIcon
+    widgets_module.QMenu = QMenu
+    widgets_module.QApplication = QApplication
+    
+    gui_module.QIcon = QIcon
+    gui_module.QAction = QAction
+    
+    core_module.QObject = QObject
+    core_module.Signal = Signal
+    
+    # 注册模块
+    sys.modules['PySide6.QtWidgets'] = widgets_module
+    sys.modules['PySide6.QtGui'] = gui_module
+    sys.modules['PySide6.QtCore'] = core_module
+    sys.modules['PySide6.QtTest'] = test_module  # 注册测试模块
+    
+    # 将模块添加到PySide6包
+    pyside6_module.QtWidgets = widgets_module
+    pyside6_module.QtGui = gui_module
+    pyside6_module.QtCore = core_module
+    pyside6_module.QtTest = test_module  # 添加测试模块
+    
+    print("已创建PySide6模拟模块（包含QtTest）")
+
+# 为兼容现有代码，创建PyQt6->PySide6的映射
 if 'PyQt6' not in sys.modules:
-    class QtWidgets:
-        QSystemTrayIcon = QSystemTrayIcon
-        QMenu = QMenu
-        QApplication = QApplication
+    # 创建PyQt6模块作为PySide6的别名
+    pyqt6_module = types.ModuleType('PyQt6')
+    sys.modules['PyQt6'] = pyqt6_module
     
-    class QtGui:
-        QIcon = QIcon
-        QAction = QAction
+    # 先确保PySide6模块存在
+    if 'PySide6' not in sys.modules or 'PySide6.QtTest' not in sys.modules:
+        # 如果没有完整的PySide6，创建模拟模块
+        if 'PySide6' not in sys.modules:
+            pyside6_module = types.ModuleType('PySide6')
+            sys.modules['PySide6'] = pyside6_module
+        else:
+            pyside6_module = sys.modules['PySide6']
+        
+        # 确保子模块存在
+        if 'PySide6.QtWidgets' not in sys.modules:
+            widgets_module = types.ModuleType('PySide6.QtWidgets')
+            sys.modules['PySide6.QtWidgets'] = widgets_module
+            pyside6_module.QtWidgets = widgets_module
+        
+        if 'PySide6.QtGui' not in sys.modules:
+            gui_module = types.ModuleType('PySide6.QtGui')
+            sys.modules['PySide6.QtGui'] = gui_module
+            pyside6_module.QtGui = gui_module
+        
+        if 'PySide6.QtCore' not in sys.modules:
+            core_module = types.ModuleType('PySide6.QtCore')
+            sys.modules['PySide6.QtCore'] = core_module
+            pyside6_module.QtCore = core_module
+        
+        # 创建QtTest模块
+        if 'PySide6.QtTest' not in sys.modules:
+            test_module = types.ModuleType('PySide6.QtTest')
+            sys.modules['PySide6.QtTest'] = test_module
+            pyside6_module.QtTest = test_module
     
-    class QtCore:
-        QObject = QObject
-        pyqtSignal = pyqtSignal
+    # 创建子模块映射
+    pyqt6_module.QtWidgets = sys.modules['PySide6.QtWidgets']
+    pyqt6_module.QtGui = sys.modules['PySide6.QtGui']
+    pyqt6_module.QtCore = sys.modules['PySide6.QtCore']
+    pyqt6_module.QtTest = sys.modules['PySide6.QtTest']
     
-    class PyQt6:
-        QtWidgets = QtWidgets
-        QtGui = QtGui
-        QtCore = QtCore
+    # 注册子模块
+    sys.modules['PyQt6.QtWidgets'] = pyqt6_module.QtWidgets
+    sys.modules['PyQt6.QtGui'] = pyqt6_module.QtGui
+    sys.modules['PyQt6.QtCore'] = pyqt6_module.QtCore
+    sys.modules['PyQt6.QtTest'] = pyqt6_module.QtTest
     
-    # 添加到sys.modules中
-    sys.modules['PyQt6'] = PyQt6
-    sys.modules['PyQt6.QtWidgets'] = PyQt6.QtWidgets
-    sys.modules['PyQt6.QtGui'] = PyQt6.QtGui
-    sys.modules['PyQt6.QtCore'] = PyQt6.QtCore
+    # 为PyQt6.QtCore添加pyqtSignal作为PySide6.QtCore.Signal的别名
+    if hasattr(sys.modules['PySide6.QtCore'], 'Signal'):
+        sys.modules['PyQt6.QtCore'].pyqtSignal = sys.modules['PySide6.QtCore'].Signal
     
-    print("已成功设置PyQt6模拟模块") 
+    print("PyQt6模拟模块已正确加载（包含QApplication）") 

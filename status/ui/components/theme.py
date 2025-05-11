@@ -17,18 +17,9 @@ import os
 from typing import Dict, Any, Optional, List, Callable
 from enum import Enum
 
-try:
-    from PyQt6.QtCore import Qt, QObject, pyqtSignal, QFile, QTextStream
-    from PyQt6.QtGui import QColor, QPalette
-    from PyQt6.QtWidgets import QApplication, QWidget
-    HAS_PYQT = True
-except ImportError:
-    HAS_PYQT = False
-    # 创建占位类以避免导入错误
-    class QObject:
-        pass
-    class Enum:
-        pass
+from PySide6.QtCore import Qt, QObject, Signal, QFile, QTextStream
+from PySide6.QtGui import QColor, QPalette
+from PySide6.QtWidgets import QApplication, QWidget
 
 logger = logging.getLogger(__name__)
 
@@ -86,10 +77,6 @@ class Theme:
     
     def get_qcolor(self, role: ColorRole) -> QColor:
         """获取特定角色的QColor对象"""
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建QColor")
-            return None
-            
         return QColor(self.get_color(role))
     
     @classmethod
@@ -146,7 +133,7 @@ class Theme:
                 ColorRole.SHADOW: "rgba(0, 0, 0, 0.5)",
                 ColorRole.OVERLAY: "rgba(18, 18, 18, 0.8)"
             },
-            description="默认深色主题，基于Hollow Knight设计风格"
+            description="默认深色主题，基于Status桌面宠物应用设计风格"
         )
     
     @classmethod
@@ -170,34 +157,26 @@ class Theme:
                 ColorRole.SHADOW: "rgba(0, 0, 0, 0.2)",
                 ColorRole.OVERLAY: "rgba(245, 245, 245, 0.8)"
             },
-            description="浅色主题，基于Hollow Knight设计风格的明亮版本"
+            description="浅色主题，基于Status桌面宠物应用设计风格的明亮版本"
         )
 
 class ThemeManager(QObject):
     """主题管理器，管理主题切换和应用"""
     
-    theme_changed = pyqtSignal(Theme)  # 主题变更信号
+    theme_changed = Signal(Theme)  # 主题变更信号
     
     _instance = None  # 单例实例
     
     @classmethod
     def instance(cls) -> 'ThemeManager':
         """获取单例实例"""
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建主题管理器")
-            raise ImportError("PyQt6未安装，无法创建主题管理器")
-            
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
     
     def __init__(self):
         """初始化主题管理器"""
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建主题管理器")
-            raise ImportError("PyQt6未安装，无法创建主题管理器")
-            
-        # 只在有PyQt6时调用super().__init__()
+        # 只在有PySide6时调用super().__init__()
         super().__init__()
         
         # 检查是否已有实例
@@ -237,7 +216,7 @@ class ThemeManager(QObject):
         """获取主题"""
         return self._themes.get(name)
     
-    def get_current_theme(self) -> Theme:
+    def get_current_theme(self) -> Optional[Theme]:
         """获取当前主题"""
         return self._current_theme
     
@@ -276,45 +255,90 @@ class ThemeManager(QObject):
             self._theme_listeners.remove(listener)
     
     def _apply_theme_to_application(self):
-        """将主题应用到整个应用程序"""
-        if not self._current_theme:
-            return
-            
-        # 获取应用程序实例
+        """将当前主题应用到应用程序的样式和调色板"""
         app = QApplication.instance()
-        if not app:
-            logger.error("无法获取QApplication实例")
+        if not isinstance(app, QApplication):
+            logger.warning("QApplication 实例无效或非 QApplication 类型，无法应用主题。")
             return
-            
-        # 生成应用程序样式表
+
+        # 生成并应用样式表
         stylesheet = self._generate_stylesheet()
         app.setStyleSheet(stylesheet)
         
-        # 设置应用程序调色板
+        # 生成并应用调色板
         palette = self._generate_palette()
         app.setPalette(palette)
     
     def _generate_stylesheet(self) -> str:
-        """生成主题样式表"""
-        theme = self._current_theme
-        css_path = self._get_theme_css_path(theme.type)
+        """生成样式表"""
+        current_theme = self.get_current_theme()
         
-        if not css_path or not os.path.exists(css_path):
+        if not current_theme:
+            logger.warning("当前主题未设置，无法生成样式表，将返回默认样式表。")
             return self._generate_default_stylesheet()
-            
-        # 读取主题CSS模板
+
+        # 基础 CSS
+        base_css = f"""
+        /* 生成的默认样式表 */
+        QWidget {{
+            background-color: {current_theme.get_color(ColorRole.BACKGROUND)};
+            color: {current_theme.get_color(ColorRole.TEXT_PRIMARY)};
+        }}
+        
+        QPushButton {{
+            background-color: {current_theme.get_color(ColorRole.PRIMARY)};
+            color: {current_theme.get_color(ColorRole.TEXT_PRIMARY)};
+            border: none;
+            border-radius: 4px;
+            padding: 8px 16px;
+        }}
+        
+        QPushButton:hover {{
+            background-color: {self._adjust_color(current_theme.get_color(ColorRole.PRIMARY), 15)};
+        }}
+        
+        QPushButton:pressed {{
+            background-color: {self._adjust_color(current_theme.get_color(ColorRole.PRIMARY), -15)};
+        }}
+        
+        QLineEdit {{
+            background-color: {current_theme.get_color(ColorRole.SURFACE)};
+            color: {current_theme.get_color(ColorRole.TEXT_PRIMARY)};
+            border: 1px solid {current_theme.get_color(ColorRole.BORDER)};
+            border-radius: 4px;
+            padding: 4px 8px;
+        }}
+        
+        QLabel {{
+            color: {current_theme.get_color(ColorRole.TEXT_PRIMARY)};
+        }}
+        """
+        
+        qss_file_path = ""
+        # 尝试加载特定主题的QSS文件
         try:
-            with open(css_path, 'r', encoding='utf-8') as f:
-                css_template = f.read()
-                
-            # 替换颜色变量
-            for role in ColorRole:
-                placeholder = f"${{color.{role}}}"
-                css_template = css_template.replace(placeholder, theme.get_color(role))
-                
-            return css_template
+            css_path = self._get_theme_css_path(current_theme.type)
+            if css_path and os.path.exists(css_path):
+                qss_file_path = css_path
         except Exception as e:
-            logger.error(f"读取主题CSS模板失败: {e}")
+            logger.warning(f"获取主题 specific QSS路径失败: {e}, 将使用默认样式")
+
+        if qss_file_path:
+            # 读取主题CSS模板
+            try:
+                with open(qss_file_path, 'r', encoding='utf-8') as f:
+                    css_template = f.read()
+                    
+                # 替换颜色变量
+                for role in ColorRole:
+                    placeholder = f"${{color.{role}}}"
+                    css_template = css_template.replace(placeholder, current_theme.get_color(role))
+                    
+                return css_template
+            except Exception as e:
+                logger.error(f"读取主题CSS模板失败: {e}")
+                return self._generate_default_stylesheet()
+        else:
             return self._generate_default_stylesheet()
     
     def _get_theme_css_path(self, theme_type: ThemeType) -> str:
@@ -328,69 +352,93 @@ class ThemeManager(QObject):
             return os.path.join(css_dir, "light_theme.css")
     
     def _generate_default_stylesheet(self) -> str:
-        """生成默认样式表"""
-        theme = self._current_theme
-        
-        # 创建默认样式
+        """生成一个非常基础的默认QSS样式表，不依赖当前主题对象"""
+        # 定义一些绝对的默认颜色值，以防万一主题加载完全失败
+        default_bg_color = "#2B2B2B"       # 深灰背景
+        default_text_color = "#D3D3D3"    # 浅灰文本
+        default_primary_color = "#007ACC" # 蓝色强调
+        default_surface_color = "#3C3C3C"
+        default_border_color = "#555555"
+
         return f"""
-        /* 生成的默认样式表 */
         QWidget {{
-            background-color: {theme.get_color(ColorRole.BACKGROUND)};
-            color: {theme.get_color(ColorRole.TEXT_PRIMARY)};
+            background-color: {default_bg_color};
+            color: {default_text_color};
         }}
         
         QPushButton {{
-            background-color: {theme.get_color(ColorRole.PRIMARY)};
-            color: {theme.get_color(ColorRole.TEXT_PRIMARY)};
+            background-color: {default_primary_color};
+            color: {default_text_color};
             border: none;
             border-radius: 4px;
             padding: 8px 16px;
         }}
         
         QPushButton:hover {{
-            background-color: {self._adjust_color(theme.get_color(ColorRole.PRIMARY), 15)};
+            background-color: #4A90E2; /* 比 primary 亮一点 */
         }}
         
         QPushButton:pressed {{
-            background-color: {self._adjust_color(theme.get_color(ColorRole.PRIMARY), -15)};
+            background-color: #005C99; /* 比 primary 暗一点 */
         }}
         
         QLineEdit {{
-            background-color: {theme.get_color(ColorRole.SURFACE)};
-            color: {theme.get_color(ColorRole.TEXT_PRIMARY)};
-            border: 1px solid {theme.get_color(ColorRole.BORDER)};
+            background-color: {default_surface_color};
+            color: {default_text_color};
+            border: 1px solid {default_border_color};
             border-radius: 4px;
             padding: 4px 8px;
         }}
         
         QLabel {{
-            color: {theme.get_color(ColorRole.TEXT_PRIMARY)};
+            color: {default_text_color};
         }}
         """
     
+    _qt_color_role_map: Dict[ColorRole, QPalette.ColorRole] = {
+        ColorRole.BACKGROUND: QPalette.ColorRole.Window,
+        ColorRole.SURFACE: QPalette.ColorRole.Base,
+        ColorRole.PRIMARY: QPalette.ColorRole.Highlight,
+        ColorRole.SECONDARY: QPalette.ColorRole.ToolTipBase, # 只是一个近似值
+        ColorRole.TEXT_PRIMARY: QPalette.ColorRole.WindowText,
+        ColorRole.TEXT_SECONDARY: QPalette.ColorRole.ToolTipText, # 只是一个近似值
+        ColorRole.BORDER: QPalette.ColorRole.Shadow, # 近似值
+        ColorRole.SUCCESS: QPalette.ColorRole.Highlight, # 可能需要更具体的，但用Highlight暂代
+        ColorRole.WARNING: QPalette.ColorRole.HighlightedText, # Warning 通常是亮色背景上的暗色文字
+        ColorRole.ERROR: QPalette.ColorRole.Dark, # Error 通常是深色，或用红色强调
+        ColorRole.INFO: QPalette.ColorRole.Link, # Info 可以用Link颜色
+        # SHADOW 和 OVERLAY 没有直接的 QPalette.ColorRole 对应, 通常通过样式表处理
+    }
+
     def _generate_palette(self) -> QPalette:
         """生成调色板"""
-        theme = self._current_theme
         palette = QPalette()
+        theme = self.get_current_theme()
         
-        # 设置调色板颜色
-        palette.setColor(QPalette.ColorRole.Window, theme.get_qcolor(ColorRole.BACKGROUND))
-        palette.setColor(QPalette.ColorRole.WindowText, theme.get_qcolor(ColorRole.TEXT_PRIMARY))
-        palette.setColor(QPalette.ColorRole.Base, theme.get_qcolor(ColorRole.SURFACE))
-        palette.setColor(QPalette.ColorRole.AlternateBase, self._adjust_qcolor(theme.get_qcolor(ColorRole.SURFACE), 10))
-        palette.setColor(QPalette.ColorRole.Text, theme.get_qcolor(ColorRole.TEXT_PRIMARY))
-        palette.setColor(QPalette.ColorRole.Button, theme.get_qcolor(ColorRole.SURFACE))
-        palette.setColor(QPalette.ColorRole.ButtonText, theme.get_qcolor(ColorRole.TEXT_PRIMARY))
-        palette.setColor(QPalette.ColorRole.Highlight, theme.get_qcolor(ColorRole.PRIMARY))
-        palette.setColor(QPalette.ColorRole.HighlightedText, theme.get_qcolor(ColorRole.TEXT_PRIMARY))
+        if not theme: # 如果主题为 None，返回默认调色板
+            logger.warning("当前主题未设置，返回默认QPalette。")
+            return palette # 返回一个空的或者预设的默认QPalette
+
+        assert isinstance(theme, Theme), "Theme object should not be None here"
+
+        for app_role, qt_role in self._qt_color_role_map.items():
+            qcolor = theme.get_qcolor(app_role) # theme 在这里已经被确认不是 None
+            if qcolor: # 确保 qcolor 也不是 None (虽然 get_qcolor 正常应返回有效 QColor)
+                palette.setColor(qt_role, qcolor)
+            else:
+                logger.debug(f"角色 {app_role.value} 的 QColor 未能生成，跳过设置此调色板颜色。")
         
+        # 例如，确保按钮等控件的颜色与主题协调
+        if theme.colors.get(ColorRole.PRIMARY.value) is not None:
+            palette.setColor(QPalette.ColorRole.Button, theme.get_qcolor(ColorRole.PRIMARY))
+        if theme.colors.get(ColorRole.TEXT_PRIMARY.value) is not None:
+            palette.setColor(QPalette.ColorRole.ButtonText, theme.get_qcolor(ColorRole.TEXT_PRIMARY))
+            palette.setColor(QPalette.ColorRole.Text, theme.get_qcolor(ColorRole.TEXT_PRIMARY))
+
         return palette
     
     def _adjust_color(self, color: str, amount: int) -> str:
         """调整颜色亮度"""
-        if not HAS_PYQT:
-            return color
-            
         # 创建QColor
         qcolor = QColor(color)
         return self._adjust_qcolor(qcolor, amount).name()
@@ -437,18 +485,10 @@ class ThemeManager(QObject):
 
 def apply_stylesheet(widget: QWidget, stylesheet: str):
     """应用样式表到单个组件"""
-    if not HAS_PYQT:
-        logger.error("PyQt6未安装，无法应用样式表")
-        return
-        
     widget.setStyleSheet(stylesheet)
 
 def apply_theme_to_widget(widget: QWidget, theme: Optional[Theme] = None):
     """将当前主题应用到组件"""
-    if not HAS_PYQT:
-        logger.error("PyQt6未安装，无法应用主题")
-        return
-        
     # 获取主题
     if theme is None:
         theme_manager = ThemeManager.instance()

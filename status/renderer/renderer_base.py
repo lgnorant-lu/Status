@@ -8,12 +8,20 @@ Description:                渲染器基类，定义渲染系统的抽象接口
 
 Changed history:            
                             2025/04/03: 初始创建;
+                            2025/05/11: 创建混合元类以解决QObject和ABC的元类冲突；
 ----
 """
 
-from abc import ABC, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 from typing import Tuple, List, Optional, Dict, Any, Union
 import enum
+
+from PySide6.QtCore import QObject, Signal
+
+# 创建一个混合元类，解决QObject和ABC的元类冲突
+class QObjectABCMeta(type(QObject), ABCMeta):
+    """混合元类，继承自QObject的元类和ABCMeta"""
+    pass
 
 class BlendMode(enum.Enum):
     """混合模式枚举"""
@@ -204,8 +212,12 @@ class Rect:
                 self.width == other.width and 
                 self.height == other.height)
 
-class RendererBase(ABC):
+class RendererBase(QObject, ABC, metaclass=QObjectABCMeta):
     """渲染器基类，定义渲染系统的抽象接口"""
+    
+    def __init__(self):
+        """初始化渲染器基类"""
+        super().__init__()  # 初始化QObject
     
     @abstractmethod
     def initialize(self, width: int, height: int, **kwargs) -> bool:

@@ -28,7 +28,7 @@ class Application:
     
     def __init__(self):
         """初始化应用"""
-        self.logger = logging.getLogger("Hollow-ming.Core.App")
+        self.logger = logging.getLogger("Status.Core.App")
         self.running = False
         self.config = {}
         self.modules = {}
@@ -91,7 +91,7 @@ class Application:
         """加载应用配置"""
         # 实际实现将从配置文件加载
         self.config = {
-            "app_name": "Hollow-ming",
+            "app_name": "Status",
             "version": "0.1.0",
             "default_scene": "dirtmouth",
             "update_interval": 1.0,  # 秒

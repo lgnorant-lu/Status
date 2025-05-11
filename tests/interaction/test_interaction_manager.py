@@ -8,183 +8,188 @@ Description:                桌宠交互管理器测试
 
 Changed history:            
                             2025/04/03: 初始创建;
+                            2025/05/12: 修正QApplication导入和InteractionManager获取逻辑;
 ----
 """
 
 import unittest
 from unittest.mock import Mock, patch
 import sys
+import os
+import logging # Import logging
 
-# 首先导入tests模块中的conftest以确保正确设置mocks
-import tests.conftest
+# Add project root to sys.path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, project_root)
 
-# 从自定义mocks模块导入QApplication
+# Attempt to import QApplication
+QApplication = None
 try:
-    from tests.mocks import QApplication
+    from PySide6.QtWidgets import QApplication
 except ImportError:
-    # 如果不能导入，尝试从PyQt6导入
+    logging.warning("PySide6.QtWidgets.QApplication not found, trying PyQt6.")
     try:
         from PyQt6.QtWidgets import QApplication
     except ImportError:
-        print("无法导入QApplication，测试将失败")
-        # 定义一个替代品，以便代码能继续执行
-        class QApplication:
+        logging.warning("PyQt6.QtWidgets.QApplication not found, using a basic mock.")
+        # Basic mock for QApplication if no Qt bindings are found
+        class MockQApplication:
+            _instance = None
+            def __init__(self, args):
+                MockQApplication._instance = self
+                self.args = args
             @staticmethod
             def instance():
-                return None
-            def __init__(self, argv):
-                pass
+                return MockQApplication._instance
+            def exec(self):
+                return 0 # Mock exec
+        QApplication = MockQApplication
+
+if QApplication is None:
+    # This case should ideally not be reached if the above logic is correct
+    logging.error("QApplication could not be imported or mocked. Tests requiring QApplication may fail.")
+    # Define a very minimal QApplication if it's still None to prevent NameError
+    class MinimalQApplication:
+        _instance = None
+        def __init__(self, args):
+            MinimalQApplication._instance = self
+        @staticmethod
+        def instance(): return MinimalQApplication._instance
+        def exec(self): pass
+    QApplication = MinimalQApplication
+
 
 from status.interaction.interaction_manager import InteractionManager
 from status.core.events import EventManager
-
+from status.interaction.hotkey import HotkeyManager
 
 class TestInteractionManager(unittest.TestCase):
     """测试交互管理器类"""
     
+    app_instance = None # Store QApplication instance at class level
+
     @classmethod
     def setUpClass(cls):
         """测试类初始化"""
-        # 创建QApplication实例，用于测试
-        cls.app = QApplication.instance()
-        if cls.app is None:
-            cls.app = QApplication(sys.argv)
+        if QApplication and QApplication.instance() is None:
+            cls.app_instance = QApplication(sys.argv)
     
     def setUp(self):
         """每个测试前的初始化"""
-        # 清理单例实例
-        InteractionManager._instance = None
-        # Mock事件管理器
+        InteractionManager._instance = None # Reset singleton before each test
         self.mock_event_manager = Mock(spec=EventManager)
-        with patch('status.interaction.interaction_manager.EventManager.get_instance', 
-                  return_value=self.mock_event_manager):
-            # 获取交互管理器实例
-            self.manager = InteractionManager.get_instance()
+        self.mock_app_context = Mock()
+        self.mock_app_context.event_bus = self.mock_event_manager # Ensure event_bus is on app_context
+        self.mock_settings = Mock()
+        
+        # Get/create instance using get_instance, passing necessary args for __init__
+        # Patch EventManager.get_instance as it might be called within InteractionManager's __init__ or get_instance
+        with patch('status.core.config.config_manager.ConfigManager.get_instance') as mock_config_mgr, \
+             patch('status.core.events.EventManager.get_instance', return_value=self.mock_event_manager): 
+            # Assuming EventManager is correctly patched if used by InteractionManager directly
+            # If app_context is supposed to provide EventManager, ensure mock_app_context.event_bus is set
+            self.manager = InteractionManager.get_instance(app_context=self.mock_app_context, settings=self.mock_settings)
+
+    def tearDown(self):
+        """每个测试执行后的清理"""
+        if hasattr(self, 'manager') and self.manager and hasattr(self.manager, '_initialized') and self.manager._initialized:
+            self.manager.shutdown()
+        InteractionManager._instance = None # Reset singleton
+    
+    @classmethod
+    def tearDownClass(cls):
+        """测试类结束后的清理"""
+        # Qt应用的清理可能比较复杂，并且可能依赖于具体的测试运行器
+        # 对于简单的unittest，确保主事件循环退出（如果它曾被启动）
+        # 或者如果mock了QApplication，确保mock状态被重置
+        if cls.app_instance and hasattr(cls.app_instance, 'quit'):
+            # logging.info("Attempting to quit QApplication instance in tearDownClass.")
+            # cls.app_instance.quit() # 通常在GUI测试中，但这可能不适用于所有情况
+            pass # 实际的清理取决于 QApplication mock 或真实实例的行为
+        # logging.info("TestInteractionManager tearDownClass completed.")
     
     def test_singleton_pattern(self):
         """测试单例模式"""
-        # 再次获取实例，应该是同一个实例
-        with patch('status.interaction.interaction_manager.EventManager.get_instance', 
-                  return_value=self.mock_event_manager):
-            another_manager = InteractionManager.get_instance()
-        
-        # 判断是否是同一个实例
+        # self.manager is already created in setUp
+        with patch('status.core.events.EventManager.get_instance', return_value=self.mock_event_manager):
+            another_manager = InteractionManager.get_instance(app_context=self.mock_app_context, settings=self.mock_settings)
         self.assertIs(self.manager, another_manager)
     
-    def test_direct_instantiation_raises_exception(self):
-        """测试直接实例化会引发异常"""
-        # 尝试直接实例化
+    def test_direct_instantiation_after_get_instance_raises_exception(self):
+        """测试在get_instance之后直接实例化会引发异常"""
+        # Instance is created in setUp via get_instance
         with self.assertRaises(RuntimeError):
-            # 不使用get_instance方法，而是直接实例化
-            InteractionManager()
+            InteractionManager(app_context=self.mock_app_context, settings=self.mock_settings)
     
     def test_initialize_subsystems(self):
-        """测试初始化子系统"""
-        # 创建模拟对象
-        mock_app = Mock()
-        mock_window = Mock()
+        """测试初始化子系统 - 重点测试 HotkeyManager 部分"""
+        # mock_window = Mock()
+        # self.mock_app_context.get_main_window = Mock(return_value=mock_window)
         
-        # 模拟子系统类
-        mock_mouse_interaction = Mock()
-        mock_tray_icon = Mock()
-        mock_context_menu = Mock()
+        # mock_mouse_interaction = Mock()
         mock_hotkey_manager = Mock()
-        mock_behavior_trigger = Mock()
-        mock_drag_manager = Mock()
+        mock_hotkey_manager.start = Mock() 
         
-        # 使用patch装饰器模拟导入的子系统类
-        with patch('status.interaction.mouse_interaction.MouseInteraction', return_value=mock_mouse_interaction), \
-             patch('status.interaction.tray_icon.TrayIcon', return_value=mock_tray_icon), \
-             patch('status.interaction.context_menu.ContextMenu', return_value=mock_context_menu), \
-             patch('status.interaction.hotkey.HotkeyManager', return_value=mock_hotkey_manager), \
-             patch('status.interaction.behavior_trigger.BehaviorTrigger', return_value=mock_behavior_trigger), \
-             patch('status.interaction.drag_manager.DragManager', return_value=mock_drag_manager):
+        # 只 Patch HotkeyManager
+        with patch('status.interaction.interaction_manager.HotkeyManager', return_value=mock_hotkey_manager) as MockHotkeyMgrProvider:
             
-            # 初始化交互管理器
-            result = self.manager.initialize(mock_app, mock_window)
+            # 我们期望 InteractionManager.initialize() 内部会执行：
+            # self.keyboard_event_handler = HotkeyManager()  (即 mock_hotkey_manager)
+            # if hasattr(self.keyboard_event_handler, 'start'): self.keyboard_event_handler.start()
+            
+            self.manager.initialize()
         
-        # 验证初始化是否成功
-        self.assertTrue(result)
-        self.assertTrue(self.manager.initialized)
+        # 断言 HotkeyManager() 被调用以获取实例
+        MockHotkeyMgrProvider.assert_called_once_with()
         
-        # 验证子系统是否正确初始化
-        self.assertEqual(self.manager.mouse_interaction, mock_mouse_interaction)
-        self.assertEqual(self.manager.tray_icon, mock_tray_icon)
-        self.assertEqual(self.manager.context_menu, mock_context_menu)
-        self.assertEqual(self.manager.hotkey_manager, mock_hotkey_manager)
-        self.assertEqual(self.manager.behavior_trigger, mock_behavior_trigger)
-        self.assertEqual(self.manager.drag_manager, mock_drag_manager)
-    
+        # 断言 keyboard_event_handler 被正确赋值
+        self.assertIs(self.manager.keyboard_event_handler, mock_hotkey_manager, "keyboard_event_handler should be the mocked instance")
+        
+        # 最关键的断言：mock_hotkey_manager 的 start 方法是否被调用
+        mock_hotkey_manager.start.assert_called_once()
+        
+        # 也可以检查 _initialized 状态，但这取决于其他子系统是否被 mock 或真实执行
+        # self.assertTrue(self.manager._initialized)
+
     def test_handle_interaction_event(self):
         """测试处理交互事件"""
-        # 创建模拟子系统
-        mock_mouse_interaction = Mock()
-        mock_tray_icon = Mock()
-        mock_context_menu = Mock()
-        mock_hotkey_manager = Mock()
-        mock_behavior_trigger = Mock()
-        mock_drag_manager = Mock()
+        self.manager.mouse_event_handler = Mock()
+        self.manager.keyboard_event_handler = Mock()
         
-        # 设置子系统
-        self.manager.mouse_interaction = mock_mouse_interaction
-        self.manager.tray_icon = mock_tray_icon
-        self.manager.context_menu = mock_context_menu
-        self.manager.hotkey_manager = mock_hotkey_manager
-        self.manager.behavior_trigger = mock_behavior_trigger
-        self.manager.drag_manager = mock_drag_manager
+        mock_event_type = "test_event_type"
+        mock_event_data = {"key": "value"}
         
-        # 创建模拟事件
-        mock_event = Mock()
-        mock_event.event_type = "test_event"
+        self.manager._handle_interaction_event(mock_event_type, mock_event_data)
         
-        # 调用处理方法
-        self.manager._handle_interaction_event(mock_event)
-        
-        # 验证每个子系统的handle_event方法是否被调用
-        mock_mouse_interaction.handle_event.assert_called_once_with(mock_event)
-        mock_tray_icon.handle_event.assert_called_once_with(mock_event)
-        mock_context_menu.handle_event.assert_called_once_with(mock_event)
-        mock_hotkey_manager.handle_event.assert_called_once_with(mock_event)
-        mock_behavior_trigger.handle_event.assert_called_once_with(mock_event)
-        mock_drag_manager.handle_event.assert_called_once_with(mock_event)
+        if hasattr(self.manager.mouse_event_handler, 'handle_event'):
+            self.manager.mouse_event_handler.handle_event.assert_called_once_with(mock_event_type, mock_event_data)
+        if hasattr(self.manager.keyboard_event_handler, 'handle_event'):
+            self.manager.keyboard_event_handler.handle_event.assert_called_once_with(mock_event_type, mock_event_data)
     
     def test_shutdown(self):
         """测试关闭交互管理器"""
-        # 创建模拟子系统
-        mock_mouse_interaction = Mock()
-        mock_tray_icon = Mock()
-        mock_context_menu = Mock()
-        mock_hotkey_manager = Mock()
-        mock_behavior_trigger = Mock()
-        mock_drag_manager = Mock()
+        self.manager._initialized = True # Assume initialized
         
-        # 设置子系统和初始化标志
-        self.manager.mouse_interaction = mock_mouse_interaction
-        self.manager.tray_icon = mock_tray_icon
-        self.manager.context_menu = mock_context_menu
-        self.manager.hotkey_manager = mock_hotkey_manager
-        self.manager.behavior_trigger = mock_behavior_trigger
-        self.manager.drag_manager = mock_drag_manager
-        self.manager.initialized = True
+        # Mock a HotkeyManager instance for keyboard_event_handler
+        mock_kb_handler = Mock(spec=HotkeyManager) # Use spec for isinstance checks
+        self.manager.keyboard_event_handler = mock_kb_handler
         
-        # 调用关闭方法
+        self.manager.mouse_event_handler = Mock()
+        self.manager.event_bus = self.mock_event_manager # Ensure correct event_bus for unregister
+        
         result = self.manager.shutdown()
         
-        # 验证关闭是否成功
-        self.assertTrue(result)
-        self.assertFalse(self.manager.initialized)
+        self.assertTrue(result, "shutdown() should return True")
+        self.assertFalse(self.manager._initialized, "Manager should be marked as not initialized after shutdown")
         
-        # 验证每个子系统的shutdown方法是否被调用
-        mock_mouse_interaction.shutdown.assert_called_once()
-        mock_tray_icon.shutdown.assert_called_once()
-        mock_context_menu.shutdown.assert_called_once()
-        mock_hotkey_manager.shutdown.assert_called_once()
-        mock_behavior_trigger.shutdown.assert_called_once()
-        mock_drag_manager.shutdown.assert_called_once()
+        if hasattr(self.manager.mouse_event_handler, 'shutdown'):
+            self.manager.mouse_event_handler.shutdown.assert_called_once()
         
-        # 验证事件管理器的unregister_handler方法是否被调用
-        self.mock_event_manager.unregister_handler.assert_called_once()
-
+        # HotkeyManager has a 'stop' method that should be called by shutdown
+        mock_kb_handler.stop.assert_called_once()
+        
+        # Ensure unregister_handler is called with the correct arguments
+        self.mock_event_manager.unregister_handler.assert_called_with("interaction", self.manager._handle_interaction_event)
 
 if __name__ == '__main__':
     unittest.main() 

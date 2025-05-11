@@ -14,7 +14,7 @@ Changed history:
 import pytest
 from unittest.mock import MagicMock, patch, Mock
 
-from core.event_system import EventSystem, Event, EventType
+from status.core.event_system import EventSystem, Event, EventType
 
 class TestEventSystem:
     """事件系统测试用例"""

@@ -11,6 +11,7 @@ Changed history:
                             2025/04/04: 更新使用mock模式进行测试;
                             2025/04/04: 修复测试错误;
                             2025/04/04: 修复单例模式测试;
+                            2025/05/15: 将PyQt6导入改为PySide6以统一项目Qt库使用;
 ----
 """
 
@@ -19,8 +20,8 @@ from unittest.mock import MagicMock, patch, call
 import sys
 import platform
 
-from PyQt6.QtCore import QRect, QPoint
-from PyQt6.QtGui import QGuiApplication
+from PySide6.QtCore import QRect, QPoint
+from PySide6.QtGui import QGuiApplication
 
 from status.behavior.environment_sensor import EnvironmentSensor, EnvironmentEvent, DesktopObject
 from status.core.events import EventManager

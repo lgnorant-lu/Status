@@ -1,6 +1,6 @@
-# Hollow-ming
+# Status - 桌面交互式宠物应用
 
-![Hollow-ming系统监控](assets/images/ui/preview.png)
+![系统监控预览](assets/images/ui/preview.png)
 
 [![GitHub License](https://img.shields.io/github/license/username/status)](https://github.com/username/status/blob/main/LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
@@ -8,39 +8,39 @@
 
 ## 项目简介
 
-Hollow-ming是一个基于空洞骑士主题的系统监控桌宠应用，通过虚拟世界元素映射计算机各项性能指标，既实用又有观赏性。
+Status是一个交互式桌面宠物应用，结合系统监控功能，通过虚拟角色映射计算机各项性能指标，既实用又有观赏性。
 
-项目灵感来源于[赛博小鱼缸](https://github.com/Littlefean/cyber-life)项目，但采用了空洞骑士的美术风格和世界观。
+项目灵感来源于[赛博小鱼缸](https://github.com/Littlefean/cyber-life)项目，但采用了全新的设计和交互方式。
 
-不同的系统指标使用游戏中不同区域和角色元素来表示：
-- CPU使用率：小骑士和NPC活跃程度
-- 内存使用：感染扩散或灵魂能量
-- GPU性能：护符能量状态
+不同的系统指标使用不同的视觉元素来表示：
+- CPU使用率：角色活跃程度和状态变化
+- 内存使用：环境元素的变化
+- GPU性能：特殊效果状态
 - 存储空间：环境区域特性
-- 网络活动：飞虫活动和环境效果
+- 网络活动：背景元素和环境效果
 
 ## 功能特点
 
-- **沉浸式监控**：将系统监控数据可视化为游戏场景元素
+- **沉浸式监控**：将系统监控数据可视化为生动场景元素
 - **多场景切换**：根据监控重点或系统状态自动切换场景
-- **交互功能**：通过点击小骑士或场景元素触发操作
-- **个性化设置**：自定义小骑士外观、场景元素和动画效果
-- **丰富细节**：符合空洞骑士游戏风格的精美视觉效果
+- **交互功能**：通过点击角色或场景元素触发操作
+- **个性化设置**：自定义角色外观、场景元素和动画效果
+- **丰富细节**：精美的像素风格视觉效果
 - **低资源占用**：优化的性能确保应用本身资源占用最小化
 
 ## 场景预览
 
-### 德特茅斯(Dirtmouth) - 系统概览
-![德特茅斯场景](assets/images/ui/dirtmouth.png)
+### 主菜单 - 系统概览
+![主菜单场景](assets/images/ui/main_menu.png)
 
-### 黑卵圣殿(Black Egg Temple) - 处理器状态
-![黑卵圣殿场景](assets/images/ui/black_egg.png)
+### 核心监控 - 处理器状态
+![处理器监控](assets/images/ui/cpu_monitor.png)
 
-### 王国边缘(Kingdom's Edge) - 网络连接状态
-![王国边缘场景](assets/images/ui/kingdoms_edge.png)
+### 网络监控 - 网络连接状态
+![网络监控](assets/images/ui/network_monitor.png)
 
-### 皇家水道(Royal Waterways) - 存储使用情况
-![皇家水道场景](assets/images/ui/waterways.png)
+### 存储监控 - 存储使用情况
+![存储监控](assets/images/ui/storage_monitor.png)
 
 ## 系统要求
 
@@ -77,20 +77,21 @@ python -m status.main
 
 ## 使用指南
 
-- **左键点击小骑士**：打开/关闭主控制面板
-- **右键点击小骑士**：显示快捷菜单
-- **拖动小骑士**：移动整个窗口
+- **左键点击角色**：打开/关闭主控制面板
+- **右键点击角色**：显示快捷菜单
+- **拖动角色**：移动整个窗口
 - **点击场景元素**：显示对应资源详情
-- **护符系统**：点击护符栏装备不同护符获取功能
+- **特殊功能**：通过菜单启用不同功能
 - **场景切换**：通过菜单或自动条件触发场景切换
 
 ## 开发文档
 
-详细的开发文档请参考以下文件：
-- [Global.md](Global.md) - 全局设计文档
-- [Structure.md](Structure.md) - 项目结构文档
-- [Design.md](Design.md) - 设计文档
-- [Thread.md](Thread.md) - 任务进程文档
+详细的开发文档请参考以下资源：
+- [项目结构](docs/development/structure.md) - 项目结构文档
+- [系统架构](docs/development/architecture.md) - 设计文档
+- [开发指南](docs/development/guidelines.md) - 开发规范文档
+- [任务进度](docs/project/tasks.md) - 任务进程文档
+- [变更日志](docs/project/changelog.md) - 详细变更记录
 
 ## 贡献指南
 
@@ -100,7 +101,7 @@ python -m status.main
 - 文档完善和翻译
 - 视觉资源设计
 
-请查阅[CONTRIBUTING.md](docs/CONTRIBUTING.md)了解详细的贡献流程。
+请查阅[贡献指南](docs/contributing.md)了解详细的贡献流程。
 
 ## 许可证
 
@@ -109,5 +110,4 @@ python -m status.main
 ## 鸣谢
 
 - [赛博小鱼缸](https://github.com/Littlefean/cyber-life)项目提供的灵感
-- [空洞骑士](https://www.hollowknight.com/)游戏提供的艺术灵感
 - 所有为本项目做出贡献的开发者 

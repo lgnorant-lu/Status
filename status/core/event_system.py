@@ -80,7 +80,7 @@ class EventSystem:
         """初始化事件系统"""
         # 只在首次创建时初始化
         if not hasattr(self, 'initialized'):
-            self.logger = logging.getLogger("Hollow-ming.Core.EventSystem")
+            self.logger = logging.getLogger("Status.Core.EventSystem")
             self.handlers = {}  # 类型 -> 处理器列表的映射
             self.initialized = True
             self.logger.info("事件系统初始化")

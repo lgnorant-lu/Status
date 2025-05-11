@@ -261,7 +261,8 @@ class Sprite(Drawable):
         self.source_rect: Optional[Rect] = None
         self.pivot: Optional[Tuple[float, float]] = None
         
-        # 当前动画相关
+        # 动画相关
+        self.animations: Dict[str, SpriteAnimation] = {}  # 存储动画的字典
         self.current_animation: Optional[SpriteAnimation] = None
         self.animation_time: float = 0.0
         self.paused: bool = False
@@ -296,8 +297,8 @@ class Sprite(Drawable):
                     loaded_pixmap = QPixmap.fromImage(img_obj)
                 elif isinstance(img_obj, QPixmap):
                     loaded_pixmap = img_obj
-        else:
-                     logging.warning(f"Sprite: AssetManager未能加载有效图像 '{image}'")
+                else:
+                    logging.warning(f"Sprite: AssetManager未能加载有效图像 '{image}'")
             except Exception as e:
                 logging.error(f"Sprite: 加载图像路径 '{image}' 失败: {e}")
         elif isinstance(image, QImage):
@@ -311,13 +312,13 @@ class Sprite(Drawable):
             
         if loaded_pixmap and not loaded_pixmap.isNull():
             self._image = loaded_pixmap
-                if self.width == 0:
+            if self.width == 0:
                 self.width = self._image.width()
-                if self.height == 0:
+            if self.height == 0:
                 self.height = self._image.height()
             if self.pivot is None:
                 self.pivot = (self.width / 2, self.height / 2)
-            else:
+        else:
             self._image = None
     
     def set_source_rect(self, x: float, y: float, width: float, height: float) -> None:
@@ -448,14 +449,14 @@ class Sprite(Drawable):
             elif isinstance(img_obj, QPixmap):
                 self._image = img_obj
             else:
-                 logging.warning(f"Sprite: Frame未能加载有效图像 '{self.image_path}'")
-                 self._image = None
+                logging.warning(f"Sprite: Frame未能加载有效图像 '{self.image_path}'")
+                self._image = None
                  
             if self._image and not self._image.isNull():
                 self.width = frame.source_rect.width
                 self.height = frame.source_rect.height
             else:
-                 self._image = None
+                self._image = None
                  
         except Exception as e:
             logging.error(f"Sprite: 加载帧图像 '{self.image_path}' 失败: {e}")

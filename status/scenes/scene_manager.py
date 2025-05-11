@@ -37,7 +37,7 @@ class SceneManager:
         if SceneManager._instance is not None:
             raise RuntimeError("SceneManager is a singleton, use get_instance() instead")
         
-        self.logger = logging.getLogger("Hollow-ming.SceneManager")
+        self.logger = logging.getLogger("Status.SceneManager")
         self.scenes = {}  # 场景字典
         self.current_scene = None  # 当前场景
         self.next_scene = None  # 下一个场景

@@ -1,8 +1,8 @@
-# Hollow-ming 故障排除指南
+# Status 故障排除指南
 
-## 简介
+## 概述
 
-欢迎使用Hollow-ming故障排除指南。本文档旨在帮助您解决在使用Hollow-ming过程中可能遇到的各种问题。无论您是遇到了启动错误、显示异常还是性能问题，本指南都将提供系统化的解决方案，帮助您快速恢复正常使用。
+欢迎使用Status故障排除指南。本文档旨在帮助您解决在使用Status过程中可能遇到的各种问题。无论您是遇到了启动错误、显示异常还是性能问题，本指南都将提供系统化的解决方案，帮助您快速恢复正常使用。
 
 ## 目录
 
@@ -20,13 +20,13 @@
 
 在深入特定问题之前，这些通用的故障排除步骤通常可以解决大多数问题：
 
-1. **重启应用**：关闭并重新启动Hollow-ming应用可以解决许多临时性问题。
-2. **检查更新**：确保您使用的是最新版本的Hollow-ming，许多问题可能已在新版本中修复。
-3. **检查系统要求**：确认您的系统满足运行Hollow-ming所需的最低配置要求。
-4. **清除缓存**：删除临时文件和缓存可能有助于解决某些性能和显示问题。
-   - 缓存位置：`%APPDATA%\Hollow-ming\cache`
+1. **重启应用**：关闭并重新启动Status应用可以解决许多临时性问题。
+2. **检查更新**：确保您使用的是最新版本的Status，许多问题可能已在新版本中修复。
+3. **检查系统要求**：确认您的系统满足运行Status所需的最低配置要求。
+4. **清理缓存**：删除临时文件和缓存可能有助于解决某些性能和显示问题。
+   - 缓存位置：`%APPDATA%\Status\cache`
 5. **重置配置**：在极端情况下，将配置重置为默认值可能是必要的。
-   - 配置文件位置：`%APPDATA%\Hollow-ming\config.json`
+   - 配置文件位置：`%APPDATA%\Status\config.json`
 
 ## 启动问题
 
@@ -41,15 +41,15 @@
    - 选择"以管理员身份运行"
 
 2. **检查防病毒软件**：
-   - 确保您的防病毒软件没有阻止Hollow-ming运行
-   - 将Hollow-ming添加到防病毒软件的白名单中
+   - 确保您的防病毒软件没有阻止Status运行
+   - 将Status添加到防病毒软件的白名单中
 
 3. **检查依赖项**：
    - 确保已安装所有必要的依赖项，特别是Python和必要的库
    - 运行安装脚本：`setup.bat`或`install_dependencies.py`
 
 4. **查看错误日志**：
-   - 检查位于`%APPDATA%\Hollow-ming\logs\error.log`的错误日志
+   - 检查位于`%APPDATA%\Status\logs\error.log`的错误日志
 
 ### 应用崩溃
 
@@ -71,7 +71,7 @@
 
 4. **清理应用数据**：
    - 删除用户数据目录中的临时文件
-   - 路径：`%APPDATA%\Hollow-ming\temp`
+   - 路径：`%APPDATA%\Status\temp`
 
 ## 显示问题
 
@@ -140,7 +140,7 @@
    - 检查文件和文件夹的权限设置
 
 4. **资源包兼容性**：
-   - 确保使用的资源包与当前版本的Hollow-ming兼容
+   - 确保使用的资源包与当前版本的Status兼容
    - 检查资源包的版本要求
 
 ### 自定义资源问题
@@ -150,7 +150,7 @@
 **可能的解决方案**：
 
 1. **检查资源格式**：
-   - 确保自定义资源符合Hollow-ming的格式要求
+   - 确保自定义资源符合Status的格式要求
    - 参考[资源系统开发指南](../developer/resources_guide.md)
 
 2. **文件路径问题**：
@@ -163,7 +163,7 @@
 
 4. **缓存问题**：
    - 清除资源缓存后重试
-   - 路径：`%APPDATA%\Hollow-ming\cache\resources`
+   - 路径：`%APPDATA%\Status\cache\resources`
 
 ## 交互问题
 
@@ -270,7 +270,7 @@
 
 2. **配置文件损坏**：
    - 备份并删除当前配置文件，让应用创建新的配置文件
-   - 路径：`%APPDATA%\Hollow-ming\config.json`
+   - 路径：`%APPDATA%\Status\config.json`
 
 3. **存储空间**：
    - 确保系统有足够的磁盘空间
@@ -304,12 +304,12 @@
 
 ## 日志分析
 
-查看和分析日志文件通常是解决复杂问题的有效方法。Hollow-ming生成多种日志文件，存储在以下位置：
+查看和分析日志文件通常是解决复杂问题的有效方法。Status生成多种日志文件，存储在以下位置：
 
-- **主日志**：`%APPDATA%\Hollow-ming\logs\hollow-ming.log`
-- **错误日志**：`%APPDATA%\Hollow-ming\logs\error.log`
-- **渲染日志**：`%APPDATA%\Hollow-ming\logs\renderer.log`
-- **资源日志**：`%APPDATA%\Hollow-ming\logs\resources.log`
+- **主日志**：`%APPDATA%\Status\logs\status.log`
+- **错误日志**：`%APPDATA%\Status\logs\error.log`
+- **渲染日志**：`%APPDATA%\Status\logs\renderer.log`
+- **资源日志**：`%APPDATA%\Status\logs\resources.log`
 
 ### 如何读取日志
 
@@ -332,13 +332,13 @@
 
 如果您尝试了以上所有解决方案后问题仍然存在，请通过以下渠道联系我们的支持团队：
 
-- **电子邮件**：support@hollow-ming.com
-- **社区论坛**：[https://forum.hollow-ming.com](https://forum.hollow-ming.com)
-- **问题追踪**：在我们的GitHub仓库[提交问题](https://github.com/hollow-ming/issues)
+- **电子邮件**：support@status-pet.com
+- **社区论坛**：[https://forum.status-pet.com](https://forum.status-pet.com)
+- **问题追踪**：在我们的GitHub仓库[提交问题](https://github.com/username/status/issues)
 
 联系支持时，请提供以下信息以帮助我们更快地解决您的问题：
 
-1. Hollow-ming的版本号
+1. Status的版本号
 2. 操作系统类型和版本
 3. 问题的详细描述及重现步骤
 4. 相关的错误消息或日志片段
@@ -346,4 +346,4 @@
 
 ---
 
-希望本指南能帮助您解决在使用Hollow-ming过程中遇到的问题。我们持续改进应用和文档，以提供更好的用户体验。如果您有任何改进建议，请随时与我们分享。 
+希望本指南能帮助您解决在使用Status过程中遇到的问题。我们持续改进应用和文档，以提供更好的用户体验。如果您有任何改进建议，请随时与我们分享。 

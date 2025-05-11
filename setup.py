@@ -25,36 +25,44 @@ with open("requirements.txt", "r", encoding="utf-8") as f:
     requirements = [r for r in requirements if not r.startswith('#') and r.strip()]
 
 setup(
-    name="hollow-ming",
+    name="status-pet",
     version="0.1.0",
-    author="Ignorant-lu",
-    author_email="example@example.com",
-    description="空洞骑士主题系统监控桌宠应用",
+    author="lgnorant-lu",
+    author_email="lgnorantlu@gmail.com",
+    description="桌面交互式宠物应用",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/Ignorant-lu/hollow-ming",
+    url="https://github.com/lgnorant-lu/status",
     packages=find_packages(),
     classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: End Users/Desktop",
+        "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-        "Development Status :: 3 - Alpha",
-        "Intended Audience :: End Users/Desktop",
-        "Topic :: System :: Monitoring",
-        "Topic :: Desktop Environment"
+        "Operating System :: Microsoft :: Windows",
+        "Operating System :: POSIX :: Linux",
+        "Operating System :: MacOS :: MacOS X",
     ],
     python_requires=">=3.8",
-    install_requires=requirements,
+    install_requires=[
+        "PySide6>=6.4.0",
+        "psutil>=5.9.0",
+        "py-cpuinfo>=8.0.0",
+        "Pillow>=9.2.0",
+        "pyyaml>=6.0",
+        "pypiwin32",
+        # 其他依赖
+    ],
     include_package_data=True,
     package_data={
         "status": ["assets/**/*"],
     },
     entry_points={
         "console_scripts": [
-            "hollow-ming=status.main:main",
+            "status-pet=status.main:main",
         ],
     },
 ) 

@@ -14,7 +14,7 @@ Changed history:
 import logging
 import sys
 import threading
-from PyQt6.QtCore import QObject, pyqtSignal, Qt
+from PySide6.QtCore import QObject, Signal, Qt
 from status.core.events import EventManager
 from status.interaction.interaction_event import InteractionEvent, InteractionEventType
 
@@ -30,7 +30,7 @@ class HotkeyManager(QObject):
     """
     
     # 定义信号
-    hotkey_triggered_signal = pyqtSignal(str)
+    hotkey_triggered_signal = Signal(str)
     
     def __init__(self):
         """初始化热键管理器

@@ -13,7 +13,7 @@ Changed history:
 """
 
 import logging
-from PyQt6.QtCore import QObject, QRect, pyqtSignal
+from PySide6.QtCore import QObject, QRect, pyqtSignal
 from status.core.events import EventManager
 from status.interaction.interaction_event import InteractionEvent, InteractionEventType
 from status.interaction.event_throttler import TimeThrottler

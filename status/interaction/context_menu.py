@@ -9,13 +9,14 @@ Description:                桌宠上下文菜单管理模块
 Changed history:            
                             2025/04/03: 初始创建;
                             2025/04/05: 修复QAction导入路径;
+                            2025/05/11: 从PyQt6迁移到PySide6;
 ----
 """
 
 import logging
-from PyQt6.QtWidgets import QMenu
-from PyQt6.QtGui import QAction
-from PyQt6.QtCore import pyqtSignal, QObject
+from PySide6.QtWidgets import QMenu
+from PySide6.QtGui import QAction
+from PySide6.QtCore import Signal, QObject
 from status.core.events import EventManager
 from status.interaction.interaction_event import InteractionEvent, InteractionEventType
 
@@ -30,9 +31,9 @@ class ContextMenu(QObject):
     """
     
     # 定义信号
-    menu_shown_signal = pyqtSignal()
-    menu_hidden_signal = pyqtSignal()
-    menu_action_signal = pyqtSignal(str)
+    menu_shown_signal = Signal()
+    menu_hidden_signal = Signal()
+    menu_action_signal = Signal(str)
     
     def __init__(self):
         """初始化上下文菜单

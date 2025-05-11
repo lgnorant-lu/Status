@@ -3,11 +3,12 @@
 File name:                  main.py
 Author:                     Ignorant-lu
 Date created:               2025/04/16
-Description:                Hollow Knight 桌宠主程序入口
+Description:                Status 桌宠主程序入口
 ----------------------------------------------------------------
 
 Changed history:            
                             2025/04/16: 初始创建，实现基本窗口和Idle动画渲染;
+                            2025/04/17: 从PyQt6迁移到PySide6;
 ----
 """
 
@@ -15,31 +16,34 @@ import sys
 import logging
 import time
 
-# 尝试导入 PyQt6，如果失败则记录错误并退出
+# 尝试导入 PySide6，如果失败则记录错误并退出
 try:
-    from PyQt6.QtWidgets import QApplication
-    from PyQt6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication
+    from PySide6.QtCore import QTimer
 except ImportError as e:
     logging.basicConfig(level=logging.CRITICAL)
-    logging.critical(f"无法导入 PyQt6 模块: {e}. 请确保已安装 PyQt6。")
+    logging.critical(f"无法导入 PySide6 模块: {e}. 请确保已安装 PySide6。")
     sys.exit(1)
 
-# 导入核心模块 (假设都在status目录下且路径已配置或使用相对导入)
-# 使用 try-except 包裹，以便更好地定位导入错误
+# 添加当前目录到系统路径，以便能够导入 status 模块
+sys.path.insert(0, '.')
+
+# 导入核心模块
 try:
-    from status.core.app import Application # 假设存在这个核心应用类
+    from status.core.app import Application
     from status.resources.asset_manager import AssetManager
     from status.renderer.sprite import Sprite
     from status.renderer.animation import FrameAnimation, AnimationManager
-    from status.ui.main_pet_window import MainPetWindow # <-- 导入主窗口类
-    # from status.behavior.state_machine import StateMachine # 暂时不用状态机
+    from status.ui.main_pet_window import MainPetWindow
+    from status.renderer.pyside_renderer import PySideRenderer
+    from status.renderer.renderer_manager import RendererManager, RendererType
 except ImportError as e:
-     # 如果这里报错，说明其他文件可能有问题或路径错误
+    # 如果这里报错，说明其他文件可能有问题或路径错误
     logging.basicConfig(level=logging.CRITICAL)
     logging.critical(f"导入项目模块时出错: {e}. 检查模块是否存在以及 Python 路径设置。")
     sys.exit(1)
 except SyntaxError as e:
-     # 如果这里捕获到 SyntaxError，特别是 null byte 错误，说明被导入的文件有问题
+    # 如果这里捕获到 SyntaxError，特别是 null byte 错误，说明被导入的文件有问题
     logging.basicConfig(level=logging.CRITICAL)
     logging.critical(f"导入项目模块时遇到语法错误 (可能文件损坏): {e}. 检查文件 {e.filename} 的内容。")
     sys.exit(1)
@@ -48,20 +52,21 @@ except SyntaxError as e:
 # 配置日志
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
-logger = logging.getLogger("HollowMingApp")
+logger = logging.getLogger("StatusApp")
 
 # --- 配置 --- (稍后移到 config.py)
 WINDOW_WIDTH = 150
 WINDOW_HEIGHT = 150
-KNIGHT_IDLE_PATH = "assets/images/characters/knight/idle" # 小骑士Idle动画资源路径
-KNIGHT_IDLE_FPS = 10 # Idle动画帧率
+CHARACTER_IDLE_PATH = "assets/images/characters/default/idle" # 桌宠角色Idle动画资源路径
+CHARACTER_IDLE_FPS = 10 # Idle动画帧率
 
-class HollowMingPet(Application):
+class StatusPet(Application):
     """桌宠主应用程序类"""
     def __init__(self):
         super().__init__()
         self.asset_manager = AssetManager.get_instance()
         self.animation_manager = AnimationManager() # 管理所有动画
+        self.renderer_manager = RendererManager.get_instance() # 获取渲染管理器实例
         self.main_window = None # <-- 添加主窗口实例变量
         self.knight_sprite = None
         self.idle_animation = None
@@ -69,7 +74,7 @@ class HollowMingPet(Application):
 
     def initialize(self):
         """初始化应用程序"""
-        logger.info("Initializing Hollow Ming Pet...")
+        logger.info("Initializing Status Pet...")
         super().initialize() # 调用父类初始化 (如果需要)
 
         # 初始化资源管理器 (指定资源根目录)
@@ -77,18 +82,21 @@ class HollowMingPet(Application):
         self.asset_manager.initialize(base_path=".")
         logger.info(f"AssetManager initialized with base path: {self.asset_manager.get_base_path()}")
 
-        # 加载小骑士 Idle 动画帧
-        logger.info(f"Loading knight idle animation from: {KNIGHT_IDLE_PATH}")
-        idle_frames = self.asset_manager.load_image_sequence(KNIGHT_IDLE_PATH)
+        # 初始化渲染器
+        self.renderer_manager.register_renderer(RendererType.PYSIDE, PySideRenderer)
+        
+        # 加载桌宠角色 Idle 动画帧
+        logger.info(f"Loading character idle animation from: {CHARACTER_IDLE_PATH}")
+        idle_frames = self.asset_manager.load_image_sequence(CHARACTER_IDLE_PATH)
 
         if not idle_frames:
-            logger.error("Failed to load knight idle frames. Exiting.")
+            logger.error("Failed to load character idle frames. Exiting.")
             sys.exit(1) # 加载失败则退出
 
         logger.info(f"Loaded {len(idle_frames)} idle frames.")
 
         # 创建 Idle 动画实例
-        self.idle_animation = FrameAnimation(frames=idle_frames, fps=KNIGHT_IDLE_FPS, loop=True, auto_start=False)
+        self.idle_animation = FrameAnimation(frames=idle_frames, fps=CHARACTER_IDLE_FPS, loop=True, auto_start=False)
         self.animation_manager.add(self.idle_animation) # 添加到管理器
 
         # 创建主窗口
@@ -103,7 +111,7 @@ class HollowMingPet(Application):
             initial_y = (WINDOW_HEIGHT - frame_height) // 2
             # 创建 Sprite，但不一定需要立即设置 image，因为 MainPetWindow 会处理
             self.knight_sprite = Sprite(x=initial_x, y=initial_y, width=frame_width, height=frame_height)
-            logger.info(f"Knight sprite logic instance created with initial size {frame_width}x{frame_height}.")
+            logger.info(f"Character sprite logic instance created with initial size {frame_width}x{frame_height}.")
             # 让窗口适应第一帧大小 (重要，否则窗口初始大小可能不对)
             self.main_window.set_image(idle_frames[0]) 
             logger.info(f"MainPetWindow initial image set, size should be adjusted.")
@@ -168,15 +176,15 @@ def main():
 
     # 确保日志在 QApplication 创建后能正常工作
     global logger
-    logger = logging.getLogger("HollowMingApp") # 重新获取 logger 实例
+    logger = logging.getLogger("StatusApp") # 重新获取 logger 实例
 
 
-    pet_app = HollowMingPet()
+    pet_app = StatusPet()
     try:
         pet_app.initialize()
         # pet_app.run() # Application 基类可能需要一个 run 方法来启动 PyQt 事件循环
-        logger.info("Hollow Ming Pet initialized successfully. Starting event loop...")
-        sys.exit(app.exec()) # 直接启动 PyQt 事件循环
+        logger.info("Status Pet initialized successfully. Starting event loop...")
+        sys.exit(app.exec()) # PySide6中可以使用exec()或exec_()
     except Exception as e:
         logger.exception(f"Application failed to initialize or run: {e}")
         sys.exit(1)

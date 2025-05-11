@@ -12,6 +12,13 @@ Changed history:
 """
 
 import unittest
+import sys
+import os
+
+# Add project root to sys.path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")) # Adjusted path for tests/behavior/
+sys.path.insert(0, project_root)
+
 import time
 from unittest.mock import MagicMock, patch
 
@@ -340,7 +347,7 @@ class TestEmotionSystem(unittest.TestCase):
         time.sleep(0.1)
         
         # 更新情绪系统
-        self.emotion_system.update()
+        self.emotion_system.update(dt=0.1)
         
         # 验证情绪状态的方法是否被调用
         mock_emotion_state.apply_decay.assert_called_once()
