@@ -577,7 +577,7 @@ class ParticleEmitter:
         # else: default is self.x, self.y which is already set
 
         return pos_x, pos_y
-    
+        
     def update(self, delta_time: float) -> List[Particle]:
         """更新发射器状态
         

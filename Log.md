@@ -260,3 +260,10 @@
 - [交互] 修复了interaction_event.py中的类型处理，优化事件类型系统 [Logs/2025-05-20_interaction_typehints.md]
 - [类型] 完成了项目类型提示修复中期进度报告 [Logs/2025-05-20_type_hints_progress.md]
 
+## 变更索引
+
+| 日期 | 文件 | 描述 | 状态 |
+|------|------|------|------|
+| 2025/05/18 | [行为模块依赖修复](Logs/Status-Ming/2025-05-18_behavior_dependencies_fix.md) | 修复行为模块的核心依赖文件 | 已完成 |
+| 2025/05/18 | [行为模块导入修复](Logs/Status-Ming/2025-05-18_behavior_imports_fix.md) | 修复行为模块的导入和类型问题 | 已完成 |
+

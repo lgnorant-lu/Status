@@ -13,7 +13,7 @@ Changed history:
 """
 
 import logging
-from PySide6.QtCore import QObject, QRect, pyqtSignal, Qt
+from PySide6.QtCore import QObject, QRect, Signal, Qt, QEvent
 from PySide6.QtGui import QMouseEvent
 from status.core.events import EventManager
 from status.interaction.interaction_event import InteractionEvent, InteractionEventType
@@ -84,12 +84,12 @@ class MouseInteraction(QObject):
     
     # 定义信号
     # 这些信号会在特定鼠标事件发生时发出
-    click_signal = pyqtSignal(int, int, str)
-    double_click_signal = pyqtSignal(int, int, str)
-    right_click_signal = pyqtSignal(int, int)
-    hover_signal = pyqtSignal(int, int)
-    enter_signal = pyqtSignal(int, int)
-    leave_signal = pyqtSignal(int, int)
+    click_signal = Signal(int, int, str)
+    double_click_signal = Signal(int, int, str)
+    right_click_signal = Signal(int, int)
+    hover_signal = Signal(int, int)
+    enter_signal = Signal(int, int)
+    leave_signal = Signal(int, int)
     
     def __init__(self, window):
         """初始化鼠标交互处理类
@@ -197,25 +197,28 @@ class MouseInteraction(QObject):
         # 只处理与鼠标相关的事件
         if isinstance(event, QMouseEvent):
             # 获取鼠标坐标
-            x, y = event.x(), event.y()
+            pos = event.position().toPoint()
+            x, y = pos.x(), pos.y()
             
+            event_type = event.type()
+
             # 检查事件类型
-            if event.type() == QMouseEvent.MouseButtonPress:
+            if event_type == QEvent.Type.MouseButtonPress:
                 return self.handle_mouse_press(x, y, event)
                 
-            elif event.type() == QMouseEvent.MouseButtonRelease:
+            elif event_type == QEvent.Type.MouseButtonRelease:
                 return self.handle_mouse_release(x, y, event)
                 
-            elif event.type() == QMouseEvent.MouseButtonDblClick:
+            elif event_type == QEvent.Type.MouseButtonDblClick:
                 return self.handle_mouse_double_click(x, y, event)
                 
-            elif event.type() == QMouseEvent.MouseMove:
+            elif event_type == QEvent.Type.MouseMove:
                 return self.handle_mouse_move(x, y, event)
                 
-            elif event.type() == QMouseEvent.Enter:
+            elif event_type == QEvent.Type.Enter:
                 return self.handle_mouse_enter(x, y, event)
                 
-            elif event.type() == QMouseEvent.Leave:
+            elif event_type == QEvent.Type.Leave:
                 return self.handle_mouse_leave(x, y, event)
         
         # 不处理其他类型的事件
@@ -236,13 +239,13 @@ class MouseInteraction(QObject):
         event_type = InteractionEventType.MOUSE_PRESS
         
         # 右键点击
-        if event.button() == Qt.RightButton:
+        if event.button() == Qt.MouseButton.RightButton:
             self.right_click_signal.emit(x, y)
             button_type = "right"
             event_type = InteractionEventType.MOUSE_RIGHT_CLICK
         
         # 左键点击 - 可能是拖拽开始
-        elif event.button() == Qt.LeftButton:
+        elif event.button() == Qt.MouseButton.LeftButton:
             button_type = "left"
             
             # 检查是否可以开始拖拽
@@ -266,7 +269,7 @@ class MouseInteraction(QObject):
             event_type = InteractionEventType.MOUSE_CLICK
         
         # 中键点击
-        elif event.button() == Qt.MiddleButton:
+        elif event.button() == Qt.MouseButton.MiddleButton:
             button_type = "middle"
             self.click_signal.emit(x, y, button_type)
         
@@ -292,11 +295,11 @@ class MouseInteraction(QObject):
         button_type = ""
         
         # 右键释放
-        if event.button() == Qt.RightButton:
+        if event.button() == Qt.MouseButton.RightButton:
             button_type = "right"
         
         # 左键释放 - 可能是拖拽结束
-        elif event.button() == Qt.LeftButton:
+        elif event.button() == Qt.MouseButton.LeftButton:
             button_type = "left"
             
             # 如果正在拖拽，则结束拖拽
@@ -312,7 +315,7 @@ class MouseInteraction(QObject):
                 return True
         
         # 中键释放
-        elif event.button() == Qt.MiddleButton:
+        elif event.button() == Qt.MouseButton.MiddleButton:
             button_type = "middle"
         
         # 创建并发送鼠标释放事件
@@ -337,11 +340,11 @@ class MouseInteraction(QObject):
         button_type = ""
         
         # 右键双击
-        if event.button() == Qt.RightButton:
+        if event.button() == Qt.MouseButton.RightButton:
             button_type = "right"
         
         # 左键双击
-        elif event.button() == Qt.LeftButton:
+        elif event.button() == Qt.MouseButton.LeftButton:
             button_type = "left"
             
             # 检查是否双击了某个可点击区域
@@ -350,7 +353,7 @@ class MouseInteraction(QObject):
                 clicked.handle_click(x, y, button_type + "_double")
         
         # 中键双击
-        elif event.button() == Qt.MiddleButton:
+        elif event.button() == Qt.MouseButton.MiddleButton:
             button_type = "middle"
         
         self.double_click_signal.emit(x, y, button_type)

@@ -17,62 +17,22 @@ from unittest.mock import Mock, patch
 import sys
 import os
 import logging # Import logging
+import pytest # Add pytest import for pytestmark
 
 # Add project root to sys.path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, project_root)
 
-# Attempt to import QApplication
-QApplication = None
-try:
-    from PySide6.QtWidgets import QApplication
-except ImportError:
-    logging.warning("PySide6.QtWidgets.QApplication not found, trying PyQt6.")
-    try:
-        from PyQt6.QtWidgets import QApplication
-    except ImportError:
-        logging.warning("PyQt6.QtWidgets.QApplication not found, using a basic mock.")
-        # Basic mock for QApplication if no Qt bindings are found
-        class MockQApplication:
-            _instance = None
-            def __init__(self, args):
-                MockQApplication._instance = self
-                self.args = args
-            @staticmethod
-            def instance():
-                return MockQApplication._instance
-            def exec(self):
-                return 0 # Mock exec
-        QApplication = MockQApplication
-
-if QApplication is None:
-    # This case should ideally not be reached if the above logic is correct
-    logging.error("QApplication could not be imported or mocked. Tests requiring QApplication may fail.")
-    # Define a very minimal QApplication if it's still None to prevent NameError
-    class MinimalQApplication:
-        _instance = None
-        def __init__(self, args):
-            MinimalQApplication._instance = self
-        @staticmethod
-        def instance(): return MinimalQApplication._instance
-        def exec(self): pass
-    QApplication = MinimalQApplication
-
+# Simplified import, assuming PySide6 is the standard
+from PySide6.QtWidgets import QApplication
 
 from status.interaction.interaction_manager import InteractionManager
 from status.core.events import EventManager
 from status.interaction.hotkey import HotkeyManager
 
+@pytest.mark.usefixtures("qapp") # Indicate pytest-qt should handle QApplication
 class TestInteractionManager(unittest.TestCase):
     """测试交互管理器类"""
-    
-    app_instance = None # Store QApplication instance at class level
-
-    @classmethod
-    def setUpClass(cls):
-        """测试类初始化"""
-        if QApplication and QApplication.instance() is None:
-            cls.app_instance = QApplication(sys.argv)
     
     def setUp(self):
         """每个测试前的初始化"""
@@ -93,20 +53,12 @@ class TestInteractionManager(unittest.TestCase):
     def tearDown(self):
         """每个测试执行后的清理"""
         if hasattr(self, 'manager') and self.manager and hasattr(self.manager, '_initialized') and self.manager._initialized:
-            self.manager.shutdown()
+            try:
+                # Attempt to shutdown, but catch errors if it fails (e.g., due to Qt state)
+                self.manager.shutdown()
+            except Exception as e:
+                logging.warning(f"Error during InteractionManager shutdown in tearDown: {e}")
         InteractionManager._instance = None # Reset singleton
-    
-    @classmethod
-    def tearDownClass(cls):
-        """测试类结束后的清理"""
-        # Qt应用的清理可能比较复杂，并且可能依赖于具体的测试运行器
-        # 对于简单的unittest，确保主事件循环退出（如果它曾被启动）
-        # 或者如果mock了QApplication，确保mock状态被重置
-        if cls.app_instance and hasattr(cls.app_instance, 'quit'):
-            # logging.info("Attempting to quit QApplication instance in tearDownClass.")
-            # cls.app_instance.quit() # 通常在GUI测试中，但这可能不适用于所有情况
-            pass # 实际的清理取决于 QApplication mock 或真实实例的行为
-        # logging.info("TestInteractionManager tearDownClass completed.")
     
     def test_singleton_pattern(self):
         """测试单例模式"""

@@ -279,7 +279,7 @@ except ImportError:
         def isChecked(self) -> bool:
             """检查是否选中"""
             return self._checked
-            
+        
         # 信号模拟方法
         def triggered(self, checked: bool = False) -> None:
             """触发信号，模拟为方法"""

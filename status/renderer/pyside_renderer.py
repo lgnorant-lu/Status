@@ -603,7 +603,114 @@ class PySideRenderer(RendererBase):
             
         self.painter.setOpacity(alpha)
     
-    def fill_rect(self, x: float, y: float, width: float, height: float, color: Color) -> None:
+    def set_opacity(self, opacity: float) -> None:
+        """设置不透明度
+        
+        Args:
+            opacity: 不透明度，0.0表示完全透明，1.0表示完全不透明
+        """
+        if not self.painter or not self.painter.isActive():
+            return
+            
+        # 设置全局透明度
+        self.painter.setOpacity(max(0.0, min(1.0, opacity)))
+    
+    def get_opacity(self) -> float:
+        """获取当前不透明度
+        
+        Returns:
+            float: 当前不透明度，0.0表示完全透明，1.0表示完全不透明
+        """
+        if not self.painter or not self.painter.isActive():
+            return 1.0
+            
+        return self.painter.opacity()
+    
+    def get_viewport_size(self) -> Tuple[int, int]:
+        """获取当前视口尺寸
+        
+        Returns:
+            Tuple[int, int]: 视口尺寸 (宽度, 高度)
+        """
+        return (self.width, self.height)
+    
+    # 添加save_state方法 
+    def save_state(self) -> None:
+        """保存当前渲染状态（变换、透明度、裁剪等）"""
+        if not self.painter or not self.painter.isActive():
+            return
+        
+        self.painter.save()
+    
+    # 添加restore_state方法
+    def restore_state(self) -> None:
+        """恢复之前保存的渲染状态"""
+        if not self.painter or not self.painter.isActive():
+            return
+        
+        self.painter.restore()
+    
+    # 添加create_surface方法
+    def create_surface(self, width: Optional[int] = None, height: Optional[int] = None) -> Any:
+        """创建离屏渲染表面/目标
+        
+        Args:
+            width: 表面宽度（可选，默认为视口宽度）
+            height: 表面高度（可选，默认为视口高度）
+            
+        Returns:
+            QPixmap: 创建的表面对象
+        """
+        w = width if width is not None else self.width
+        h = height if height is not None else self.height
+        return QPixmap(w, h)
+    
+    # 添加set_target方法
+    def set_target(self, surface: Optional[Any]) -> None:
+        """设置渲染目标
+        
+        Args:
+            surface: 目标表面对象，或None表示默认屏幕
+        """
+        if not self.painter or not self.painter.isActive():
+            return
+        
+        # 结束当前绘制
+        self.painter.end()
+        
+        # 如果没有提供表面，使用默认表面
+        if surface is None:
+            self.pixmap = QPixmap(self.width, self.height)
+        else:
+            # 否则，使用提供的表面
+            self.pixmap = surface
+        
+        # 在新表面上开始绘制
+        self.painter.begin(self.pixmap)
+    
+    # 添加reset_target方法
+    def reset_target(self) -> None:
+        """重置渲染目标为默认屏幕"""
+        self.set_target(None)
+    
+    # 添加set_dissolve_effect方法
+    def set_dissolve_effect(self, pattern: Any, progress: float) -> None:
+        """应用溶解效果（特定于溶解转场）
+        
+        Args:
+            pattern: 溶解模式纹理
+            progress: 溶解进度 (0.0到1.0)
+        """
+        # 简单实现：不支持特殊效果
+        logger.warning("溶解效果在当前渲染器中不受支持")
+    
+    # 添加clear_effects方法
+    def clear_effects(self) -> None:
+        """清除当前活动的特殊效果"""
+        # 简单实现：不支持特殊效果
+        pass
+
+    def fill_rect(self, x: int, y: int, width: int, height: int, color: Tuple[int, int, int]) -> None:
         """填充矩形区域
         
         Args:
@@ -611,14 +718,16 @@ class PySideRenderer(RendererBase):
             y: Y坐标
             width: 宽度
             height: 高度
-            color: 颜色
+            color: 颜色元组 (r, g, b)
         """
         if not self.painter or not self.painter.isActive():
             return
             
+        r, g, b = color
+        qcolor = QColor(r, g, b, 255)  # 完全不透明
         self.painter.fillRect(
             int(x), int(y), int(width), int(height),
-            QColor(color.r, color.g, color.b, color.a)
+            qcolor
         )
     
     def draw_surface(self, surface: Any, x: float, y: float, opacity: float = 1.0) -> None:
@@ -643,7 +752,7 @@ class PySideRenderer(RendererBase):
             self.painter.drawImage(int(x), int(y), surface)
         else:
             logger.error(f"不支持的表面类型: {type(surface)}")
-
+    
         if opacity < 1.0: # Restore original
             self.painter.setOpacity(original_opacity)
     
@@ -676,7 +785,7 @@ class PySideRenderer(RendererBase):
                 surface
             )
         else:
-            logger.error(f"不支持的表面类型: {type(surface)}")
+            logger.error(f"不支持的表面类型: {type(surface)}") 
 
         if opacity < 1.0:
             self.painter.setOpacity(original_opacity) 

@@ -2,31 +2,44 @@
 ---------------------------------------------------------------
 File name:                  data_process.py
 Author:                     Ignorant-lu
-Date created:               2025/04/03
+Date created:               2025/04/04
 Description:                数据处理模块，分析和转换系统数据
 ----------------------------------------------------------------
 
 Changed history:            
-                            2025/04/03: 初始创建;
+                            2025/04/04: 初始创建;
+                            2025/05/15: 修复类型提示错误;
 ----
 """
 
+import os
 import time
 import logging
 import threading
-from typing import Dict, List, Any, Optional, Callable, Tuple, Union
+from typing import Dict, List, Any, Optional, Callable, Tuple, Union, Deque, cast, TypeVar
 import collections
+from collections import deque
 
 from status.core.event_system import EventSystem, Event, EventType
 
+# 类型变量定义
+T = TypeVar('T')
 
 class DataProcessor:
     """数据处理类，负责处理和分析系统监控数据"""
     
     _instance = None
+    _initialized: bool = False
+    
+    @classmethod
+    def get_instance(cls) -> 'DataProcessor':
+        """获取单例实例"""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
     
     def __new__(cls, *args, **kwargs):
-        """实现单例模式"""
+        """创建单例实例"""
         if cls._instance is None:
             cls._instance = super(DataProcessor, cls).__new__(cls)
             cls._instance._initialized = False
@@ -46,18 +59,18 @@ class DataProcessor:
         self.logger.info("初始化数据处理器")
         
         # 历史数据容器（使用双端队列）
-        self.history = {
-            "cpu": collections.deque(maxlen=max_history_size),
-            "memory": collections.deque(maxlen=max_history_size),
-            "disk": collections.deque(maxlen=max_history_size),
-            "network": collections.deque(maxlen=max_history_size),
-            "battery": collections.deque(maxlen=max_history_size),
-            "processes": collections.deque(maxlen=max_history_size),
-            "timestamps": collections.deque(maxlen=max_history_size),
+        self.history: Dict[str, deque] = {
+            "cpu": deque(maxlen=max_history_size),
+            "memory": deque(maxlen=max_history_size),
+            "disk": deque(maxlen=max_history_size),
+            "network": deque(maxlen=max_history_size),
+            "battery": deque(maxlen=max_history_size),
+            "processes": deque(maxlen=max_history_size),
+            "timestamps": deque(maxlen=max_history_size),
         }
         
         # 统计数据
-        self.stats = {
+        self.stats: Dict[str, Dict[str, Any]] = {
             "cpu": {},
             "memory": {},
             "disk": {},
@@ -84,7 +97,7 @@ class DataProcessor:
         )
         
         # 自定义处理回调函数
-        self.custom_processors = {}
+        self.custom_processors: Dict[str, Callable[[float, Dict[str, Any], Dict[str, deque], Dict[str, Any]], None]] = {}
         
         # 告警状态（避免重复告警）
         self.alert_status = {
@@ -356,7 +369,7 @@ class DataProcessor:
                 self.logger.error(f"应用自定义处理器 '{name}' 失败: {e}")
     
     def _send_alert(self, alert_type: str, message: str, data: Dict[str, Any]) -> None:
-        """发送告警事件
+        """发送系统告警事件
         
         Args:
             alert_type: 告警类型
@@ -364,23 +377,25 @@ class DataProcessor:
             data: 告警数据
         """
         try:
-            event = Event(
-                event_type=EventType.SYSTEM_STATUS_UPDATE,
-                sender=self.__class__.__name__,
-                data={
-                    "alert": True,
-                    "alert_type": alert_type,
+            alert_data = {
+                "type": alert_type,
                     "message": message,
+                "data": data,
                     "timestamp": time.time(),
-                    "data": data,
-                }
+            }
+            
+            # 使用枚举类型
+            self.event_system.dispatch_event(
+                event_type=EventType.SYSTEM_ALERT,
+                sender=self,
+                data=alert_data
             )
-            self.event_system.dispatch_event(event)
-            self.logger.warning(f"系统告警: {message}")
+            
+            self.logger.warning(f"发送系统告警: {alert_type} - {message}")
         except Exception as e:
             self.logger.error(f"发送告警事件失败: {e}")
     
-    def register_custom_processor(self, name: str, processor: Callable[[float, Dict[str, Any], Dict[str, collections.deque], Dict[str, Any]], None]) -> bool:
+    def register_custom_processor(self, name: str, processor: Callable[[float, Dict[str, Any], Dict[str, deque], Dict[str, Any]], None]) -> bool:
         """注册自定义数据处理器
         
         Args:
@@ -460,52 +475,51 @@ class DataProcessor:
         with self.lock:
             return self.stats.copy()
     
-    def get_history(self, metric_type: str, count: int = None) -> List[Dict[str, Any]]:
-        """获取历史数据
+    def get_history(self, metric_type: str, count: Optional[int] = None) -> List[Dict[str, Any]]:
+        """获取指定类型的历史数据
         
         Args:
-            metric_type: 指标类型（cpu, memory, disk, network, battery）
-            count: 获取的历史记录数量，None表示获取所有历史记录
+            metric_type: 指标类型（cpu, memory, disk, network, battery, timestamps）
+            count: 返回的条目数量，None表示全部
             
         Returns:
             历史数据列表
         """
         with self.lock:
             if metric_type not in self.history:
-                self.logger.error(f"未知的指标类型: {metric_type}")
                 return []
                 
-            if count is None:
-                return list(self.history[metric_type])
-            else:
-                # 获取最近的n条记录
-                return list(self.history[metric_type])[-count:]
+            history_data = list(self.history[metric_type])
+            
+            if count is not None and count > 0:
+                return history_data[-count:]
+            return history_data
     
-    def get_history_with_timestamps(self, metric_type: str, count: int = None) -> List[Tuple[float, Dict[str, Any]]]:
+    def get_history_with_timestamps(self, metric_type: str, count: Optional[int] = None) -> List[Tuple[float, Dict[str, Any]]]:
         """获取带时间戳的历史数据
         
         Args:
             metric_type: 指标类型（cpu, memory, disk, network, battery）
-            count: 获取的历史记录数量，None表示获取所有历史记录
+            count: 返回的条目数量，None表示全部
             
         Returns:
-            包含(时间戳, 数据)元组的列表
+            (时间戳, 数据)元组列表
         """
         with self.lock:
-            if metric_type not in self.history:
-                self.logger.error(f"未知的指标类型: {metric_type}")
+            if metric_type not in self.history or metric_type == "timestamps":
                 return []
                 
-            if count is None:
-                data = list(self.history[metric_type])
-                timestamps = list(self.history["timestamps"])
-            else:
-                data = list(self.history[metric_type])[-count:]
-                timestamps = list(self.history["timestamps"])[-count:]
-                
-            # 确保数据和时间戳长度匹配
-            min_length = min(len(data), len(timestamps))
-            return list(zip(timestamps[-min_length:], data[-min_length:]))
+            # 组合时间戳和数据
+            timestamps = list(self.history["timestamps"])
+            data = list(self.history[metric_type])
+            
+            # 确保长度匹配
+            min_length = min(len(timestamps), len(data))
+            result = [(timestamps[i], data[i]) for i in range(min_length)]
+            
+            if count is not None and count > 0:
+                return result[-count:]
+            return result
     
     def clear_history(self) -> None:
         """清空历史数据"""

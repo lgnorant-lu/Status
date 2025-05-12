@@ -344,9 +344,11 @@ class Drawable:
         return self.data.get(key, default)
     
     def contains_point(self, x: float, y: float) -> bool:
-        """检查局部坐标点是否在对象边界内"""
-        # 简化处理：只检查矩形边界，不考虑旋转
-        return 0 <= x <= self.width and 0 <= y <= self.height
+        """检查点是否在对象边界内"""
+        # 将传入的(x,y)视为世界坐标，转换为对象局部坐标
+        local_x = x - self.x
+        local_y = y - self.y
+        return 0 <= local_x <= self.width and 0 <= local_y <= self.height
     
     def contains_point_world(self, x: float, y: float) -> bool:
         """检查世界坐标点是否在对象边界内"""
@@ -432,10 +434,10 @@ class Drawable:
             angle_rad = math.radians(parent_world_rotation)
             cos_val = math.cos(angle_rad)
             sin_val = math.sin(angle_rad)
-
+                
             rotated_x = translated_x * cos_val - translated_y * sin_val
             rotated_y = translated_x * sin_val + translated_y * cos_val
-
+                
             # Apply parent's world position
             self._world_x = parent_world_x + rotated_x
             self._world_y = parent_world_y + rotated_y
@@ -452,9 +454,9 @@ class Drawable:
             self._world_scale_x = self.scale_x
             self._world_scale_y = self.scale_y
             self._world_rotation = self.rotation
-
+            
         self._dirty = False
-
+        
     @property
     def world_position(self) -> Tuple[float, float]:
         """获取对象在世界坐标系中的位置"""

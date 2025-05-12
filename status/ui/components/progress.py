@@ -12,24 +12,13 @@ Changed history:
 """
 
 import logging
-from typing import Optional, Callable, Union
+from typing import Optional, Callable, Union, Any, Dict, List
 from enum import Enum
 
-try:
-    from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize
-    from PyQt6.QtGui import QColor, QPainter, QPaintEvent, QPen, QBrush
-    from PyQt6.QtWidgets import (QWidget, QProgressBar, QVBoxLayout, QHBoxLayout, 
-                                QLabel, QSizePolicy, QGraphicsOpacityEffect)
-    HAS_PYQT = True
-except ImportError:
-    HAS_PYQT = False
-    # 创建占位类以避免导入错误
-    class QWidget:
-        pass
-    class QProgressBar:
-        pass
-    class Enum:
-        pass
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize, QPoint
+from PySide6.QtGui import QColor, QPainter, QPaintEvent, QPen, QBrush, QIcon
+from PySide6.QtWidgets import (QWidget, QProgressBar, QVBoxLayout, QHBoxLayout, 
+                               QLabel, QSizePolicy, QGraphicsOpacityEffect, QFrame)
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +69,14 @@ class ProgressType(Enum):
 class ProgressBar(QWidget):
     """进度条组件"""
     
+    # 声明类属性，解决mypy错误
+    _label: Optional[QLabel] = None
+    _percentage_label: Optional[QLabel] = None
+    _progress_bar: QProgressBar
+    _header_layout: Optional[QHBoxLayout] = None
+    _layout: QVBoxLayout
+    _type: ProgressType
+    
     def __init__(self, 
                  parent: Optional[QWidget] = None,
                  value: int = 0,
@@ -94,7 +91,7 @@ class ProgressBar(QWidget):
         
         Args:
             parent: 父组件
-            value: 当前值
+            value: 初始值
             max_value: 最大值
             height: 进度条高度
             show_percentage: 是否显示百分比
@@ -102,10 +99,6 @@ class ProgressBar(QWidget):
             status: 进度条状态
             progress_type: 进度条类型
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__(parent)
         
         # 保存类型属性
@@ -132,10 +125,7 @@ class ProgressBar(QWidget):
                 self._header_layout.addWidget(self._percentage_label)
                 
             self._layout.addLayout(self._header_layout)
-        else:
-            self._label = None
-            self._percentage_label = None
-            
+        
         # 创建进度条
         self._progress_bar = QProgressBar(self)
         self._progress_bar.setRange(0, max_value)
@@ -155,9 +145,6 @@ class ProgressBar(QWidget):
             
     def _setup_indeterminate_mode(self):
         """设置不确定模式的动画效果"""
-        if not HAS_PYQT:
-            return
-            
         # 设置范围为0-100
         self._progress_bar.setRange(0, 0)  # 设置为0-0使Qt显示忙碌状态
         
@@ -166,9 +153,6 @@ class ProgressBar(QWidget):
             
     def _setup_determinate_mode(self):
         """设置确定模式"""
-        if not HAS_PYQT:
-            return
-            
         # 恢复正常范围
         self._progress_bar.setRange(0, 100)
         self._progress_bar.setValue(0)
@@ -237,10 +221,6 @@ class ProgressIndicator(QWidget):
             line_width: 线宽
             speed: 旋转速度（毫秒/帧）
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__(parent)
         
         # 保存属性
@@ -337,10 +317,6 @@ class LoadingWidget(QWidget):
             size: 指示器大小
             color: 指示器颜色
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__(parent)
         
         # 创建布局
@@ -385,6 +361,17 @@ class LoadingWidget(QWidget):
 class CircularProgress(QWidget):
     """环形进度条组件"""
     
+    # 声明类属性，解决mypy错误
+    _label: Optional[QLabel] = None
+    _percentage_label: Optional[QLabel] = None
+    _layout: QVBoxLayout
+    _value: int
+    _max_value: int
+    _size: int
+    _line_width: int
+    _show_percentage: bool
+    _status: ProgressStatus
+    
     def __init__(self, 
                  parent: Optional[QWidget] = None,
                  value: int = 0,
@@ -407,10 +394,6 @@ class CircularProgress(QWidget):
             label: 标签文本
             status: 进度条状态
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__(parent)
         
         # 保存属性
@@ -436,8 +419,6 @@ class CircularProgress(QWidget):
             self._label.setStyleSheet("color: #E6E6E6; font-size: 14px;")
             self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self._layout.addWidget(self._label)
-        else:
-            self._label = None
             
         # 如果显示百分比，添加百分比标签
         if show_percentage:
@@ -445,8 +426,6 @@ class CircularProgress(QWidget):
             self._percentage_label.setStyleSheet("color: #E6E6E6; font-size: 16px; font-weight: bold;")
             self._percentage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self._layout.addWidget(self._percentage_label)
-        else:
-            self._percentage_label = None
             
     def setValue(self, value: int):
         """设置当前值"""
@@ -519,3 +498,27 @@ class CircularProgress(QWidget):
         painter.drawArc(int(x + self._line_width/2), int(y + self._line_width/2), 
                       int(rect_size - self._line_width), int(rect_size - self._line_width), 
                       90 * 16, -angle * 16)  # Qt中的角度以1/16度为单位 
+
+class ProgressBarBase(QFrame):
+    def _setup_ui(self):
+        self.value_label: Optional[QLabel] = None
+        self.text_label: Optional[QLabel] = None
+        self.icon_label: Optional[QLabel] = None
+
+class HorizontalProgressBar(ProgressBarBase):
+    # ... existing code ...
+    pass
+
+class CircularProgressBar(ProgressBarBase):
+    pass
+
+class GaugeProgressBar(ProgressBarBase):
+    # ... existing code ...
+    pass
+
+class BatteryProgressBar(ProgressBarBase):
+    # ... existing code ...
+    def _create_labels(self):
+        self.value_label: Optional[QLabel] = None
+        self.icon_label: Optional[QLabel] = None
+        # ... existing code ... 

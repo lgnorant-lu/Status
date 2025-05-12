@@ -291,7 +291,7 @@ def test_json_loading(resource_loader):
     data = resource_loader.load_json("data/test.json")
     assert data == json_data
     mock_manager.get_resource_content.assert_called_with("data/test.json")
-    assert "data/test.json" in resource_loader._json_cache
+    assert "data/test.json_utf-8" in resource_loader._json_cache
 
 def test_text_loading(resource_loader):
     """测试文本加载"""

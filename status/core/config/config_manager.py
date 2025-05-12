@@ -8,13 +8,14 @@ Description:                配置管理器实现
 
 Changed history:            
                             2025/04/05: 初始创建;
+                            2025/05/12: 修复类型提示;
 ----
 """
 
 import os
 import json
 import logging
-from typing import Any, Dict, List, Optional, Union, Callable
+from typing import Any, Dict, List, Optional, Union, Callable, cast, overload
 
 from status.core.config.config_types import DEFAULT_CONFIG, DEFAULT_CONFIG_FILE, ConfigEventType
 
@@ -63,7 +64,7 @@ class ConfigManager:
                 # 使用递归更新，保留默认配置中存在但加载的配置中不存在的项
                 self._update_config_recursive(self.config, loaded_config)
                 logger.info(f"已从 {config_file} 加载配置")
-                self._notify_listeners(ConfigEventType.CONFIG_LOADED, None, None)
+                self._notify_listeners(str(ConfigEventType.CONFIG_LOADED.value), None, None)
                 return True
         except FileNotFoundError:
             logger.warning(f"配置文件不存在: {config_file}")
@@ -94,7 +95,7 @@ class ConfigManager:
             with open(config_file, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, ensure_ascii=False, indent=2)
                 logger.info(f"已保存配置到 {config_file}")
-                self._notify_listeners(ConfigEventType.CONFIG_SAVED, None, None)
+                self._notify_listeners(str(ConfigEventType.CONFIG_SAVED.value), None, None)
                 return True
         except Exception as e:
             logger.error(f"保存配置文件时出错: {str(e)}")
@@ -231,4 +232,4 @@ class ConfigManager:
         """重置所有配置到默认值"""
         self.config = DEFAULT_CONFIG.copy()
         logger.info("已重置所有配置到默认值")
-        self._notify_listeners(ConfigEventType.CONFIG_LOADED, None, None) 
+        self._notify_listeners(str(ConfigEventType.CONFIG_LOADED.value), None, None) 

@@ -12,20 +12,12 @@ Changed history:
 """
 
 import logging
-from typing import Optional, Callable, Union
+from typing import Optional, Callable, Union, List, Tuple, Dict, Any
 
-try:
-    from PyQt6.QtCore import Qt, QSize, pyqtSignal, QPropertyAnimation, QEasingCurve
-    from PyQt6.QtGui import QIcon, QColor, QPalette, QMouseEvent
-    from PyQt6.QtWidgets import QPushButton, QWidget, QGraphicsOpacityEffect, QSizePolicy
-    HAS_PYQT = True
-except ImportError:
-    HAS_PYQT = False
-    # 创建占位类以避免导入错误
-    class QPushButton:
-        pass
-    class QWidget:
-        pass
+# MODIFIED: Direct imports from PySide6
+from PySide6.QtCore import Qt, QSize, Signal, QPropertyAnimation, QEasingCurve, Property
+from PySide6.QtGui import QIcon, QColor, QPalette, QMouseEvent, QPainter, QPen, QPaintEvent, QResizeEvent
+from PySide6.QtWidgets import QPushButton, QWidget, QGraphicsOpacityEffect, QSizePolicy, QGraphicsDropShadowEffect, QGraphicsEffect
 
 logger = logging.getLogger(__name__)
 
@@ -136,10 +128,6 @@ class BaseButton(QPushButton):
             parent: 父组件
             on_click: 点击事件回调函数
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__(text, parent)
         
         # 设置尺寸策略
@@ -185,10 +173,38 @@ class BaseButton(QPushButton):
         """设置按钮启用状态"""
         super().setEnabled(enabled)
         # 更新透明度以反映禁用状态
-        opacity = 1.0 if enabled else 0.4
-        effect = QGraphicsOpacityEffect(self)
-        effect.setOpacity(opacity)
-        self.setGraphicsEffect(effect if not enabled else None)
+        
+        # 先清除当前效果（如果有）
+        current_effect = self.graphicsEffect()
+        if current_effect is not None:
+            current_effect.setParent(None)  # 断开父对象连接
+        
+        # 仅在禁用时设置新效果
+        if not enabled:
+            opacity = 0.4
+            effect = QGraphicsOpacityEffect(self)
+            effect.setOpacity(opacity)
+            super().setGraphicsEffect(effect)
+
+    def set_shadow(self, blur_radius: int = 10, x_offset: int = 0, y_offset: int = 5, color: str = "#000000") -> None:
+        """设置阴影效果"""
+        # 先清除当前效果（如果有）
+        current_effect = self.graphicsEffect()
+        if current_effect is not None:
+            current_effect.setParent(None)  # 断开父对象连接
+            
+        # 创建并设置新效果
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(blur_radius)
+        shadow.setOffset(x_offset, y_offset)
+        shadow.setColor(QColor(color))
+        super().setGraphicsEffect(shadow)
+
+    def clear_shadow(self) -> None:
+        """清除阴影效果"""
+        current_effect = self.graphicsEffect()
+        if current_effect is not None:
+            current_effect.setParent(None)  # 断开父对象连接而不是传递None
 
 class PrimaryButton(BaseButton):
     """主要按钮，用于强调主要操作"""
@@ -205,10 +221,6 @@ class PrimaryButton(BaseButton):
             parent: 父组件
             on_click: 点击事件回调函数
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__(text, parent, on_click)
         self.setProperty("class", "primary")
         self.setStyleSheet(BUTTON_STYLE)
@@ -228,10 +240,6 @@ class SecondaryButton(BaseButton):
             parent: 父组件
             on_click: 点击事件回调函数
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__(text, parent, on_click)
         self.setProperty("class", "secondary")
         self.setStyleSheet(BUTTON_STYLE)
@@ -251,10 +259,6 @@ class TextButton(BaseButton):
             parent: 父组件
             on_click: 点击事件回调函数
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__(text, parent, on_click)
         self.setProperty("class", "text")
         self.setStyleSheet(BUTTON_STYLE)
@@ -278,10 +282,6 @@ class IconButton(BaseButton):
             size: 按钮大小
             tooltip: 鼠标悬停提示
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__("", parent, on_click)
         
         # 设置图标

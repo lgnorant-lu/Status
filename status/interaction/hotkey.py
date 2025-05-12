@@ -17,9 +17,14 @@ import threading
 from PySide6.QtCore import QObject, Signal, Qt
 from status.core.events import EventManager
 from status.interaction.interaction_event import InteractionEvent, InteractionEventType
+from typing import Callable, Optional, Dict, List, Any, TYPE_CHECKING
 
 # 配置日志
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from status.interaction.hotkey_mac import register_hotkey as register_hotkey_mac, unregister_hotkey as unregister_hotkey_mac, listen as listen_mac # type: ignore [import-not-found]
+    from status.interaction.hotkey_linux import register_hotkey as register_hotkey_linux, unregister_hotkey as unregister_hotkey_linux, listen as listen_linux # type: ignore [import-not-found]
 
 
 class HotkeyManager(QObject):

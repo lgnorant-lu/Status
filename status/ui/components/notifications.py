@@ -16,24 +16,12 @@ import uuid
 from typing import Optional, Dict, List, Callable
 from enum import Enum
 
-try:
-    from PyQt6.QtCore import (Qt, QTimer, QPropertyAnimation, QEasingCurve, 
-                             QPoint, QSize, QRect, pyqtSignal)
-    from PyQt6.QtGui import QColor, QPainter, QPaintEvent, QPen, QIcon, QFont
-    from PyQt6.QtWidgets import (QWidget, QLabel, QPushButton, QHBoxLayout, 
-                                QVBoxLayout, QFrame, QApplication, QGraphicsOpacityEffect)
-    HAS_PYQT = True
-except ImportError:
-    HAS_PYQT = False
-    # 创建占位类以避免导入错误
-    class QWidget:
-        pass
-    class QFrame:
-        pass
-    class Enum:
-        pass
-    class pyqtSignal:
-        pass
+# MODIFIED: Direct imports from PySide6
+from PySide6.QtCore import (Qt, QTimer, QPropertyAnimation, QEasingCurve, 
+                            QPoint, QSize, QRect, Signal, QByteArray) # pyqtSignal replaced with Signal
+from PySide6.QtGui import QColor, QPainter, QPaintEvent, QPen, QIcon, QFont
+from PySide6.QtWidgets import (QWidget, QLabel, QPushButton, QHBoxLayout, 
+                               QVBoxLayout, QFrame, QApplication, QGraphicsOpacityEffect)
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +93,7 @@ QPushButton.notification-close:hover {
 class Notification(QFrame):
     """通知组件"""
     
-    closed = pyqtSignal(str)  # 通知关闭信号，传递通知ID
+    closed = Signal(str)  # MODIFIED: pyqtSignal to Signal
     
     def __init__(self, 
                  parent: Optional[QWidget] = None,
@@ -127,10 +115,6 @@ class Notification(QFrame):
             closable: 是否可关闭
             width: 通知宽度
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__(parent)
         
         # 生成唯一ID
@@ -183,15 +167,17 @@ class Notification(QFrame):
         self._opacity_effect.setOpacity(0.0)
         self.setGraphicsEffect(self._opacity_effect)
         
-        # 创建显示动画
-        self._show_animation = QPropertyAnimation(self._opacity_effect, b"opacity")
+        # 创建显示动画 - 使用QByteArray类型
+        property_name = QByteArray(b"opacity")
+        
+        self._show_animation = QPropertyAnimation(targetObject=self._opacity_effect, propertyName=property_name, parent=self)
         self._show_animation.setDuration(250)
         self._show_animation.setStartValue(0.0)
         self._show_animation.setEndValue(1.0)
         self._show_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         
         # 创建隐藏动画
-        self._hide_animation = QPropertyAnimation(self._opacity_effect, b"opacity")
+        self._hide_animation = QPropertyAnimation(targetObject=self._opacity_effect, propertyName=property_name, parent=self)
         self._hide_animation.setDuration(250)
         self._hide_animation.setStartValue(1.0)
         self._hide_animation.setEndValue(0.0)
@@ -254,10 +240,6 @@ class NotificationManager(QWidget):
         Args:
             parent: 父组件
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__(parent)
         
         # 检查是否已有实例
@@ -307,10 +289,6 @@ class NotificationManager(QWidget):
         Returns:
             str: 通知ID
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法显示通知")
-            return ""
-            
         # 创建新通知或使用提供的通知
         if isinstance(notification_or_params, Notification):
             notification = notification_or_params
@@ -334,9 +312,52 @@ class NotificationManager(QWidget):
         self._notifications[notification_id] = notification
             
         # 显示通知
-        self._add_notification(notification)
+        self._place_notification(notification)
+        
+        # 确保管理器可见
+        if not self.isVisible():
+            self.show()
             
         return notification_id
+        
+    def _place_notification(self, notification: Notification):
+        """放置通知在合适的位置"""
+        # 设置通知位置
+        notification.move(10, self._next_position)
+        
+        # 更新下一个通知的位置
+        self._next_position += notification.height() + self._spacing
+        
+        # 显示通知
+        notification.show()
+        
+    def showNotification(self, title: str, message: str, notification_type: NotificationType = NotificationType.INFO, 
+                       duration: int = 5000, closable: bool = True, width: int = 300) -> str:
+        """显示通知（便捷方法）
+        
+        Args:
+            title: 通知标题
+            message: 通知消息
+            notification_type: 通知类型
+            duration: 显示持续时间（毫秒，0表示不自动关闭）
+            closable: 是否可关闭
+            width: 通知宽度
+            
+        Returns:
+            str: 通知ID
+        """
+        # 创建参数字典
+        params = {
+            "title": title,
+            "message": message,
+            "type": notification_type,
+            "duration": duration,
+            "closable": closable,
+            "width": width
+        }
+        
+        # 显示通知
+        return self.show(params)
     
     def _on_notification_closed(self, notification_id: str):
         """通知关闭处理"""

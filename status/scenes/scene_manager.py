@@ -118,8 +118,8 @@ class SceneManager:
         return self.current_scene
     
     def switch_to(self, scene_id: str, transition: Optional[str] = None, 
-                 transition_params: Dict[str, Any] = None, 
-                 scene_params: Dict[str, Any] = None) -> bool:
+                 transition_params: Optional[Dict[str, Any]] = None, 
+                 scene_params: Optional[Dict[str, Any]] = None) -> bool:
         """切换到指定场景
         
         Args:
@@ -209,7 +209,7 @@ class SceneManager:
         # 重置转场
         self.transition = None
     
-    def update(self, delta_time: float, system_data: Dict[str, Any] = None) -> None:
+    def update(self, delta_time: float, system_data: Optional[Dict[str, Any]] = None) -> None:
         """更新场景管理器
         
         Args:

@@ -264,7 +264,7 @@ class PropertyAnimation(Animator):
         """检查属性类型并设置插值函数"""
         if not hasattr(self.target, self.property_name):
             raise ValueError(f"目标对象 {self.target} 没有属性 {self.property_name}")
-
+            
         # 检查起始值和结束值类型是否匹配
         if type(self.start_value) != type(self.end_value):
             raise ValueError(f"起始值类型 {type(self.start_value)} 和结束值类型 {type(self.end_value)} 不匹配")
@@ -391,7 +391,7 @@ class SequenceAnimation(Animator):
         if not self.animations:
             self.state = AnimationState.COMPLETED
             return
-
+            
         # 确保所有子动画不是自动开始的，由序列动画控制
         for anim in self.animations:
             anim.stop() # 先停止，重置状态

@@ -387,7 +387,7 @@ class ResourceLoader:
             except Exception as e:
                 self.logger.error(f"加载图像失败: {image_path}, 错误: {e}")
                 return None
-        
+            
         # 直接从文件路径加载
         try:
             qimage = QImage(real_path)
@@ -441,17 +441,17 @@ class ResourceLoader:
         # 如果启用缓存且已在缓存中，直接返回
         if use_cache and cache_key in self._font_cache:
             return self._font_cache[cache_key]
-            
+        
         # 获取资源实际路径
         real_path = self.get_resource_path(font_path)
-        
+            
         # 如果获取不到实际路径，尝试直接从内容加载
         if not real_path:
             content = self.get_resource_content(font_path)
             if not content:
                 self.logger.error(f"找不到字体: {font_path}")
                 return None
-                
+            
             # 从二进制数据加载QFont
             try:
                 # 使用QFontDatabase从内存加载字体
@@ -501,7 +501,7 @@ class ResourceLoader:
             
             if use_cache:
                 self._font_cache[cache_key] = font
-                
+            
             return font
             
         except Exception as e:
@@ -523,7 +523,7 @@ class ResourceLoader:
         cache_key = f"{json_path}_{encoding}" # 缓存键应考虑编码
         if use_cache and cache_key in self._json_cache:
             return self._json_cache[cache_key]
-            
+        
         # 获取资源内容
         content = self.get_resource_content(json_path)
         if not content:
@@ -536,7 +536,7 @@ class ResourceLoader:
             
             if use_cache:
                 self._json_cache[cache_key] = json_data
-                
+            
             return json_data
             
         except json.JSONDecodeError as e:
@@ -576,7 +576,7 @@ class ResourceLoader:
             
             if use_cache:
                 self._text_cache[cache_key] = text
-                
+            
             return text
             
         except UnicodeDecodeError as e:
@@ -604,7 +604,7 @@ class ResourceLoader:
         if not image_files:
             self.logger.error(f"目录中没有图像: {directory_path}")
             return None
-            
+    
         # 加载每个图像
         images: List[Any] = []
         for image_file in image_files:
@@ -613,7 +613,7 @@ class ResourceLoader:
             
             if image:
                 images.append(image)
-                
+            
         if not images:
             self.logger.error(f"没有成功加载任何图像: {directory_path}")
             return None

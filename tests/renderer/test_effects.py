@@ -549,7 +549,7 @@ class TestParticle(unittest.TestCase):
         """测试初始化"""
         self.assertEqual(self.particle.x, 100)
         self.assertEqual(self.particle.y, 100)
-        self.assertEqual(self.particle.size, 10)
+        self.assertEqual(self.particle.size, (10, 10))
         self.assertEqual(self.particle.color, Color(255, 0, 0, 255))
         self.assertEqual(self.particle.lifetime, 1.0)
         self.assertTrue(self.particle.is_alive)
@@ -635,7 +635,8 @@ class TestParticleEmitter(unittest.TestCase):
         
         # 检查粒子属性
         self.assertAlmostEqual(particle.lifetime, 2.0, delta=0.3)
-        self.assertAlmostEqual(particle.size, 20, delta=3)
+        self.assertAlmostEqual(particle.size[0], 20, delta=3)  # 检查宽度
+        self.assertAlmostEqual(particle.size[1], 20, delta=3)  # 检查高度
         self.assertEqual(particle.color.r, 255)
         
         # 检查速度

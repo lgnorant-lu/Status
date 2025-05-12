@@ -2,30 +2,39 @@
 ---------------------------------------------------------------
 File name:                  ui_controller.py
 Author:                     Ignorant-lu
-Date created:               2025/04/03
-Description:                系统监控UI控制器
+Date created:               2025/04/04
+Description:                系统监控UI控制器，管理监控界面显示与更新
 ----------------------------------------------------------------
 
 Changed history:            
-                            2025/04/03: 初始创建;
+                            2025/04/04: 初始创建;
+                            2025/05/15: 修复_initialized类型问题;
 ----
 """
 
+import os
+import time
 import logging
 import threading
-import time
-from typing import Dict, List, Any, Optional, Callable
+from typing import Dict, List, Any, Optional, Union, cast
 
 from status.core.event_system import EventSystem, Event, EventType
-
 
 class MonitorUIController:
     """系统监控UI控制器，负责管理监控界面的显示与更新"""
     
     _instance = None
+    _initialized: bool = False
+    
+    @classmethod
+    def get_instance(cls) -> 'MonitorUIController':
+        """获取单例实例"""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
     
     def __new__(cls, *args, **kwargs):
-        """实现单例模式"""
+        """创建单例实例"""
         if cls._instance is None:
             cls._instance = super(MonitorUIController, cls).__new__(cls)
             cls._instance._initialized = False
@@ -50,13 +59,13 @@ class MonitorUIController:
         )
         
         # UI组件注册表
-        self.ui_components = {}
+        self.ui_components: Dict[str, Any] = {}
         
         # 最近一次系统状态
-        self.latest_status = None
+        self.latest_status: Optional[Dict[str, Any]] = None
         
         # 告警历史
-        self.alerts = []
+        self.alerts: List[Dict[str, Any]] = []
         self.max_alerts = 100  # 最多保留100条告警记录
         
         # 线程锁
@@ -70,7 +79,7 @@ class MonitorUIController:
         Args:
             event: 系统状态更新事件
         """
-        if event.event_type != EventType.SYSTEM_STATUS_UPDATE:
+        if event.type != EventType.SYSTEM_STATUS_UPDATE:
             return
             
         try:
@@ -193,7 +202,7 @@ class MonitorUIController:
         """
         return self.latest_status.copy() if self.latest_status else {}
     
-    def get_alerts(self, count: int = None) -> List[Dict[str, Any]]:
+    def get_alerts(self, count: Optional[int] = None) -> List[Dict[str, Any]]:
         """获取告警历史
         
         Args:
@@ -206,7 +215,7 @@ class MonitorUIController:
             if count is None:
                 return self.alerts.copy()
             else:
-                return self.alerts[-count:].copy()
+                return self.alerts[-count:]
     
     def clear_alerts(self) -> None:
         """清空告警历史"""

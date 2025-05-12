@@ -12,24 +12,14 @@ Changed history:
 """
 
 import logging
-from typing import Optional, List, Callable, Union
+from typing import Optional, List, Callable, Union, Any, Dict
 
-try:
-    from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRect
-    from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QPaintEvent, QResizeEvent
-    from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                                QPushButton, QFrame, QSizePolicy, QLayout,
-                                QScrollArea, QGraphicsDropShadowEffect)
-    HAS_PYQT = True
-except ImportError:
-    HAS_PYQT = False
-    # 创建占位类以避免导入错误
-    class QWidget:
-        pass
-    class QFrame:
-        pass
-    class QLayout:
-        pass
+# MODIFIED: Direct imports from PySide6
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRect, Signal, QSize
+from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QPaintEvent, QResizeEvent, QPixmap, QIcon
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+                               QPushButton, QFrame, QSizePolicy, QLayout,
+                               QScrollArea, QGraphicsDropShadowEffect, QBoxLayout)
 
 logger = logging.getLogger(__name__)
 
@@ -100,10 +90,6 @@ class Card(QFrame):
             hoverable: 是否启用悬停效果
             padding: 内边距
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__(parent)
         
         # 设置基本属性
@@ -163,7 +149,7 @@ class Card(QFrame):
             self._header = CardHeader("", subtitle, self)
             self._layout.insertWidget(0, self._header)
             
-    def contentLayout(self) -> QLayout:
+    def contentLayout(self) -> QVBoxLayout:
         """获取内容区域布局以添加子组件"""
         return self._content.layout()
         
@@ -202,25 +188,27 @@ class CardHeader(QFrame):
             title: 标题文本
             subtitle: 副标题文本
             parent: 父组件
-            action_button: 操作按钮（如果需要）
+            action_button: 操作按钮
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__(parent)
         
         # 设置基本属性
         self.setObjectName("cardHeader")
         self.setProperty("class", "card-header")
-        self.setStyleSheet(CARD_STYLE)
+        
+        # 确保正确初始化类型注解
+        self._title_label: Optional[QLabel] = None
+        self._subtitle_label: Optional[QLabel] = None
         
         # 创建布局
-        self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(16, 12, 16, 12)
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(16, 16, 16, 8)
+        self._layout.setSpacing(4)
         
-        # 创建标题部分
+        # 创建标题布局
         self._title_layout = QVBoxLayout()
+        self._title_layout.setContentsMargins(0, 0, 0, 0)
+        self._title_layout.setSpacing(2)
         self._layout.addLayout(self._title_layout)
         
         # 创建标题标签
@@ -228,17 +216,13 @@ class CardHeader(QFrame):
             self._title_label = QLabel(title, self)
             self._title_label.setProperty("class", "card-title")
             self._title_layout.addWidget(self._title_label)
-        else:
-            self._title_label = None
-            
+        
         # 创建副标题标签
         if subtitle:
             self._subtitle_label = QLabel(subtitle, self)
             self._subtitle_label.setProperty("class", "card-subtitle")
             self._title_layout.addWidget(self._subtitle_label)
-        else:
-            self._subtitle_label = None
-            
+        
         # 添加弹性空间
         self._layout.addStretch(1)
         
@@ -264,7 +248,7 @@ class CardHeader(QFrame):
             self._subtitle_label.setProperty("class", "card-subtitle")
             self._title_layout.addWidget(self._subtitle_label)
             
-    def addAction(self, button: QPushButton):
+    def add_action_button(self, button: QPushButton):
         """添加操作按钮"""
         self._layout.addWidget(button)
 
@@ -283,10 +267,6 @@ class CardContent(QFrame):
             parent: 父组件
             scrollable: 是否可滚动
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__(parent)
         
         # 设置基本属性
@@ -320,7 +300,7 @@ class CardContent(QFrame):
             self._layout.setContentsMargins(padding, padding, padding, padding)
             self._layout.setSpacing(8)
             
-    def layout(self) -> QLayout:
+    def layout(self) -> QVBoxLayout:
         """获取内容布局以添加子组件"""
         return self._layout
 
@@ -339,10 +319,6 @@ class CardFooter(QFrame):
             buttons: 底部按钮列表
             alignment: 按钮对齐方式
         """
-        if not HAS_PYQT:
-            logger.error("PyQt6未安装，无法创建UI组件")
-            return
-            
         super().__init__(parent)
         
         # 设置基本属性
@@ -426,7 +402,7 @@ class ExpandableCard(Card):
             shadow: 是否显示阴影
             padding: 内边距
         """
-        super().__init__(parent, title, subtitle, width, height, shadow, False, padding)
+        super().__init__(parent, title, subtitle, width, 0, shadow, False, padding) # Height is dynamic
         
         # 添加展开/折叠按钮
         self._expand_button = QPushButton("▼" if expanded else "▶", self)
@@ -445,7 +421,10 @@ class ExpandableCard(Card):
         
         # 将按钮添加到头部
         if hasattr(self, '_header'):
-            self._header.addAction(self._expand_button)
+            if hasattr(self._header, 'add_action_button'):
+                self._header.add_action_button(self._expand_button)
+            else: 
+                pass 
             
         # 设置内容区域初始可见性
         self._content.setVisible(expanded)
@@ -465,3 +444,12 @@ class ExpandableCard(Card):
     def isExpanded(self) -> bool:
         """获取当前展开状态"""
         return self._expanded 
+
+class InfoCard(Card):
+    def _setup_ui(self):
+        self.icon_label: Optional[QLabel] = None
+        self.title_label: Optional[QLabel] = None
+
+class ActionCard(Card):
+    pass
+    

@@ -22,8 +22,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 import tests.conftest
 
 from status.interaction.event_filter import (
-    EventFilter, EventTypeFilter, EventPropertyFilter, 
-    CompositeFilter, EventFilterChain
+    EventFilter, TypeFilter, PropertyFilter,
+    EventFilterChain, AndFilter, OrFilter, RangeFilter
 )
 from status.interaction.interaction_event import InteractionEvent, InteractionEventType
 
@@ -31,53 +31,24 @@ from status.interaction.interaction_event import InteractionEvent, InteractionEv
 class MockEventFilter(EventFilter):
     """用于测试的模拟过滤器"""
     
-    def __init__(self, name="MockFilter", should_pass=True):
-        super().__init__(name)
+    def __init__(self, name="MockFilter", should_pass=True, enabled=True):
+        super().__init__(name=name)
         self.should_pass = should_pass
         self.filtered_events = []
-        self.stats = {
-            "total_processed": 0,
-            "total_throttled": 0
-        }
-    
-    def filter(self, event):
-        self.filtered_events.append(event)
-        return self.should_pass
-        
-    def should_process(self, event):
-        """判断是否应该处理事件
-        
-        首先检查过滤器是否启用，然后调用filter方法判断是否过滤
+        self.set_enabled(enabled) # 使用基类方法设置 enabled 状态
+
+    def _do_filter(self, event: InteractionEvent) -> bool:
+        """模拟执行过滤的方法，子类应重写此方法
         
         Args:
-            event: 要判断的交互事件
+            event: 要过滤的事件
             
         Returns:
-            bool: 如果应该处理返回True，否则返回False
+            bool: True允许事件通过，False拦截事件
         """
-        # 更新统计信息
-        self.stats["total_processed"] += 1
-        
-        # 如果过滤器禁用，直接通过
-        if not self.is_enabled:
-            return True
-        
-        # 调用子类的filter方法判断是否过滤
-        result = self.filter(event)
-        
-        # 如果被过滤，更新统计信息
-        if not result:
-            self.stats["total_throttled"] += 1
-        
-        return result
-    
-    def get_stats(self):
-        """获取过滤器的统计信息
-        
-        Returns:
-            dict: 过滤器的统计信息
-        """
-        return self.stats
+        # 记录被过滤的事件
+        self.filtered_events.append(event)
+        return self.should_pass
 
 
 class TestEventFilter(unittest.TestCase):
@@ -87,48 +58,34 @@ class TestEventFilter(unittest.TestCase):
         """测试过滤器初始化"""
         filter = MockEventFilter("TestFilter")
         self.assertEqual(filter.name, "TestFilter")
-        self.assertTrue(filter.is_enabled)
+        self.assertTrue(filter.is_enabled())
     
     def test_enable_disable(self):
         """测试启用和禁用功能"""
         filter = MockEventFilter()
-        self.assertTrue(filter.is_enabled)
+        self.assertTrue(filter.is_enabled())
         
-        filter.disable()
-        self.assertFalse(filter.is_enabled)
+        filter.set_enabled(False) # 使用 set_enabled
+        self.assertFalse(filter.is_enabled())
         
-        filter.enable()
-        self.assertTrue(filter.is_enabled)
+        filter.set_enabled(True) # 使用 set_enabled
+        self.assertTrue(filter.is_enabled())
     
-    def test_should_process_when_disabled(self):
-        """测试禁用时的处理逻辑"""
-        filter = MockEventFilter(should_pass=False)
-        filter.disable()
+    def test_filter_when_disabled(self):
+        """测试禁用时的过滤行为"""
+        # 当过滤器禁用时，EventFilter.filter 应该直接返回 True，不调用 _do_filter
+        filter = MockEventFilter(should_pass=False, enabled=False)
         
         event = InteractionEvent(InteractionEventType.MOUSE_CLICK)
-        self.assertTrue(filter.should_process(event))
-        # 验证filter方法未被调用
+        # 当过滤器禁用时，EventFilter.filter 应该返回 True
+        self.assertTrue(filter.filter(event))
+        # 验证 _do_filter 方法没有被调用
         self.assertEqual(len(filter.filtered_events), 0)
-    
-    def test_should_process_stats(self):
-        """测试统计信息更新"""
-        filter = MockEventFilter(should_pass=True)
-        event = InteractionEvent(InteractionEventType.MOUSE_CLICK)
         
-        filter.should_process(event)
-        stats = filter.get_stats()
-        self.assertEqual(stats["total_processed"], 1)
-        self.assertEqual(stats["total_throttled"], 0)
-        
-        # 测试不通过的情况
-        filter.should_pass = False
-        filter.should_process(event)
-        stats = filter.get_stats()
-        self.assertEqual(stats["total_processed"], 2)
-        self.assertEqual(stats["total_throttled"], 1)
+    # 移除了与 should_process 和 stats 相关的测试
 
 
-class TestEventTypeFilter(unittest.TestCase):
+class TestTypeFilter(unittest.TestCase):
     """事件类型过滤器测试"""
     
     def test_initialization(self):
@@ -137,13 +94,13 @@ class TestEventTypeFilter(unittest.TestCase):
             InteractionEventType.MOUSE_CLICK,
             InteractionEventType.MOUSE_DOUBLE_CLICK
         }
-        filter = EventTypeFilter("TypeFilter", allowed_types)
+        filter = TypeFilter(name="TypeFilter", allowed_types=list(allowed_types))
         self.assertEqual(filter.name, "TypeFilter")
         self.assertEqual(filter.allowed_types, allowed_types)
     
     def test_filter_allowed_type(self):
         """测试允许的事件类型"""
-        filter = EventTypeFilter(
+        filter = TypeFilter(
             allowed_types={InteractionEventType.MOUSE_CLICK}
         )
         
@@ -152,7 +109,7 @@ class TestEventTypeFilter(unittest.TestCase):
     
     def test_filter_blocked_type(self):
         """测试阻止的事件类型"""
-        filter = EventTypeFilter(
+        filter = TypeFilter(
             allowed_types={InteractionEventType.MOUSE_CLICK}
         )
         
@@ -160,229 +117,223 @@ class TestEventTypeFilter(unittest.TestCase):
         self.assertFalse(filter.filter(event))
 
 
-class TestEventPropertyFilter(unittest.TestCase):
+class TestPropertyFilter(unittest.TestCase):
     """事件属性过滤器测试"""
     
     def test_initialization(self):
         """测试属性过滤器初始化"""
-        filter = EventPropertyFilter(
+        filter = PropertyFilter(
             name="PositionFilter",
             property_name="data.x",
-            property_value=100,
-            comparison="gt"
+            predicate=lambda x: x is not None and x > 0 # 示例谓词
         )
         self.assertEqual(filter.name, "PositionFilter")
         self.assertEqual(filter.property_name, "data.x")
-        self.assertEqual(filter.property_value, 100)
-        self.assertEqual(filter.comparison, "gt")
-    
-    def test_comparison_operators(self):
-        """测试各种比较运算符"""
-        # 测试相等
-        filter_eq = EventPropertyFilter(
-            property_name="data.x",
-            property_value=100,
-            comparison="eq"
-        )
-        event = InteractionEvent(InteractionEventType.MOUSE_CLICK, {"x": 100})
-        self.assertTrue(filter_eq.filter(event))
-        event = InteractionEvent(InteractionEventType.MOUSE_CLICK, {"x": 101})
-        self.assertFalse(filter_eq.filter(event))
-        
-        # 测试大于
-        filter_gt = EventPropertyFilter(
-            property_name="data.x",
-            property_value=100,
-            comparison="gt"
-        )
-        event = InteractionEvent(InteractionEventType.MOUSE_CLICK, {"x": 101})
-        self.assertTrue(filter_gt.filter(event))
-        event = InteractionEvent(InteractionEventType.MOUSE_CLICK, {"x": 100})
-        self.assertFalse(filter_gt.filter(event))
-        
-        # 测试包含
-        filter_contains = EventPropertyFilter(
-            property_name="data.text",
-            property_value="test",
-            comparison="contains"
-        )
-        event = InteractionEvent(InteractionEventType.MENU_COMMAND, {"text": "this is a test message"})
-        self.assertTrue(filter_contains.filter(event))
-        event = InteractionEvent(InteractionEventType.MENU_COMMAND, {"text": "no match here"})
-        self.assertFalse(filter_contains.filter(event))
-    
-    def test_nested_property(self):
-        """测试嵌套属性"""
-        filter = EventPropertyFilter(
-            property_name="data.position.x",
-            property_value=100,
-            comparison="eq"
-        )
-        event = InteractionEvent(
-            InteractionEventType.MOUSE_CLICK, 
-            {"position": {"x": 100, "y": 200}}
-        )
-        self.assertTrue(filter.filter(event))
+        self.assertTrue(callable(filter.predicate))
 
+    def test_predicate_filtering(self):
+        """测试谓词过滤"""
+        filter_gt_100 = PropertyFilter(
+            property_name="value",
+            predicate=lambda x: x is not None and float(x) > 100
+        )
+        event_pass = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 150})
+        event_fail = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 50})
+        event_none = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": None})
+        event_missing = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={})
 
-class TestCompositeFilter(unittest.TestCase):
-    """复合过滤器测试"""
-    
-    def test_and_mode(self):
-        """测试AND模式"""
-        filter1 = MockEventFilter(should_pass=True)
-        filter2 = MockEventFilter(should_pass=True)
-        composite = CompositeFilter(
-            name="AndFilter",
-            filters=[filter1, filter2],
-            mode="AND"
-        )
-        
-        event = InteractionEvent(InteractionEventType.MOUSE_CLICK)
-        self.assertTrue(composite.filter(event))
-        
-        # 如果任一过滤器不通过，复合过滤器就不通过
-        filter2.should_pass = False
-        self.assertFalse(composite.filter(event))
-    
-    def test_or_mode(self):
-        """测试OR模式"""
-        filter1 = MockEventFilter(should_pass=False)
-        filter2 = MockEventFilter(should_pass=True)
-        composite = CompositeFilter(
-            name="OrFilter",
-            filters=[filter1, filter2],
-            mode="OR"
-        )
-        
-        event = InteractionEvent(InteractionEventType.MOUSE_CLICK)
-        self.assertTrue(composite.filter(event))
-        
-        # 只有所有过滤器都不通过，复合过滤器才不通过
-        filter2.should_pass = False
-        self.assertFalse(composite.filter(event))
-    
-    def test_disabled_filters(self):
-        """测试禁用的子过滤器"""
-        filter1 = MockEventFilter(should_pass=False)
-        filter2 = MockEventFilter(should_pass=False)
-        composite = CompositeFilter(
-            name="AndWithDisabled",
-            filters=[filter1, filter2],
-            mode="AND"
-        )
-        
-        # 禁用第一个过滤器
-        filter1.disable()
-        
-        event = InteractionEvent(InteractionEventType.MOUSE_CLICK)
-        # 通过composite.should_process调用，因为第一个过滤器被禁用，只看第二个
-        self.assertFalse(composite.should_process(event))
-        
-        # 禁用所有过滤器
-        filter2.disable()
-        # 所有过滤器都被禁用，应该通过
-        self.assertTrue(composite.should_process(event))
+        self.assertTrue(filter_gt_100.filter(event_pass))
+        self.assertFalse(filter_gt_100.filter(event_fail))
+        self.assertTrue(filter_gt_100.filter(event_missing))
+        self.assertFalse(filter_gt_100.filter(event_none))
 
 
 class TestEventFilterChain(unittest.TestCase):
     """事件过滤器链测试"""
     
+    def test_initialization(self):
+        """测试过滤器链初始化"""
+        filter1 = MockEventFilter("Filter1")
+        filter2 = MockEventFilter("Filter2")
+        filter_chain = EventFilterChain(name="Chain", filters=[filter1, filter2])
+
+        self.assertEqual(filter_chain.name, "Chain")
+        self.assertEqual(len(filter_chain.filters), 2)
+        self.assertIn(filter1, filter_chain.filters)
+        self.assertIn(filter2, filter_chain.filters)
+    
     def test_add_remove_filters(self):
         """测试添加和移除过滤器"""
-        chain = EventFilterChain("TestChain")
-        self.assertEqual(len(chain.get_filters()), 0)
-        
-        # 添加过滤器
+        filter_chain = EventFilterChain()
         filter1 = MockEventFilter("Filter1")
         filter2 = MockEventFilter("Filter2")
         
-        self.assertTrue(chain.add_filter(filter1))
-        self.assertTrue(chain.add_filter(filter2))
-        self.assertEqual(len(chain.get_filters()), 2)
-        
-        # 尝试添加重复的过滤器
-        self.assertFalse(chain.add_filter(filter1))
-        self.assertEqual(len(chain.get_filters()), 2)
-        
-        # 移除过滤器
-        self.assertTrue(chain.remove_filter(filter1))
-        self.assertEqual(len(chain.get_filters()), 1)
-        
-        # 使用名称移除过滤器
-        self.assertTrue(chain.remove_filter("Filter2"))
-        self.assertEqual(len(chain.get_filters()), 0)
+        filter_chain.add_filter(filter1)
+        self.assertEqual(len(filter_chain.filters), 1)
+        self.assertIn(filter1, filter_chain.filters)
+
+        filter_chain.add_filter(filter2)
+        self.assertEqual(len(filter_chain.filters), 2)
+        self.assertIn(filter2, filter_chain.filters)
+
+        # 移除存在的过滤器
+        removed = filter_chain.remove_filter(filter1)
+        self.assertTrue(removed)
+        self.assertEqual(len(filter_chain.filters), 1)
+        self.assertNotIn(filter1, filter_chain.filters)
+        self.assertIn(filter2, filter_chain.filters)
         
         # 尝试移除不存在的过滤器
-        self.assertFalse(chain.remove_filter("NonexistentFilter"))
+        nonexistent_filter = MockEventFilter("Nonexistent")
+        removed = filter_chain.remove_filter(nonexistent_filter)
+        self.assertFalse(removed)
+        self.assertEqual(len(filter_chain.filters), 1)
     
     def test_clear_filters(self):
         """测试清空过滤器"""
-        chain = EventFilterChain()
         filter1 = MockEventFilter("Filter1")
-        filter2 = MockEventFilter("Filter2")
-        
-        chain.add_filter(filter1)
-        chain.add_filter(filter2)
-        self.assertEqual(len(chain.get_filters()), 2)
-        
-        chain.clear_filters()
-        self.assertEqual(len(chain.get_filters()), 0)
-    
-    def test_should_process(self):
-        """测试事件处理逻辑"""
-        chain = EventFilterChain()
-        filter1 = MockEventFilter("Filter1", should_pass=True)
-        filter2 = MockEventFilter("Filter2", should_pass=True)
-        
-        chain.add_filter(filter1)
-        chain.add_filter(filter2)
-        
-        event = InteractionEvent(InteractionEventType.MOUSE_CLICK)
-        
-        # 所有过滤器都通过
-        self.assertTrue(chain.should_process(event))
-        
-        # 一个过滤器不通过
-        filter2.should_pass = False
-        self.assertFalse(chain.should_process(event))
-        
-        # 禁用不通过的过滤器
-        filter2.disable()
-        self.assertTrue(chain.should_process(event))
-    
-    def test_stats(self):
-        """测试统计信息"""
-        chain = EventFilterChain()
-        filter1 = MockEventFilter("Filter1", should_pass=True)
-        filter2 = MockEventFilter("Filter2", should_pass=False)
-        
-        chain.add_filter(filter1)
-        chain.add_filter(filter2)
-        
-        event = InteractionEvent(InteractionEventType.MOUSE_CLICK)
-        
-        # 第一次处理，应该被拦截
-        self.assertFalse(chain.should_process(event))
-        stats = chain.get_stats()
-        self.assertEqual(stats["total_processed"], 1)
-        self.assertEqual(stats["total_filtered"], 1)
-        
-        # 禁用拦截的过滤器
-        filter2.disable()
-        
-        # 第二次处理，应该通过
-        self.assertTrue(chain.should_process(event))
-        stats = chain.get_stats()
-        self.assertEqual(stats["total_processed"], 2)
-        self.assertEqual(stats["total_filtered"], 1)
-        
-        # 验证过滤器统计数据
-        self.assertEqual(stats["filters"]["Filter1"]["processed"], 2)
-        self.assertEqual(stats["filters"]["Filter1"]["filtered"], 0)
-        # Filter2被禁用，第二次不应该增加计数
-        self.assertEqual(stats["filters"]["Filter2"]["processed"], 1)
-        self.assertEqual(stats["filters"]["Filter2"]["filtered"], 1)
+        filter_chain = EventFilterChain(filters=[filter1])
+
+        self.assertEqual(len(filter_chain.filters), 1)
+
+        filter_chain.clear_filters()
+        self.assertEqual(len(filter_chain.filters), 0)
+
+    def test_filter_logic(self):
+        """测试过滤器链的AND逻辑 (EventFilterChain 默认是AND)"""
+        filter1_pass = MockEventFilter("PassFilter1", should_pass=True)
+        filter2_pass = MockEventFilter("PassFilter2", should_pass=True)
+        filter3_fail = MockEventFilter("FailFilter3", should_pass=False)
+
+        # 所有都通过
+        chain_all_pass = EventFilterChain(filters=[filter1_pass, filter2_pass])
+        event = InteractionEvent(InteractionEventType.SYSTEM_EVENT)
+        self.assertTrue(chain_all_pass.filter(event))
+        self.assertEqual(len(filter1_pass.filtered_events), 1)
+        self.assertEqual(len(filter2_pass.filtered_events), 1)
+
+        # 其中一个不通过
+        chain_one_fail = EventFilterChain(filters=[filter1_pass, filter3_fail])
+        event = InteractionEvent(InteractionEventType.SYSTEM_EVENT)
+        self.assertFalse(chain_one_fail.filter(event))
+        self.assertEqual(len(filter1_pass.filtered_events), 2) # 之前调用过一次
+        self.assertEqual(len(filter3_fail.filtered_events), 1)
+
+
+class TestAndOrFilter(unittest.TestCase):
+    """AndFilter 和 OrFilter 测试"""
+
+    def test_and_filter(self):
+        """测试AndFilter"""
+        filter1_pass = MockEventFilter("PassFilter1", should_pass=True)
+        filter2_pass = MockEventFilter("PassFilter2", should_pass=True)
+        filter3_fail = MockEventFilter("FailFilter3", should_pass=False)
+
+        # 所有都通过
+        and_filter_all_pass = AndFilter(filter1_pass, filter2_pass)
+        event = InteractionEvent(InteractionEventType.SYSTEM_EVENT)
+        self.assertTrue(and_filter_all_pass.filter(event))
+
+        # 其中一个不通过
+        and_filter_one_fail = AndFilter(filter1_pass, filter3_fail)
+        event = InteractionEvent(InteractionEventType.SYSTEM_EVENT)
+        self.assertFalse(and_filter_one_fail.filter(event))
+
+    def test_or_filter(self):
+        """测试OrFilter"""
+        filter1_pass = MockEventFilter("PassFilter1", should_pass=True)
+        filter2_fail = MockEventFilter("FailFilter2", should_pass=False)
+        filter3_fail = MockEventFilter("FailFilter3", should_pass=False)
+
+        # 其中一个通过
+        or_filter_one_pass = OrFilter(filter1_pass, filter2_fail)
+        event = InteractionEvent(InteractionEventType.SYSTEM_EVENT)
+        self.assertTrue(or_filter_one_pass.filter(event))
+
+        # 所有都不通过
+        or_filter_all_fail = OrFilter(filter2_fail, filter3_fail)
+        event = InteractionEvent(InteractionEventType.SYSTEM_EVENT)
+        self.assertFalse(or_filter_all_fail.filter(event))
+
+
+class TestRangeFilter(unittest.TestCase):
+    """范围过滤器测试"""
+
+    def test_initialization(self):
+        """测试范围过滤器初始化"""
+        filter = RangeFilter(
+            name="RangeFilter",
+            property_name="value",
+            min_value=0,
+            max_value=100,
+            inclusive=True
+        )
+        self.assertEqual(filter.name, "RangeFilter")
+        self.assertEqual(filter.property_name, "value")
+        self.assertEqual(filter.min_value, 0)
+        self.assertEqual(filter.max_value, 100)
+        self.assertTrue(filter.inclusive)
+
+    def test_inclusive_range(self):
+        """测试包含边界的范围过滤"""
+        filter = RangeFilter(property_name="value", min_value=0, max_value=100, inclusive=True)
+        event_in = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 50})
+        event_min = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 0})
+        event_max = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 100})
+        event_out_min = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": -10})
+        event_out_max = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 110})
+        event_none = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": None})
+        event_missing = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={})
+
+        self.assertTrue(filter.filter(event_in))
+        self.assertTrue(filter.filter(event_min))
+        self.assertTrue(filter.filter(event_max))
+        self.assertFalse(filter.filter(event_out_min))
+        self.assertFalse(filter.filter(event_out_max))
+        self.assertFalse(filter.filter(event_none))
+        self.assertTrue(filter.filter(event_missing)) # PropertyFilter base allows if property missing
+
+    def test_exclusive_range(self):
+        """测试不包含边界的范围过滤"""
+        filter = RangeFilter(property_name="value", min_value=0, max_value=100, inclusive=False)
+        event_in = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 50})
+        event_min = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 0})
+        event_max = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 100})
+        event_out_min = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": -10})
+        event_out_max = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 110})
+        event_none = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": None})
+        event_missing = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={})
+
+        self.assertTrue(filter.filter(event_in))
+        self.assertFalse(filter.filter(event_min))
+        self.assertFalse(filter.filter(event_max))
+        self.assertFalse(filter.filter(event_out_min))
+        self.assertFalse(filter.filter(event_out_max))
+        self.assertFalse(filter.filter(event_none))
+        self.assertTrue(filter.filter(event_missing)) # PropertyFilter base allows if property missing
+
+    def test_set_range(self):
+        """测试动态设置范围"""
+        filter = RangeFilter(property_name="value", min_value=0, max_value=100, inclusive=True)
+        event_test = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 150})
+
+        self.assertFalse(filter.filter(event_test))
+
+        filter.set_range(min_value=100, max_value=200, inclusive=True)
+        self.assertTrue(filter.filter(event_test))
+
+        filter.set_range(min_value=100, max_value=200, inclusive=False)
+        self.assertFalse(filter.filter(event_test)) # 150 在非包含范围内
+
+    def test_missing_or_none_value(self):
+        """测试属性缺失或值为None时RangeFilter的行为"""
+        filter = RangeFilter(property_name="value", min_value=0, max_value=100)
+        event_none = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": None})
+        event_missing = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={})
+
+        # PropertyFilter 基类在属性缺失时返回 True，RangeFilter 在值为 None 时返回 False
+        self.assertFalse(filter.filter(event_none))
+        self.assertTrue(filter.filter(event_missing))
 
 
 if __name__ == "__main__":

@@ -29,7 +29,7 @@ class Decision:
     决策包含行为ID、参数和优先级。
     """
     
-    def __init__(self, behavior_id: str, params: Dict[str, Any] = None, priority: int = 0):
+    def __init__(self, behavior_id: str, params: Optional[Dict[str, Any]] = None, priority: int = 0):
         """
         初始化决策
         

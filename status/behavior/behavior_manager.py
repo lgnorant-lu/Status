@@ -97,7 +97,8 @@ class BehaviorManager:
         """
         if self.current_behavior and self.current_behavior.is_running:
             try:
-                is_completed = self.current_behavior.update(dt)
+                # 使用内部的_update_behavior方法获取完成状态
+                is_completed = self.current_behavior._update_behavior(dt)
                 if is_completed:
                     self.logger.debug(f"行为完成: {self.current_behavior.name}")
                     self.current_behavior = None

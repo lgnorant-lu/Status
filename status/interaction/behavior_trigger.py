@@ -16,7 +16,7 @@ import time
 import uuid
 import threading
 from datetime import datetime, timedelta
-from PySide6.QtCore import QObject, QTimer, pyqtSignal
+from PySide6.QtCore import QObject, QTimer, Signal
 from status.core.events import EventManager
 from status.interaction.interaction_event import InteractionEvent, InteractionEventType
 
@@ -328,7 +328,7 @@ class BehaviorTrigger(QObject):
     """
     
     # 定义信号
-    trigger_signal = pyqtSignal(str, object)
+    trigger_signal = Signal(str, object)
     
     def __init__(self):
         """初始化行为触发器管理器

@@ -13,7 +13,7 @@ Changed history:
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 
 class SceneBase(ABC):
     """场景基类，定义所有场景必须实现的接口"""
@@ -30,10 +30,10 @@ class SceneBase(ABC):
         self.active = False
         self.initialized = False
         self.logger = logging.getLogger(f"Status.Scenes.{scene_id}")
-        self.data = {}  # 场景数据存储
+        self.data: Dict[str, Any] = {}  # 场景数据存储
         
         # 场景元素列表，将在子类中填充
-        self.elements = {}
+        self.elements: Dict[str, Any] = {}
         
         # 场景尺寸，可在子类中覆盖
         self.size = (300, 400)  # 宽度, 高度
@@ -329,4 +329,8 @@ class SceneBase(ABC):
         Returns:
             bool: 场景是否已初始化
         """
-        return self.initialized 
+        return self.initialized
+
+    def load(self, data: Dict[str, Any] = {}) -> None:
+        """加载场景资源或状态"""
+        pass 

@@ -330,14 +330,14 @@ class ResourcePack:
                 # 跳过目录和元数据文件
                 if file_info.filename.endswith("/") or file_info.filename == "pack.json":
                     continue
-                
+                    
                 # 统一使用正斜杠
                 rel_path = file_info.filename.replace("\\", "/")
-                
+                    
                 self.files.append(rel_path)
                 # 对于ZIP文件，映射存储完整路径
                 self.file_mapping[rel_path] = f"{zip_path}:{rel_path}"
-    
+
     def get_file_path(self, relative_path: str) -> Optional[str]:
         """获取文件实际路径
         
@@ -718,7 +718,7 @@ class ResourcePackManager:
         # 确保已初始化
         if not self.initialized:
             self.initialize()
-        
+            
         # 检查路径是否存在
         if not os.path.exists(pack_path):
             self.logger.error(f"添加资源包失败: 路径不存在 {pack_path}")
@@ -740,7 +740,7 @@ class ResourcePackManager:
             
             # 加载资源包
             pack.load()
-            
+ 
             # 检查资源包是否加载成功
             if not pack.metadata:
                 self.logger.error(f"添加资源包失败: 无法加载元数据 {pack_path}")

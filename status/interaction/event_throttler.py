@@ -16,7 +16,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import deque
 from threading import Lock
-from typing import Dict, List, Optional, Set, Type, Callable, Any, Tuple
+from typing import Dict, List, Optional, Set, Type, Callable, Any, Tuple, Union
 
 from .interaction_event import InteractionEvent, InteractionEventType
 
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 class EventThrottler(ABC):
     """事件节流器基类，定义节流器接口"""
     
-    def __init__(self, name: str = None):
+    def __init__(self, name: Optional[str] = None):
         """初始化节流器
         
         Args:
@@ -92,7 +92,7 @@ class EventThrottler(ABC):
         
         return result
     
-    def get_stats(self) -> dict:
+    def get_stats(self) -> Dict[str, Union[int, float]]:
         """获取节流器的统计信息
         
         Returns:
@@ -112,12 +112,16 @@ class EventThrottler(ABC):
         status = "启用" if self.is_enabled else "禁用"
         return f"{self.name} ({status})"
 
+    def reset(self) -> None:
+        """重置节流器的内部状态（可选实现）"""
+        pass
+
 
 class TimeThrottler(EventThrottler):
     """基于时间的节流器，限制事件的处理频率"""
     
-    def __init__(self, cooldown_ms: int, event_types: Set[InteractionEventType] = None, 
-                 property_key: str = None, name: str = None):
+    def __init__(self, cooldown_ms: int, event_types: Optional[Set[InteractionEventType]] = None, 
+                 property_key: Optional[str] = None, name: Optional[str] = None):
         """初始化基于时间的节流器
         
         Args:
@@ -222,27 +226,26 @@ class TimeThrottler(EventThrottler):
         return event.event_type
     
     def reset(self, event_key: Any = None) -> None:
-        """重置节流器状态
+        """重置指定键或所有键的上次处理时间
         
         Args:
-            event_key: 要重置的事件键，如果为None则重置所有
+            event_key: 要重置的事件键，如果为None则重置所有键
         """
         with self.lock:
-            if event_key is None:
-                # 重置所有
+            if event_key is not None:
+                if event_key in self.last_processed:
+                    del self.last_processed[event_key]
+                    logger.debug(f"时间节流器 '{self.name}' 重置了键: {event_key}")
+            else:
                 self.last_processed.clear()
-                logger.debug(f"时间节流器 '{self.name}' 已重置所有事件计时")
-            elif event_key in self.last_processed:
-                # 重置指定键
-                del self.last_processed[event_key]
-                logger.debug(f"时间节流器 '{self.name}' 已重置事件键 {event_key} 的计时")
+                logger.debug(f"时间节流器 '{self.name}' 已重置所有键")
 
 
 class CountThrottler(EventThrottler):
     """基于数量的节流器，限制事件的处理次数"""
     
-    def __init__(self, max_count: int, time_window_ms: int = None, event_types: Set[InteractionEventType] = None, 
-                 property_key: str = None, name: str = None):
+    def __init__(self, max_count: int, time_window_ms: Optional[int] = None, event_types: Optional[Set[InteractionEventType]] = None, 
+                 property_key: Optional[str] = None, name: Optional[str] = None):
         """初始化基于数量的节流器
         
         Args:
@@ -365,32 +368,30 @@ class CountThrottler(EventThrottler):
         return event.event_type
     
     def reset(self, event_key: Any = None) -> None:
-        """重置节流器状态
+        """重置指定键或所有键的事件计数和时间窗口
         
         Args:
-            event_key: 要重置的事件键，如果为None则重置所有
+            event_key: 要重置的事件键，如果为None则重置所有键
         """
         with self.lock:
-            if event_key is None:
-                # 重置所有
-                self.event_counts.clear()
-                self.event_timestamps.clear()
-                logger.debug(f"数量节流器 '{self.name}' 已重置所有事件计数")
-            else:
-                # 重置指定键
+            if event_key is not None:
                 if event_key in self.event_counts:
                     del self.event_counts[event_key]
                 if event_key in self.event_timestamps:
                     del self.event_timestamps[event_key]
-                logger.debug(f"数量节流器 '{self.name}' 已重置事件键 {event_key} 的计数")
+                logger.debug(f"数量节流器 '{self.name}' 重置了键: {event_key}")
+            else:
+                self.event_counts.clear()
+                self.event_timestamps.clear()
+                logger.debug(f"数量节流器 '{self.name}' 已重置所有键")
 
 
 class QueueThrottler(EventThrottler):
     """基于队列的节流器，积累多个事件后批量处理一次"""
     
-    def __init__(self, batch_size: int, event_types: Set[InteractionEventType] = None,
-                 property_key: str = None, batch_processor: Callable[[List[InteractionEvent]], None] = None,
-                 name: str = None):
+    def __init__(self, batch_size: int, event_types: Optional[Set[InteractionEventType]] = None,
+                 property_key: Optional[str] = None, batch_processor: Optional[Callable[[List[InteractionEvent]], None]] = None,
+                 name: Optional[str] = None):
         """初始化基于队列的节流器
         
         Args:
@@ -558,7 +559,7 @@ class QueueThrottler(EventThrottler):
             return []
 
     def reset(self) -> None:
-        """重置节流器状态，清空所有事件队列"""
+        """清空所有队列，不处理其中的事件"""
         with self.lock:
             self.event_queues.clear()
             logger.debug(f"队列节流器 '{self.name}' 已重置，所有队列已清空")
@@ -567,8 +568,8 @@ class QueueThrottler(EventThrottler):
 class LastEventThrottler(EventThrottler):
     """只处理冷却时间内最后一个事件的节流器"""
     
-    def __init__(self, cooldown_ms: int, event_types: Set[InteractionEventType] = None,
-                 property_key: str = None, name: str = None):
+    def __init__(self, cooldown_ms: int, event_types: Optional[Set[InteractionEventType]] = None,
+                 property_key: Optional[str] = None, name: Optional[str] = None):
         """初始化最后事件节流器
         
         Args:
@@ -755,6 +756,24 @@ class LastEventThrottler(EventThrottler):
             
             return result
 
+    def reset(self, event_key: Any = None) -> None:
+        """重置指定键或所有键的最后事件和处理时间
+        
+        Args:
+            event_key: 要重置的事件键，如果为None则重置所有键
+        """
+        with self.lock:
+            if event_key is not None:
+                if event_key in self.pending_events:
+                    del self.pending_events[event_key]
+                if event_key in self.last_processed:
+                    del self.last_processed[event_key]
+                logger.debug(f"最后事件节流器 '{self.name}' 重置了键: {event_key}")
+            else:
+                self.pending_events.clear()
+                self.last_processed.clear()
+                logger.debug(f"最后事件节流器 '{self.name}' 已重置所有键")
+
 
 class EventThrottlerChain:
     """管理多个事件节流器的节流器链"""
@@ -767,12 +786,8 @@ class EventThrottlerChain:
         """
         self.name = name
         self.throttlers: List[EventThrottler] = []
-        self.stats = {
-            "total_processed": 0,
-            "total_throttled": 0,
-            "throttlers": {}  # 各节流器统计
-        }
-        logger.debug(f"事件节流器链 '{name}' 创建")
+        self.stats: Dict[str, int] = {"total_processed": 0, "total_throttled": 0}
+        logger.debug(f"创建事件节流器链: {self.name}")
     
     def add_throttler(self, throttler: EventThrottler) -> bool:
         """向节流器链添加节流器
@@ -788,49 +803,40 @@ class EventThrottlerChain:
             return False
             
         self.throttlers.append(throttler)
-        self.stats["throttlers"][throttler.name] = {"processed": 0, "throttled": 0}
         logger.debug(f"节流器 '{throttler.name}' 添加到节流器链 '{self.name}'")
         return True
     
     def remove_throttler(self, throttler_or_name) -> bool:
-        """从节流器链移除节流器
+        """移除节流器
         
         Args:
-            throttler_or_name: 要移除的节流器对象或名称
+            throttler_or_name: 要移除的节流器实例或其名称
             
         Returns:
-            bool: 移除成功返回True
+            bool: 如果成功移除返回True，否则返回False
         """
-        # 如果传入的是节流器名称，查找对应的节流器对象
-        if isinstance(throttler_or_name, str):
-            throttler_name = throttler_or_name
-            for t in self.throttlers:
-                if t.name == throttler_name:
-                    self.throttlers.remove(t)
-                    if throttler_name in self.stats["throttlers"]:
-                        del self.stats["throttlers"][throttler_name]
-                    logger.debug(f"节流器 '{throttler_name}' 从节流器链 '{self.name}' 中移除")
-                    return True
-            logger.warning(f"节流器 '{throttler_name}' 不存在于节流器链 '{self.name}' 中")
-            return False
-        else:
-            # 传入的是节流器对象
-            throttler = throttler_or_name
-            if throttler in self.throttlers:
-                self.throttlers.remove(throttler)
-                if throttler.name in self.stats["throttlers"]:
-                    del self.stats["throttlers"][throttler.name]
-                logger.debug(f"节流器 '{throttler.name}' 从节流器链 '{self.name}' 中移除")
-                return True
-            else:
-                logger.warning(f"节流器 '{throttler.name}' 不存在于节流器链 '{self.name}' 中")
-                return False
+        removed = False
+        if isinstance(throttler_or_name, EventThrottler):
+            if throttler_or_name in self.throttlers:
+                self.throttlers.remove(throttler_or_name)
+                logger.debug(f"节流器链 '{self.name}': 移除了节流器 {throttler_or_name.name}")
+                removed = True
+        elif isinstance(throttler_or_name, str):
+            # 按名称移除
+            original_len = len(self.throttlers)
+            self.throttlers = [t for t in self.throttlers if t.name != throttler_or_name]
+            if len(self.throttlers) < original_len:
+                logger.debug(f"节流器链 '{self.name}': 移除了名称为 '{throttler_or_name}' 的节流器")
+                removed = True
+        
+        if not removed:
+            logger.warning(f"节流器链 '{self.name}': 未找到要移除的节流器: {throttler_or_name}")
+        return removed
     
     def clear_throttlers(self) -> None:
         """清空节流器链中的所有节流器"""
         count = len(self.throttlers)
         self.throttlers.clear()
-        self.stats["throttlers"] = {}
         logger.debug(f"节流器链 '{self.name}' 已清空，移除了 {count} 个节流器")
     
     def get_throttlers(self) -> List[EventThrottler]:
@@ -842,62 +848,44 @@ class EventThrottlerChain:
         return self.throttlers.copy()
     
     def throttle(self, event: InteractionEvent) -> bool:
-        """判断是否应该节流事件
-        
-        按顺序检查所有节流器，只要有一个节流器决定节流，就会节流事件
+        """按顺序应用所有节流器，判断是否应该节流事件
         
         Args:
-            event: 要检查的交互事件
+            event: 要判断的交互事件
             
         Returns:
-            bool: 如果任一节流器决定节流返回False，否则返回True
+            bool: 如果所有节流器都允许通过则返回True，否则返回False
         """
-        self.stats["total_processed"] += 1
+        self.stats["total_processed"] = self.stats.get("total_processed", 0) + 1
         
-        # 如果没有节流器，默认通过
-        if not self.throttlers:
-            return True
-        
-        # 只要有一个节流器决定节流，就会节流事件
         for throttler in self.throttlers:
-            if not throttler.is_enabled:
-                # 跳过禁用的节流器
-                continue
-                
-            # 更新统计信息
-            if throttler.name in self.stats["throttlers"]:
-                self.stats["throttlers"][throttler.name]["processed"] += 1
-            
             if not throttler.should_process(event):
-                # 更新统计信息
-                self.stats["total_throttled"] += 1
-                if throttler.name in self.stats["throttlers"]:
-                    self.stats["throttlers"][throttler.name]["throttled"] += 1
+                # 如果任何一个节流器决定节流，则整个链条节流
+                self.stats["total_throttled"] = self.stats.get("total_throttled", 0) + 1
                 
-                logger.debug(f"事件 {event} 被节流器 '{throttler.name}' 节流")
+                logger.debug(f"节流器链 '{self.name}': 事件 {event.event_type} 被节流器 '{throttler.name}' 节流")
                 return False
         
-        # 所有节流器都通过
+        logger.debug(f"节流器链 '{self.name}': 事件 {event.event_type} 通过所有节流器")
         return True
     
-    def get_stats(self) -> dict:
+    def get_stats(self) -> Dict[str, Union[int, float]]:
         """获取节流器链的统计信息
         
         Returns:
-            dict: 节流器链的统计信息
+            dict: 节流器链的统计信息，包括总体统计和各子节流器的统计
         """
-        # 计算通过率
-        total = self.stats["total_processed"]
-        throttled = self.stats["total_throttled"]
-        pass_rate = 1.0 if total == 0 else (total - throttled) / total
+        total_processed = self.stats.get("total_processed", 0)
+        total_throttled = self.stats.get("total_throttled", 0)
+        pass_rate = (total_processed - total_throttled) / total_processed if total_processed > 0 else 1.0
         
-        # 返回详细统计信息
-        return {
-            "total_processed": total,
-            "total_throttled": throttled,
+        chain_stats: Dict[str, Union[int, float]] = {
+            "total_processed": total_processed,
+            "total_throttled": total_throttled,
             "pass_rate": pass_rate,
-            "throttlers": self.stats["throttlers"]
         }
+        
+        return chain_stats
     
     def __str__(self) -> str:
         """返回节流器链的字符串表示
@@ -908,8 +896,8 @@ class EventThrottlerChain:
         return f"{self.name} ({len(self.throttlers)} 个节流器)"
 
     def reset(self) -> None:
-        """重置所有节流器的状态"""
+        """重置链中所有节流器的状态"""
         for throttler in self.throttlers:
-            if hasattr(throttler, 'reset'):
-                throttler.reset()
-        logger.debug(f"节流器链 '{self.name}' 的所有节流器已重置") 
+            throttler.reset()
+        self.stats = {"total_processed": 0, "total_throttled": 0}
+        logger.debug(f"节流器链 '{self.name}' 已重置所有节流器和统计") 

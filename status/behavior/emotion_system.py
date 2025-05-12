@@ -8,6 +8,7 @@ Description:                桌宠情绪系统
 
 Changed history:            
                             2025/04/04: 初始创建;
+                            2025/05/18: 修复类型注解和函数调用问题;
 ----
 """
 
@@ -18,7 +19,7 @@ import logging
 from collections import deque
 from enum import Enum, auto
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Callable, Set, Union
+from typing import Dict, List, Optional, Tuple, Callable, Set, Union, Any
 from unittest.mock import Mock
 from status.core.events import Event, EventType, EventManager
 from status.utils.decay import exponential_decay
@@ -435,7 +436,6 @@ class EmotionSystem:
         self.entity = entity
         self.emotion_state = initial_state or EmotionState()
         self.event_mappings = self.DEFAULT_EVENT_MAPPINGS.copy()
-        self.recent_events = []  # 最近的事件历史
         self.last_update_time = time.time()
         self.decay_rate = emotion_decay_rate
         self.max_event_history = 20  # 事件历史最大长度
@@ -445,6 +445,7 @@ class EmotionSystem:
         self.current_mood: float = 0.5 # Example: Neutral mood
         self.short_term_decay_time = short_term_memory_duration
         self.long_term_mood_influence = long_term_mood_influence
+        # 定义带类型注解的recent_events，避免重复定义
         self.recent_events: List[Tuple[float, EmotionalEvent]] = []
 
         if initial_emotions:
@@ -452,6 +453,19 @@ class EmotionSystem:
                 self.emotions[name] = EmotionState(EmotionParams(pleasure=value, arousal=value, social=value))
         else:
             self._initialize_default_emotions()
+    
+    def _initialize_default_emotions(self):
+        """初始化默认情绪状态"""
+        self.emotions = {
+            "joy": EmotionState(EmotionParams(pleasure=0.8, arousal=0.6, social=0.7)),
+            "sadness": EmotionState(EmotionParams(pleasure=-0.7, arousal=0.3, social=0.4)),
+            "anger": EmotionState(EmotionParams(pleasure=-0.6, arousal=0.8, social=0.3)),
+            "fear": EmotionState(EmotionParams(pleasure=-0.6, arousal=0.7, social=0.3)),
+            "surprise": EmotionState(EmotionParams(pleasure=0.5, arousal=0.8, social=0.6)),
+            "disgust": EmotionState(EmotionParams(pleasure=-0.6, arousal=0.5, social=0.3)),
+            "neutral": EmotionState(EmotionParams(pleasure=0.0, arousal=0.5, social=0.5))
+        }
+        self.logger.debug("初始化默认情绪状态")
     
     def update(self, dt: Optional[float] = None):
         """更新情绪系统状态
@@ -626,20 +640,31 @@ class EmotionSystem:
         event: EmotionalEvent
         for timestamp, event in self.recent_events:
             if event.event_type in self.event_mappings:
-                emotion_changes = self.event_mappings[event.event_type]
+                # 获取事件对应的情绪事件对象
+                base_event = self.event_mappings[event.event_type]
                 # 修复调用：添加dt参数，计算时间差作为dt
                 time_elapsed = current_time - timestamp
                 time_decay = exponential_decay(value=1.0, decay_rate=0.1, dt=time_elapsed)
                 
-                # Simple mood calculation: sum weighted changes
-                # Can be made more sophisticated
-                for emotion_name, change in emotion_changes.items():
-                     # Example: map emotion changes to positive/negative mood shift
-                     if change > 0:
-                          mood_shift += change * time_decay * 0.1 # Scale factor
-                     elif change < 0:
-                          mood_shift -= abs(change) * time_decay * 0.1 # Scale factor
-        
+                # 计算特定事件的情绪影响
+                pleasure_effect = base_event.pleasure_effect
+                arousal_effect = base_event.arousal_effect
+                social_effect = base_event.social_effect
+                
+                # 使用各个效果的总和来计算心情偏移
+                if pleasure_effect > 0:
+                    mood_shift += pleasure_effect * time_decay * 0.1  # Scale factor
+                elif pleasure_effect < 0:
+                    mood_shift -= abs(pleasure_effect) * time_decay * 0.1  # Scale factor
+                
+                if arousal_effect != 0:
+                    # 活跃度有小影响
+                    mood_shift += arousal_effect * time_decay * 0.05
+                
+                if social_effect > 0:
+                    # 积极社交效果提升心情
+                    mood_shift += social_effect * time_decay * 0.07
+                
         # Apply mood shift to current mood (can be more complex)
         # self.current_mood += mood_shift # Direct application (can drift easily)
         # Example: Move towards a target mood based on shift

@@ -13,7 +13,7 @@ Changed history:
 """
 
 import logging
-from PySide6.QtCore import QObject, QRect, pyqtSignal
+from PySide6.QtCore import QObject, QRect, Signal
 from status.core.events import EventManager
 from status.interaction.interaction_event import InteractionEvent, InteractionEventType
 from status.interaction.event_throttler import TimeThrottler
@@ -31,9 +31,9 @@ class DragManager(QObject):
     """
     
     # 定义信号
-    drag_start_signal = pyqtSignal(int, int)  # 拖拽开始信号
-    drag_move_signal = pyqtSignal(int, int)   # 拖拽移动信号
-    drag_end_signal = pyqtSignal(int, int)    # 拖拽结束信号
+    drag_start_signal = Signal(int, int)  # 拖拽开始信号
+    drag_move_signal = Signal(int, int)   # 拖拽移动信号
+    drag_end_signal = Signal(int, int)    # 拖拽结束信号
     
     def __init__(self, window):
         """初始化拖拽管理器

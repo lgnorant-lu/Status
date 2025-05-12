@@ -183,7 +183,7 @@ class ReactionSystemEventHandler:
         """
         self.reaction_system = reaction_system
         self.logger = logging.getLogger("ReactionSystemEventHandler")
-        self.hover_start_time = None
+        self.hover_start_time: Optional[float] = None
         
     def register_handlers(self, interaction_manager) -> None:
         """注册事件处理器

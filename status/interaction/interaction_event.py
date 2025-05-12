@@ -13,7 +13,7 @@ Changed history:
 
 import time
 from enum import Enum, auto
-from status.core.events import Event
+from status.core.event_system import Event, EventType  # 直接从event_system导入正确的Event和EventType类
 
 class InteractionEventType(Enum):
     """交互事件类型枚举"""
@@ -27,6 +27,9 @@ class InteractionEventType(Enum):
     MOUSE_LEAVE = auto()         # 鼠标离开区域
     MOUSE_PRESS = auto()         # 鼠标按下
     MOUSE_RELEASE = auto()       # 鼠标释放
+    MOUSE_DOWN = auto()          # ADDED - 鼠标按下 (兼容或别名)
+    MOUSE_UP = auto()            # ADDED - 鼠标释放 (兼容或别名)
+    MOUSE_WHEEL = auto()         # ADDED - 鼠标滚轮
     
     # 拖拽事件
     MOUSE_DRAG_START = auto()    # 开始拖拽(旧名称，保留向后兼容)
@@ -47,6 +50,11 @@ class InteractionEventType(Enum):
     
     # 热键事件
     HOTKEY_TRIGGERED = auto()    # 热键被触发
+    
+    # 键盘事件 (新增)
+    KEY_DOWN = auto()            # ADDED - 按键按下
+    KEY_UP = auto()              # ADDED - 按键释放
+    KEY_PRESS = auto()           # ADDED - 按键按下并释放 (字符输入)
     
     # 触发器事件
     TIMER_TRIGGER = auto()       # 定时器触发
@@ -79,7 +87,8 @@ class InteractionEvent(Event):
             data (dict, optional): 事件数据. 默认为None
             source (str, optional): 事件源. 默认为"interaction"
         """
-        super().__init__(str(event_type.name), source, data or {})
+        # 使用 EventType.USER_INTERACTION 作为事件类型
+        super().__init__(EventType.USER_INTERACTION, source, data or {})
         self.interaction_type = event_type
         self.event_type = event_type  # 别名，为了保持API一致性
         self.timestamp = time.time()

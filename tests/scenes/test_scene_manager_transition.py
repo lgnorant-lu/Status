@@ -13,6 +13,8 @@ Changed history:
 
 import unittest
 from unittest.mock import MagicMock, patch
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor
 
 from status.scenes.scene_transition import (
     TransitionState, SceneTransition, FadeTransition, 
@@ -21,94 +23,126 @@ from status.scenes.scene_transition import (
 )
 from status.scenes.scene_manager import SceneManager
 from status.scenes.scene_base import SceneBase
-from status.renderer.renderer_base import RendererBase
+from status.renderer.renderer_base import RendererBase, Rect
 from status.renderer.animation import EasingType
+from status.renderer.transition import FlipTransition
 
 class MockRenderer(RendererBase):
     """Mock渲染器，用于测试"""
     
     def __init__(self):
+        super().__init__()
+        self.width = 800
+        self.height = 600
+        self.clear_called = False
+        self.drawn_surfaces = []
         self.opacity = 1.0
-        self.transforms = []
+        self.effects = []
         self.viewport_size = (800, 600)
         
-    def initialize(self, width: int, height: int, **kwargs) -> bool:
+    def initialize(self, width, height, **kwargs):
         """初始化渲染器"""
-        self.viewport_size = (width, height)
+        self.width = width
+        self.height = height
         return True
         
-    def shutdown(self) -> None:
+    def shutdown(self):
         """关闭渲染器"""
         pass
         
-    def begin_frame(self) -> None:
+    def clear(self, color=None):
+        """清除画面"""
+        self.clear_called = True
+        
+    def begin_frame(self):
         """开始一帧渲染"""
         pass
         
-    def end_frame(self) -> None:
+    def end_frame(self):
         """结束一帧渲染并提交"""
         pass
         
-    def get_renderer_info(self) -> dict:
-        """获取渲染器信息"""
-        return {"name": "MockRenderer", "version": "1.0.0"}
-        
-    def get_text_size(self, text: str, font_size: int = 12, font_name: str = None) -> tuple:
-        """获取文本尺寸"""
-        return (len(text) * font_size * 0.6, font_size)
-        
-    def push_transform(self) -> None:
-        """保存当前变换状态"""
-        self.transforms.append((self.opacity,))
-        
-    def pop_transform(self) -> None:
-        """恢复之前的变换状态"""
-        if self.transforms:
-            self.opacity, = self.transforms.pop()
-            
-    def set_blend_mode(self, mode) -> None:
-        """设置混合模式"""
-        pass
-        
-    def set_clip_rect(self, rect) -> None:
-        """设置裁剪矩形"""
-        pass
-        
-    def set_viewport(self, x: int, y: int, width: int, height: int) -> None:
+    def set_viewport(self, x, y, width, height):
         """设置视口"""
         self.viewport_size = (width, height)
         
-    def clear(self, color=None):
-        """清除画面"""
+    def set_clip_rect(self, rect=None):
+        """设置裁剪矩形"""
         pass
         
-    def draw_rect(self, rect, color, thickness=1, filled=False):
-        """绘制矩形"""
-        pass
-        
-    def draw_line(self, x1, y1, x2, y2, color, thickness=1):
-        """绘制线段"""
-        pass
-        
-    def draw_circle(self, x, y, radius, color, thickness=1, filled=False):
-        """绘制圆形"""
-        pass
-        
-    def draw_polygon(self, points, color, thickness=1, filled=False):
-        """绘制多边形"""
-        pass
-        
-    def draw_text(self, text, x, y, color, font_size=12, font_name=None):
-        """绘制文本"""
-        pass
-        
-    def draw_image(self, image, x, y, width=None, height=None, angle=0, opacity=1.0):
-        """绘制图像"""
+    def set_blend_mode(self, mode):
+        """设置混合模式"""
         pass
         
     def draw_point(self, x, y, color, size=1.0):
         """绘制点"""
         pass
+        
+    def draw_line(self, x1, y1, x2, y2, color, thickness=1.0):
+        """绘制线段"""
+        pass
+        
+    def draw_rect(self, rect, color, thickness=1.0, filled=False):
+        """绘制矩形"""
+        pass
+        
+    def draw_circle(self, x, y, radius, color, thickness=1.0, filled=False):
+        """绘制圆形"""
+        pass
+        
+    def draw_polygon(self, points, color, thickness=1.0, filled=False):
+        """绘制多边形"""
+        pass
+        
+    def draw_text(self, text, x, y, color, font_name="default", font_size=12, 
+                align=None, bold=False, italic=False, underline=False):
+        """绘制文本"""
+        return Rect(x, y, 100, 20)  # Mock text rect
+        
+    def draw_image(self, image, x, y, width=None, height=None, source_rect=None, 
+                 rotation=0.0, origin=None, flip_h=False, flip_v=False, opacity=1.0):
+        """绘制图像"""
+        pass
+        
+    def get_text_size(self, text, font_name="default", font_size=12, bold=False, italic=False):
+        """获取文本尺寸"""
+        return (len(text) * 10, 20)  # Mock text size
+        
+    def push_transform(self):
+        """保存当前变换状态"""
+        pass
+        
+    def pop_transform(self):
+        """恢复之前的变换状态"""
+        pass
+        
+    def translate(self, x, y):
+        """平移变换"""
+        pass
+        
+    def rotate(self, angle):
+        """旋转变换"""
+        pass
+        
+    def scale(self, sx, sy):
+        """缩放变换"""
+        pass
+        
+    def get_width(self):
+        """获取宽度"""
+        return self.width
+        
+    def get_height(self):
+        """获取高度"""
+        return self.height
+        
+    def get_renderer_info(self):
+        """获取渲染器信息"""
+        return {"type": "mock", "width": self.width, "height": self.height}
+        
+    def set_alpha(self, alpha):
+        """设置透明度"""
+        self.opacity = alpha
         
     def get_opacity(self):
         """获取不透明度"""
@@ -124,31 +158,43 @@ class MockRenderer(RendererBase):
         
     def save_state(self):
         """保存状态"""
-        self.push_transform()
+        pass
         
     def restore_state(self):
         """恢复状态"""
-        self.pop_transform()
-            
-    def translate(self, x, y):
-        """平移变换"""
         pass
         
-    def rotate(self, angle):
-        """旋转变换"""
+    def create_surface(self, width=None, height=None):
+        """创建表面"""
+        return {"mock_surface": True, "width": width or self.width, "height": height or self.height}
+        
+    def set_target(self, surface=None):
+        """设置目标"""
         pass
         
-    def scale(self, sx, sy):
-        """缩放变换"""
+    def reset_target(self):
+        """重置目标"""
         pass
         
-    def set_dissolve_effect(self, pattern, threshold):
+    def set_dissolve_effect(self, pattern, progress):
         """设置溶解效果"""
-        pass
+        self.effects.append(("dissolve", pattern, progress))
         
     def clear_effects(self):
         """清除特效"""
+        self.effects = []
+        
+    def fill_rect(self, x, y, width, height, color):
+        """填充矩形"""
         pass
+        
+    def draw_surface(self, surface, x, y, opacity=1.0):
+        """绘制表面"""
+        self.drawn_surfaces.append((surface, x, y, opacity))
+        
+    def draw_surface_scaled(self, surface, x, y, width, height, opacity=1.0):
+        """绘制缩放表面"""
+        self.drawn_surfaces.append((surface, x, y, width, height, opacity))
 
 class MockScene(SceneBase):
     """Mock场景，用于测试"""

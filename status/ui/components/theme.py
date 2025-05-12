@@ -445,7 +445,11 @@ class ThemeManager(QObject):
     
     def _adjust_qcolor(self, color: QColor, amount: int) -> QColor:
         """调整QColor亮度"""
-        h, s, l, a = color.getHsl()
+        # 获取HSL值
+        h = color.hue()
+        s = color.saturation()
+        l = color.lightness()
+        a = color.alpha()
         
         # 调整亮度
         l = max(0, min(255, l + amount))

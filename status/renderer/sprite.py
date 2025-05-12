@@ -314,7 +314,7 @@ class Sprite(Drawable):
         else:
             logging.error(f"Sprite: 不支持的图像类型: {type(image)}")
             # 不支持的类型，loaded_pixmap保持为None
-        
+            
         # 图像处理，适用于所有情况
         if loaded_pixmap is not None and not loaded_pixmap.isNull():
             self._image = loaded_pixmap
@@ -332,7 +332,7 @@ class Sprite(Drawable):
         
         # 标记为脏以便更新渲染
         self._dirty = True
-
+    
     def set_source_rect(self, x: float, y: float, width: float, height: float) -> None:
         """设置源矩形（用于精灵表）
         

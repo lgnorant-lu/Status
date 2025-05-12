@@ -16,11 +16,17 @@ import math
 import logging
 import threading
 from enum import Enum, auto
-from typing import Dict, List, Tuple, Callable, Optional, Any, Union
+from typing import Dict, List, Tuple, Callable, Optional, Any, Union, Protocol
 
 from status.renderer.drawable import Drawable
 from status.renderer.renderer_base import RendererBase, Color, BlendMode
 from status.core.event_system import EventSystem, Event, EventType
+
+
+# 定义一个协议类型，表示具有color属性的对象
+class HasColor(Protocol):
+    """具有color属性的对象协议"""
+    color: Color
 
 
 class EffectState(Enum):
@@ -211,14 +217,14 @@ class ColorEffect(Effect):
     """颜色特效基类"""
     
     def __init__(self, 
-                 target: Drawable, 
+                 target: HasColor, 
                  duration: float = 1.0, 
                  loop: bool = False, 
                  auto_start: bool = True):
         """初始化颜色特效
         
         Args:
-            target: 目标对象
+            target: 目标对象，必须有color属性
             duration: 特效持续时间（秒）
             loop: 是否循环播放
             auto_start: 是否自动开始
@@ -226,7 +232,7 @@ class ColorEffect(Effect):
         super().__init__(duration, loop, auto_start)
         
         self.target = target
-        self.original_color = target.color.copy() if hasattr(target, 'color') else Color(255, 255, 255, 255)
+        self.original_color = target.color.copy()
         
     def apply_color(self, color: Color) -> None:
         """应用颜色到目标对象
@@ -234,13 +240,11 @@ class ColorEffect(Effect):
         Args:
             color: 要应用的颜色
         """
-        if hasattr(self.target, 'color'):
-            self.target.color = color
+        self.target.color = color
     
     def reset_color(self) -> None:
         """重置目标对象的颜色"""
-        if hasattr(self.target, 'color'):
-            self.target.color = self.original_color
+        self.target.color = self.original_color
             
     def complete(self) -> None:
         """完成特效时的处理"""
@@ -255,7 +259,7 @@ class ColorFade(ColorEffect):
     """颜色渐变特效"""
     
     def __init__(self, 
-                 target: Drawable, 
+                 target: HasColor, 
                  from_color: Color, 
                  to_color: Color, 
                  duration: float = 1.0, 
@@ -264,20 +268,26 @@ class ColorFade(ColorEffect):
         """初始化颜色渐变特效
         
         Args:
-            target: 目标对象
+            target: 目标对象，必须有color属性
             from_color: 起始颜色
             to_color: 目标颜色
             duration: 特效持续时间（秒）
             loop: 是否循环播放
             auto_start: 是否自动开始
         """
-        super().__init__(target, duration, loop, auto_start)
+        # 初始化颜色特效
+        super().__init__(target, duration, loop, False)  # 暂不自动开始
         
-        self.from_color = from_color
-        self.to_color = to_color
+        # 渐变颜色
+        self.from_color = from_color.copy()
+        self.to_color = to_color.copy()
         
         # 设置更新回调
         self.on_update = self._update_color
+        
+        # 如果需要，自动开始
+        if auto_start:
+            self.start()
         
     def _update_color(self, progress: float) -> None:
         """更新颜色
@@ -304,7 +314,7 @@ class Blink(ColorEffect):
     """闪烁特效"""
     
     def __init__(self, 
-                 target: Drawable, 
+                 target: HasColor, 
                  blink_color: Optional[Color] = None, 
                  frequency: float = 4.0, 
                  duration: float = 1.0, 
@@ -313,20 +323,26 @@ class Blink(ColorEffect):
         """初始化闪烁特效
         
         Args:
-            target: 目标对象
-            blink_color: 闪烁颜色，默认为白色
+            target: 目标对象，必须有color属性
+            blink_color: 闪烁颜色，如果为None则使用白色
             frequency: 闪烁频率（每秒闪烁次数）
             duration: 特效持续时间（秒）
             loop: 是否循环播放
             auto_start: 是否自动开始
         """
-        super().__init__(target, duration, loop, auto_start)
+        # 初始化颜色特效
+        super().__init__(target, duration, loop, False)  # 暂不自动开始
         
+        # 闪烁控制
         self.blink_color = blink_color or Color(255, 255, 255, 255)
-        self.frequency = max(0.1, frequency)  # 至少每秒闪烁0.1次
+        self.frequency = max(0.1, frequency)  # 避免频率过低
         
         # 设置更新回调
         self.on_update = self._update_blink
+        
+        # 如果需要，自动开始
+        if auto_start:
+            self.start()
         
     def _update_blink(self, progress: float) -> None:
         """更新闪烁
@@ -581,12 +597,11 @@ class CompositeEffect(Effect):
             self._original_effects_loop_states[effect_item] = effect_item.loop
             effect_item.loop = False 
             if effect_item.state == EffectState.PLAYING:
-                 effect_item.stop() 
-                 effect_item.elapsed_time = 0.0 
-                 effect_item._state = EffectState.INITIALIZED 
-            elif effect_item.state != EffectState.INITIALIZED:
-                 effect_item.elapsed_time = 0.0 
-                 effect_item._state = EffectState.INITIALIZED
+                effect_item.stop() 
+                effect_item.elapsed_time = 0.0 
+            else:
+                effect_item.elapsed_time = 0.0 
+                effect_item._state = EffectState.STOPPED  # 将状态设置为STOPPED而不是INITIALIZED
 
         if auto_start:
             self.start()
@@ -684,29 +699,41 @@ class EffectManager:
     _initialized: bool = False # Class-level flag for singleton initialization
     _lock = threading.Lock()
     
-    def __new__(cls):
-        """实现单例模式"""
+    def __new__(cls, *args, **kwargs):
+        """确保通过构造函数也能返回单例实例"""
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super(EffectManager, cls).__new__(cls)
-                    # _initialized is a class member, instance will have it.
-                    # No need to set it here, __init__ will handle it.
+        return cls._instance
+    
+    @classmethod
+    def get_instance(cls) -> 'EffectManager':
+        """获取单例实例"""
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = EffectManager()
         return cls._instance
     
     def __init__(self):
         """初始化特效管理器，确保只初始化一次"""
+        # 确保基本属性总是可用，即使在单例模式下
+        self.lock = threading.RLock()
+        self.logger = logging.getLogger(__name__)
+        
         if EffectManager._initialized: # Check class-level flag
+            # 即使已初始化，也确保effects属性存在
+            if not hasattr(self, 'effects'):
+                self.effects = []
+            if not hasattr(self, 'paused'):
+                self.paused = False
             return
             
-        self.logger = logging.getLogger(__name__)
         self.logger.info("EffectManager initializing...") # Changed message for clarity
         
         # 特效列表
-        self.effects: List[Effect] = []
-        
-        # 线程锁
-        self.lock = threading.RLock() # Restore instance lock initialization
+        self.effects = []
         
         # 全局暂停控制
         self.paused = False
@@ -742,14 +769,10 @@ class EffectManager:
             return False
     
     def clear_effects(self) -> None:
-        """清除所有特效"""
-        with self.lock:
-            # 停止所有特效
-            for effect in self.effects:
-                effect.stop()
-                
+        """清空所有特效"""
+        with self.lock:  # 使用实例级别的锁，保持一致性
             self.effects.clear()
-            self.logger.debug("所有特效已清除")
+            self.logger.debug("所有特效已清空")
     
     def update(self, delta_time: float) -> None:
         """更新所有特效

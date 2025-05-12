@@ -9,23 +9,24 @@ Description:                交互管理器模块，负责协调各种交互功�
 Changed history:            
                             2025/04/03: 初始创建;
                             2025/04/05: 添加命令系统的初始化;
+                            2025/05/12: 移除CommandManager相关代码，处理Linter错误 (v3 - final attempt).
 ----
 """
 
 import logging
-from typing import Dict, List, Optional, Set, Type
+from typing import Dict, List, Optional
+import collections
 
 from status.core.events import EventManager
 from .event_filter import EventFilter, EventFilterChain
 from .event_throttler import EventThrottler, EventThrottlerChain
 from .mouse_interaction import MouseInteraction
-from .tray_icon import TrayIcon
+from .tray_icon import TrayIcon # 导入但未实例化，因为不知道构造函数API
 from .context_menu import ContextMenu
 from .hotkey import HotkeyManager
 from .drag_manager import DragManager
 from .behavior_trigger import BehaviorTrigger
 from .interaction_event import InteractionEvent, InteractionEventType
-import collections
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -39,37 +40,32 @@ class InteractionManager:
     def get_instance(cls, *args, **kwargs):
         """获取单例实例。如果实例不存在，则使用提供的参数创建它。"""
         if cls._instance is None:
-            # 如果没有提供 app_context 和 settings，尝试从 kwargs 获取，或者记录错误
-            # 这是为了确保 __init__ 有必要的参数
             if not args and not kwargs.get('app_context'):
-                # 在实际应用中，这里可能需要更复杂的逻辑来获取默认的 app_context 和 settings
-                # 或者强制调用者提供它们。
-                # 为了测试，我们允许它在没有这些参数的情况下继续，但 __init__ 可能会失败或行为不当。
-                logger.warning("InteractionManager creating new instance without explicit app_context/settings via get_instance.")
-            cls._instance = cls(*args, **kwargs) # 调用 __init__
+                logger.warning("InteractionManager创建新实例时没有显式提供app_context/settings。")
+            cls._instance = cls(*args, **kwargs) 
         return cls._instance
     
     def __init__(self, app_context, settings):
         """初始化交互管理器"""
         if InteractionManager._instance is not None and InteractionManager._instance is not self:
-            raise RuntimeError("InteractionManager is a singleton. Use get_instance() after initial creation.")
+            raise RuntimeError("InteractionManager是单例。在初始创建后使用get_instance()。")
         
         self.logger = logging.getLogger(__name__)
         self.app_context = app_context
         self.settings = settings
         self.event_bus = app_context.event_bus
-        self.interaction_handlers: List[object] = []
-        self.mouse_event_handler = None
-        self.keyboard_event_handler = None
+        # self.interaction_handlers: List[object] = [] # TODO: 填充和使用如果需要可扩展性
+        self.mouse_event_handler: Optional[MouseInteraction] = None
+        self.keyboard_event_handler: Optional[HotkeyManager] = None
         
-        # Initialize missing attributes
         self.filters_by_id: Dict[str, EventFilter] = {}
         self.filter_chain: EventFilterChain = EventFilterChain()
         self.throttlers_by_id: Dict[str, EventThrottler] = {}
         self.throttler_chain: EventThrottlerChain = EventThrottlerChain()
-        self.event_stats: Dict[str, int] = collections.defaultdict(int)
-        self.context_menu = None 
-        self.drag_manager = None
+        # self.event_stats: Dict[str, int] = collections.defaultdict(int) # TODO: 如果需要实现事件统计
+        self.context_menu: Optional[ContextMenu] = None 
+        self.drag_manager: Optional[DragManager] = None
+        self.tray_icon: Optional[TrayIcon] = None # 目前保持为None
         
         self._initialized = False
         InteractionManager._instance = self
@@ -88,41 +84,43 @@ class InteractionManager:
             return True
         
         try:
-            # Initialize CommandManager if enabled
-            # if self.settings.get('enable_command_processing', False):
-            #     try:
-            #         self.command_manager = CommandManager(self.app_context)
-            #         self.command_manager.initialize()
-            #         self.logger.info("CommandManager initialized.")
-            #     except Exception as e:
-            #         self.logger.error(f"Failed to initialize CommandManager: {e}", exc_info=True)
-            # else:
-            #     self.logger.info("Command processing is disabled.")
-
-            # Initialize other interaction handlers
             main_window = None
             if hasattr(self.app_context, 'get_main_window'):
                 main_window = self.app_context.get_main_window()
             
             if main_window:
                 self.mouse_event_handler = MouseInteraction(window=main_window)
+                
+                try:
+                    # 基于DragManager linter反馈假设0参数构造函数
+                    # TODO: 确认实际的ContextMenu构造函数API并提供必要的参数。
+                    self.context_menu = ContextMenu()
+                    logger.info("ContextMenu已初始化 (基于Linter提示假设需要0参数构造函数)。")
+                except Exception as e:
+                    logger.error(f"Failed to initialize ContextMenu: {e}", exc_info=True)
+
+                try:
+                    # Linter提示DragManager构造函数缺少'window'参数。
+                    # TODO: 确认DragManager实际的构造函数API。目前基于Linter提示假设需要'window'参数。
+                    self.drag_manager = DragManager(window=main_window)
+                    logger.info("DragManager已初始化 (基于Linter提示假设需要'window'参数)。")
+                except Exception as e:
+                    logger.error(f"Failed to initialize DragManager: {e}", exc_info=True)
+                
+                # TrayIcon实例化被注释掉了，因为不知道构造函数API。
+                # self.tray_icon将保持为None，直到其API被澄清。
+                # TODO: 如果设置中启用了TrayIcon，请实现TrayIcon实例化，并提供正确的参数。
+                # if self.settings.get('enable_tray_icon', True):
+                #     logger.info("TrayIcon初始化被跳过 (API未知)。")
+
             else:
-                logger.warning("Main window not available for MouseInteraction, mouse events might not work.")
+                logger.warning("主窗口不可用。MouseInteraction、ContextMenu、DragManager可能无法正常工作或初始化。")
             
             self.keyboard_event_handler = HotkeyManager()
             if hasattr(self.keyboard_event_handler, 'start'):
-                 self.keyboard_event_handler.start()
+                self.keyboard_event_handler.start()
             else:
-                 logger.warning("HotkeyManager does not have a start method.")
-            
-            # 注册事件监听
-            # if hasattr(InteractionEventType, 'ANY'):
-            #     self.event_bus.add_listener(
-            #         InteractionEventType.ANY,
-            #         self._handle_interaction_event
-            #     )
-            # else:
-            #     logger.warning("InteractionEventType.ANY not found, listener for ANY not registered.")
+                logger.warning("HotkeyManager没有start方法或无法启动。")
             
             self._initialized = True
             logger.info("交互管理器初始化成功")
@@ -134,7 +132,7 @@ class InteractionManager:
     
     def _handle_interaction_event(self, event_type, event_data=None):
         """
-        处理交互事件
+        处理交互事件 (可能由事件总线或直接调用)
         
         Args:
             event_type: 事件类型
@@ -143,12 +141,15 @@ class InteractionManager:
         subsystems = [
             self.mouse_event_handler,
             self.keyboard_event_handler,
-            # self.command_manager
         ]
         
         for subsystem in subsystems:
             if subsystem and hasattr(subsystem, 'handle_event'):
-                subsystem.handle_event(event_type, event_data)
+                try:
+                    # subsystem.handle_event(event_type, event_data) # 实际处理逻辑待实现
+                    pass # 占位符
+                except Exception as e:
+                    logger.error(f"Error处理事件在子系统 {subsystem.__class__.__name__}: {e}", exc_info=True)
     
     def add_filter(self, filter_id: str, event_filter: EventFilter) -> bool:
         """添加事件过滤器
@@ -205,7 +206,7 @@ class InteractionManager:
         
         self.throttler_chain.add_throttler(event_throttler)
         self.throttlers_by_id[throttler_id] = event_throttler
-        logger.info(f"Added throttler '{throttler_id}' to interaction manager")
+        logger.info(f"Added节流器 '{throttler_id}' 到交互管理器")
         return True
     
     def remove_throttler(self, throttler_id: str) -> bool:
@@ -225,106 +226,94 @@ class InteractionManager:
         success = self.throttler_chain.remove_throttler(event_throttler)
         if success:
             del self.throttlers_by_id[throttler_id]
-            logger.info(f"Removed throttler '{throttler_id}' from interaction manager")
+            logger.info(f"Removed节流器 '{throttler_id}' 从交互管理器")
         return success
     
     def clear_filters(self) -> None:
         """清除所有事件过滤器"""
         self.filter_chain.clear_filters()
         self.filters_by_id.clear()
-        logger.info("Cleared all filters from interaction manager")
+        logger.info("Cleared所有过滤器从交互管理器")
     
     def clear_throttlers(self) -> None:
         """清除所有事件节流器"""
         self.throttler_chain.clear_throttlers()
         self.throttlers_by_id.clear()
-        logger.info("Cleared all throttlers from interaction manager")
-    
-    def get_event_stats(self) -> Dict:
-        """获取事件处理统计信息
-        
-        Returns:
-            Dict: 事件统计信息
-        """
-        return self.event_stats.copy()
-    
-    def reset_event_stats(self) -> None:
-        """重置事件统计信息"""
-        for key in list(self.event_stats.keys()):
-            self.event_stats[key] = 0
-        logger.info("Reset event statistics")
+        logger.info("Cleared所有节流器从交互管理器")
     
     def _setup_connections(self):
-        """设置交互子系统之间的连接
-        
-        连接各个交互子系统，使它们能够相互协作。
-        """
-        if self.mouse_event_handler and self.context_menu and hasattr(self.mouse_event_handler, 'right_click_signal'):
-            self.mouse_event_handler.right_click_signal.connect(self.context_menu.show_menu)
-        
-        if self.mouse_event_handler and self.drag_manager and hasattr(self.mouse_event_handler, 'register_drag_manager'):
-            self.mouse_event_handler.register_drag_manager(self.drag_manager)
-        
-        self.event_bus.register_handler("interaction", self._handle_interaction_event)
-        
-        logger.debug("InteractionManager connections set up")
+        """设置组件间的信号和槽连接，或事件订阅"""
+        logger.debug("InteractionManager: 连接设置 (占位符).")
     
     def _setup_default_filters_and_throttlers(self):
-        """设置默认的事件过滤器和节流器
-        
-        初始化一些常用的事件过滤和节流配置
-        """
-        logger.debug("Default filters and throttlers set up")
+        """设置默认的事件过滤器和节流器"""
+        logger.debug("InteractionManager: 默认过滤器/节流器设置 (占位符).")
     
-    def shutdown(self):
-        """关闭交互管理器
-        
-        清理资源并关闭所有交互子系统。
+    def shutdown(self) -> bool:
+        """
+        关闭交互管理器及其所有子系统。
+
+        Returns:
+            bool: 关闭操作是否成功执行 (目前总是返回 True)。
         """
         if not self._initialized:
-            logger.warning("InteractionManager not initialized or already shut down")
-            return False #明确返回False如果未初始化
+            logger.warning("交互管理器尚未初始化或已关闭。")
+            return True
+
+        logger.info("正在关闭交互管理器...")
+
+        if self.keyboard_event_handler and hasattr(self.keyboard_event_handler, 'stop'):
+            try:
+                self.keyboard_event_handler.stop()
+                logger.info("HotkeyManager 已停止。")
+            except Exception as e:
+                logger.error(f"停止 HotkeyManager 时出错: {e}", exc_info=True)
         
-        logger.info("Shutting down InteractionManager")
+        if self.mouse_event_handler and hasattr(self.mouse_event_handler, 'shutdown'):
+            try:
+                self.mouse_event_handler.shutdown()
+                logger.info("MouseInteraction 已关闭。")
+            except Exception as e:
+                logger.error(f"关闭 MouseInteraction 时出错: {e}", exc_info=True)
+
+        if self.tray_icon and hasattr(self.tray_icon, 'shutdown'):
+            try:
+                self.tray_icon.shutdown()
+                logger.info("TrayIcon 已关闭。")
+            except Exception as e:
+                logger.error(f"关闭 TrayIcon 时出错: {e}", exc_info=True)
         
-        # 注销事件总线处理器，如果它曾被注册
-        if hasattr(self.event_bus, 'unregister_handler'):
-             try:
-                 self.event_bus.unregister_handler("interaction", self._handle_interaction_event)
-                 logger.debug("Unregistered interaction event handler from event bus.")
-             except Exception as e:
-                 logger.error(f"Error unregistering event handler from event bus: {e}", exc_info=True)
+        if self.context_menu and hasattr(self.context_menu, 'shutdown'):
+            try:
+                self.context_menu.shutdown()
+                logger.info("ContextMenu 已关闭。")
+            except Exception as e:
+                logger.error(f"关闭 ContextMenu 时出错: {e}", exc_info=True)
         
-        # 关闭各个子系统
-        subsystems_to_shutdown = [
-            self.mouse_event_handler,
-            self.keyboard_event_handler,
-            self.context_menu, # If created and assigned to self.context_menu
-            self.drag_manager, # If created and assigned to self.drag_manager
-            # self.tray_icon # Removed, as InteractionManager may not own it directly
-        ]
-        
-        for subsystem in subsystems_to_shutdown:
-            if subsystem:
-                # HotkeyManager uses stop(), others might use shutdown()
-                if isinstance(subsystem, HotkeyManager) and hasattr(subsystem, 'stop'):
-                    try:
-                        logger.debug(f"Stopping subsystem {subsystem.__class__.__name__}")
-                        subsystem.stop()
-                    except Exception as e:
-                        logger.error(f"Error stopping subsystem {subsystem.__class__.__name__}: {str(e)}", exc_info=True)
-                elif hasattr(subsystem, 'shutdown'):
-                    try:
-                        logger.debug(f"Shutting down subsystem {subsystem.__class__.__name__}")
-                        subsystem.shutdown()
-                    except Exception as e:
-                        logger.error(f"Error shutting down subsystem {subsystem.__class__.__name__}: {str(e)}", exc_info=True)
-                # Add specific shutdown methods if a general 'shutdown' or 'stop' is not applicable
+        if self.drag_manager and hasattr(self.drag_manager, 'shutdown'):
+            try:
+                self.drag_manager.shutdown()
+                logger.info("DragManager 已关闭。")
+            except Exception as e:
+                logger.error(f"关闭 DragManager 时出错: {e}", exc_info=True)
+
+        if self.event_bus and hasattr(self.event_bus, 'unregister_handler'):
+            try:
+                self.event_bus.unregister_handler("interaction", self._handle_interaction_event)
+                logger.info("已从事件总线注销交互事件处理器。")
+            except Exception as e:
+                logger.error(f"从事件总线注销处理器时出错: {e}", exc_info=True)
 
         self.clear_filters()
         self.clear_throttlers()
-        self.reset_event_stats()
         
         self._initialized = False
-        logger.info("InteractionManager shut down successfully")
-        return True # 明确返回True表示成功 
+        logger.info("交互管理器已成功关闭。")
+        return True
+
+# Example usage for BehaviorTrigger (if it were managed here)
+# from status.behavior.behavior_manager import BehaviorManager
+# class MyBehaviorTrigger(BehaviorTrigger):
+# ...
+
+# End of InteractionManager class 

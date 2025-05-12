@@ -252,14 +252,16 @@ class AutonomousBehaviorGenerator:
         env_sensor = None
         if hasattr(self.entity, 'environment_sensor'):
             env_sensor = self.entity.environment_sensor
-        elif EnvironmentSensor:
+        else:
+            # 导入EnvironmentSensor
+            from status.behavior.environment_sensor import EnvironmentSensor
             try:
                 env_sensor = EnvironmentSensor.get_instance()
             except Exception as e:
                 self.logger.error(f"获取环境感知器失败: {e}")
                 return multiplier
             
-        if not env_sensor:
+        if env_sensor is None:
             return multiplier
             
         try:

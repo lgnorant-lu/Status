@@ -163,22 +163,26 @@ class Cache:
         """启动自动清理任务"""
         if self.cleanup_interval > 0:
             def cleanup_task():
-                self.cleanup()
-                # 重新调度自身
-                if self._cleanup_timer is None:
-                    self._cleanup_timer = threading.Timer(self.cleanup_interval, cleanup_task)
-                    self._cleanup_timer.daemon = True
-                    self._cleanup_timer.start()
-                else:
-                    self._cleanup_timer = threading.Timer(self.cleanup_interval, cleanup_task)
-                    self._cleanup_timer.daemon = True
-                    self._cleanup_timer.start()
+                """清理任务函数"""
+                try:
+                    self.cleanup()
+                except Exception as e:
+                    self._logger.error(f"自动清理任务执行失败: {str(e)}")
+                finally:
+                    # 重新安排下一次清理
+                    if self._cleanup_timer is None:
+                        self._cleanup_timer = threading.Timer(self.cleanup_interval, cleanup_task)
+                        self._cleanup_timer.daemon = True
+                        self._cleanup_timer.start()
+                    else:
+                        self._cleanup_timer = threading.Timer(self.cleanup_interval, cleanup_task)
+                        self._cleanup_timer.daemon = True
+                        self._cleanup_timer.start()
             
+            # 启动首次清理任务
             self._cleanup_timer = threading.Timer(self.cleanup_interval, cleanup_task)
             self._cleanup_timer.daemon = True
             self._cleanup_timer.start()
-            # 无需到达此处
-            return
     
     def _stop_cleanup_task(self) -> None:
         """停止自动清理任务"""

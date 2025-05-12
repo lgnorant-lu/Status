@@ -319,9 +319,9 @@ class RendererBase(QObject, ABC, metaclass=QObjectABCMeta):
         """绘制矩形
         
         Args:
-            rect: 矩形
+            rect: 矩形区域
             color: 颜色
-            thickness: 线条粗细
+            thickness: 线条粗细，仅在filled=False时有效
             filled: 是否填充
         """
         pass
@@ -511,4 +511,84 @@ class RendererBase(QObject, ABC, metaclass=QObjectABCMeta):
             height: 目标高度
             opacity: 绘制不透明度 (0.0-1.0)
         """
+        pass
+
+    @abstractmethod
+    def fill_rect(self, x: int, y: int, width: int, height: int, color: Tuple[int, int, int]) -> None:
+        """填充矩形
+        
+        Args:
+            x (int): 矩形左上角X坐标
+            y (int): 矩形左上角Y坐标
+            width (int): 矩形宽度
+            height (int): 矩形高度
+            color (Tuple[int, int, int]): RGB颜色元组 (0-255)
+        """
+        pass
+
+    @abstractmethod
+    def get_opacity(self) -> float:
+        """获取当前全局透明度 (0.0 - 1.0)"""
+        pass
+
+    @abstractmethod
+    def set_opacity(self, opacity: float) -> None:
+        """设置当前全局透明度 (0.0 - 1.0)"""
+        pass
+
+    @abstractmethod
+    def get_viewport_size(self) -> Tuple[int, int]:
+        """获取当前视口大小 (宽度, 高度)"""
+        pass
+
+    @abstractmethod
+    def save_state(self) -> None:
+        """保存当前渲染状态 (变换、透明度、裁剪等)"""
+        pass
+
+    @abstractmethod
+    def restore_state(self) -> None:
+        """恢复之前保存的渲染状态"""
+        pass
+
+    @abstractmethod
+    def create_surface(self, width: Optional[int] = None, height: Optional[int] = None) -> Any:
+        """创建离屏渲染表面/目标
+        
+        Args:
+            width: 表面宽度 (可选，默认为视口宽度)
+            height: 表面高度 (可选，默认为视口高度)
+            
+        Returns:
+            Any: 特定于后端的表面对象
+        """
+        pass
+
+    @abstractmethod
+    def set_target(self, surface: Optional[Any]) -> None:
+        """设置渲染目标
+        
+        Args:
+            surface: 目标表面对象，或 None 表示默认屏幕
+        """
+        pass
+
+    @abstractmethod
+    def reset_target(self) -> None:
+        """重置渲染目标为默认屏幕"""
+        pass
+        
+    @abstractmethod
+    def set_dissolve_effect(self, pattern: Any, progress: float) -> None:
+        """应用溶解效果 (特定于溶解转场)
+        
+        Args:
+            pattern: 溶解模式纹理
+            progress: 溶解进度 (0.0 到 1.0)
+        """
+        pass
+
+    @abstractmethod
+    def clear_effects(self) -> None:
+        """清除当前活动的特殊效果"""
         pass 

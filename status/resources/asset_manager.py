@@ -570,7 +570,7 @@ class AssetManager:
         paths_local: List[str] = paths if paths is not None else group_info.get("paths", [])
         if paths is not None: # 如果外部传入了 paths，用它更新 group_info
              group_info["paths"] = paths_local
-
+        
         self.logger.info(f"预加载资源组: {group_name}, {len(paths_local)} 个资源")
         
         if not paths_local: # 使用 paths_local 进行检查和迭代

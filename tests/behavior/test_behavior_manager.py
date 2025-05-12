@@ -255,14 +255,14 @@ class TestBehaviorManager(unittest.TestCase):
         # 设置当前行为
         current_behavior = MagicMock()
         current_behavior.is_running = True
-        current_behavior.update.return_value = False  # 行为未完成
+        current_behavior._update_behavior = MagicMock(return_value=False)  # 行为未完成
         self.behavior_manager.current_behavior = current_behavior
         
         # 更新行为
         self.behavior_manager.update(0.016)
         
         # 验证行为更新
-        current_behavior.update.assert_called_once_with(0.016)
+        current_behavior._update_behavior.assert_called_once_with(0.016)
         self.assertEqual(self.behavior_manager.current_behavior, current_behavior)
         
     def test_update_with_completed_behavior(self):
@@ -270,14 +270,14 @@ class TestBehaviorManager(unittest.TestCase):
         # 设置当前行为
         current_behavior = MagicMock()
         current_behavior.is_running = True
-        current_behavior.update.return_value = True  # 行为已完成
+        current_behavior._update_behavior = MagicMock(return_value=True)  # 行为已完成
         self.behavior_manager.current_behavior = current_behavior
         
         # 更新行为
         self.behavior_manager.update(0.016)
         
         # 验证行为更新和清除
-        current_behavior.update.assert_called_once_with(0.016)
+        current_behavior._update_behavior.assert_called_once_with(0.016)
         self.assertIsNone(self.behavior_manager.current_behavior)
         
     def test_stop_current_behavior(self):
