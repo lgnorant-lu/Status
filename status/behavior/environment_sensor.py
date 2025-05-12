@@ -15,16 +15,25 @@ Changed history:
                             2025/05/16: 修复PySide6导入和screens方法访问问题;
                             2025/05/16: 修复文件编码问题;
                             2025/05/16: 彻底重写，解决编码null字节问题;
+                            2025/05/18: 修复循环导入问题;
+                            2025/05/18: 修复元类冲突问题;
 ----
 """
 
-from PySide6.QtCore import QRect, QPoint, QSize
+from PySide6.QtCore import QRect, QPoint, QSize, QObject, Signal
 from PySide6.QtGui import QGuiApplication, QScreen
 import logging
 import platform
 import sys
+from typing import Dict, List, Optional, Tuple, Any, Union, Callable
+from abc import ABC, abstractmethod
+from threading import Thread, Event as ThreadEvent
+import time
 
 from status.core.events import EventManager, Event
+
+# 移除循环导入
+# from status.behavior.environment_sensor import WindowsEnvironmentSensor, MacEnvironmentSensor, LinuxEnvironmentSensor
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +90,23 @@ class DesktopObject:
         return f"DesktopObject(title='{self.title}', rect={self.rect}, process='{self.process_name}', visible={self.visible})"
 
 
-class EnvironmentSensor:
+class EnvironmentData:
+    """环境数据类，存储传感器收集的各种环境信息"""
+    screen_info: List[Dict[str, Any]] = []
+    window_info: List[Dict[str, Any]] = []
+    desktop_objects: List[Dict[str, Any]] = []
+    active_window: Optional[Dict[str, Any]] = None
+    cursor_position: Optional[Tuple[int, int]] = None
+    timestamp: float = 0.0
+
+
+# 创建一个元类，解决QObject和ABC的元类冲突
+class EnvironmentSensorMeta(type(QObject), type(ABC)):
+    """解决QObject和ABC元类冲突的元类"""
+    pass
+
+
+class EnvironmentSensor(QObject, ABC, metaclass=EnvironmentSensorMeta):
     """
     环境传感器，负责感知桌面环境
     
@@ -91,9 +116,12 @@ class EnvironmentSensor:
     
     _instance = None
     _mock_mode = False
-    _mock_screen_info = {}
-    _mock_window_info = {}
-    _mock_desktop_objects = []
+    _mock_screen_info: List[Dict[str, Any]] = []
+    _mock_window_info: List[Dict[str, Any]] = []
+    _mock_desktop_objects: List[Dict[str, Any]] = []
+    
+    data_updated = Signal(EnvironmentData)
+    error_occurred = Signal(str)
     
     @classmethod
     def get_instance(cls):
@@ -104,7 +132,18 @@ class EnvironmentSensor:
             EnvironmentSensor: 环境传感器实例
         """
         if cls._instance is None:
-            cls._instance = cls()
+            if platform.system() == "Windows" and not EnvironmentSensor._mock_mode:
+                # 在这里不使用导入，而是直接使用后面定义的 WindowsEnvironmentSensor 类
+                cls._instance = WindowsEnvironmentSensor()
+            elif platform.system() == "Darwin" and not EnvironmentSensor._mock_mode:
+                # MacOS
+                cls._instance = MacEnvironmentSensor()
+            elif platform.system() == "Linux" and not EnvironmentSensor._mock_mode:
+                # Linux
+                cls._instance = LinuxEnvironmentSensor()
+            else:
+                # 默认或模拟模式
+                cls._instance = cls()
         return cls._instance
     
     @classmethod
@@ -118,8 +157,8 @@ class EnvironmentSensor:
         cls._mock_mode = enable
         if enable:
             # 初始化模拟屏幕信息
-            cls._mock_screen_info = {
-                0: {
+            cls._mock_screen_info = [
+                {
                     'geometry': QRect(0, 0, 1920, 1080),
                     'width': 1920,
                     'height': 1080,
@@ -129,14 +168,16 @@ class EnvironmentSensor:
                     'scale_factor': 1.0,
                     'primary': True
                 }
-            }
-            cls._mock_window_info = {
-                'geometry': QRect(100, 100, 800, 600),
-                'width': 800,
-                'height': 600,
-                'x': 100,
-                'y': 100
-            }
+            ]
+            cls._mock_window_info = [
+                {
+                    'geometry': QRect(100, 100, 800, 600),
+                    'width': 800,
+                    'height': 600,
+                    'x': 100,
+                    'y': 100
+                }
+            ]
             cls._mock_desktop_objects = []
     
     @classmethod
@@ -169,8 +210,10 @@ class EnvironmentSensor:
         """
         cls._mock_desktop_objects = desktop_objects
     
-    def __init__(self):
+    def __init__(self, update_interval: float = 5.0,
+                 event_callback: Optional[Callable[[str, Any], None]] = None):
         """初始化环境传感器"""
+        super().__init__()
         if EnvironmentSensor._instance is not None:
             raise RuntimeError("EnvironmentSensor实例已存在，请使用get_instance()获取实例")
         
@@ -182,6 +225,12 @@ class EnvironmentSensor:
         self._initialized = False
         self._active_window = None
         self._platform = platform.system()
+        self._event_callback = event_callback
+        self._current_data = EnvironmentData()
+        self._update_interval = update_interval
+        self._thread: Optional[Thread] = None
+        self._stop_event = ThreadEvent()
+        self._is_mock = False # Track mock status
     
     def initialize(self, event_manager=None, active_window=None):
         """
@@ -562,6 +611,45 @@ class EnvironmentSensor:
         
         logger.debug("环境信息已更新")
 
+    def _run(self):
+        while not self._stop_event.is_set():
+            try:
+                new_data = self._get_environment_data()
+                # Simple check: emit if active window changed or timestamp difference > threshold?
+                # For now, emit every time
+                self._current_data = new_data
+                self.data_updated.emit(self._current_data)
+            except Exception as e:
+                logger.error(f"Error in environment sensor loop: {e}", exc_info=True)
+                self.error_occurred.emit(f"Sensor loop error: {e}")
+            time.sleep(self._update_interval)
+
+    @abstractmethod
+    def _get_environment_data(self) -> EnvironmentData:
+        """Platform-specific method to gather all environment data."""
+        pass
+
+    def get_current_data(self) -> EnvironmentData:
+        """获取当前缓存的环境数据"""
+        return self._current_data
+
+    @classmethod
+    def set_mock_mode(cls, enable: bool, screen_info=None, window_info=None, desktop_objects=None):
+        cls._is_mock = enable
+        if enable:
+            cls._mock_screen_info = screen_info or cls._get_default_mock_screens()
+            cls._mock_window_info = window_info or cls._get_default_mock_windows()
+            cls._mock_desktop_objects = desktop_objects or []
+        logger.info(f"EnvironmentSensor mock mode set to: {enable}")
+
+    @classmethod
+    def _get_default_mock_screens(cls) -> List[Dict[str, Any]]:
+         return [{'id': 0, 'geometry': QRect(0,0,1920,1080), 'primary': True}]
+
+    @classmethod
+    def _get_default_mock_windows(cls) -> List[Dict[str, Any]]:
+         return [{'hwnd': 123, 'title': 'Mock Window', 'class': 'MockClass', 'rect': QRect(100,100,800,600)}]
+
 
 # Windows平台特定优化
 try:
@@ -598,227 +686,148 @@ try:
     class WindowsEnvironmentSensor(EnvironmentSensor):
         """Windows平台特定优化环境传感器"""
         
-        def __init__(self):
+        def __init__(self, update_interval: float = 5.0, mock: bool = False,
+                     event_callback: Optional[Callable[[str, Any], None]] = None):
             """初始化Windows环境传感器"""
-            super().__init__()
-            self._enum_windows_proc = None
+            super().__init__(update_interval, event_callback)
+            self._is_mock = mock
+            if self._is_mock:
+                # Use class mock data if available, or defaults
+                self._mock_screen_info = self.__class__._mock_screen_info or self._get_default_mock_screens()
+                self._mock_window_info = self.__class__._mock_window_info or self._get_default_mock_windows()
+                self._mock_desktop_objects = self.__class__._mock_desktop_objects or []
+            else:
+                # Clear any class-level mock data if not in mock mode
+                self._mock_screen_info = []
+                self._mock_window_info = []
+                self._mock_desktop_objects = []
+            # Import windows libs here if not mocking
+            if not self._is_mock:
+                self._import_win_libs()
         
-        def _update_screen_info(self):
-            """使用Windows API更新屏幕信息"""
-            # 如果启用模拟模式，则使用模拟对象
-            if EnvironmentSensor._mock_mode:
-                self._screen_info = EnvironmentSensor._mock_screen_info
-                return
-                
-            super()._update_screen_info()
-            
+        def _import_win_libs(self):
             try:
-                # 使用Windows API获取屏幕信息
-                for idx, info in self._screen_info.items():
-                    # 获取屏幕工作区域
-                    monitor_info = MONITORINFO()
-                    monitor_info.cbSize = ctypes.sizeof(MONITORINFO)
-                    
-                    # 创建POINT结构体
-                    point = POINT()
-                    point.x = info['x'] + info['width'] // 2
-                    point.y = info['y'] + info['height'] // 2
-                    
-                    monitor = windll.user32.MonitorFromPoint(
-                        point,
-                        win32con.MONITOR_DEFAULTTONEAREST
-                    )
-                    
-                    if windll.user32.GetMonitorInfoW(monitor, byref(monitor_info)):
-                        work_rect = monitor_info.rcWork
-                        info['work_area'] = {
-                            'x': work_rect.left,
-                            'y': work_rect.top,
-                            'width': work_rect.right - work_rect.left,
-                            'height': work_rect.bottom - work_rect.top
-                        }
-                    
-                    # 获取DPI信息
-                    try:
-                        # Windows 10 1607及以上版本，获取进程DPI感知
-                        awareness = ctypes.c_int()
-                        windll.shcore.GetProcessDpiAwareness(0, ctypes.byref(awareness))
-                        info['dpi_awareness'] = awareness.value
-                        
-                        dpi_x = ctypes.c_uint()
-                        dpi_y = ctypes.c_uint()
-                        windll.shcore.GetDpiForMonitor(
-                            monitor, 
-                            0,  # MDT_EFFECTIVE_DPI
-                            ctypes.byref(dpi_x),
-                            ctypes.byref(dpi_y)
-                        )
-                        info['dpi_x'] = dpi_x.value
-                        info['dpi_y'] = dpi_y.value
-                    except (AttributeError, OSError):
-                        # 如果无法获取DPI信息，则使用GDI获取默认DPI
-                        hdc = windll.user32.GetDC(None)
-                        info['dpi_x'] = windll.gdi32.GetDeviceCaps(hdc, 88)  # LOGPIXELSX
-                        info['dpi_y'] = windll.gdi32.GetDeviceCaps(hdc, 90)  # LOGPIXELSY
-                        windll.user32.ReleaseDC(None, hdc)
-                
-            except Exception as e:
-                logger.error(f"获取Windows屏幕信息失败: {e}")
-        
-        def _update_window_info(self):
-            """使用Windows API更新窗口信息"""
-            # 如果启用模拟模式，则使用模拟对象
-            if EnvironmentSensor._mock_mode:
-                self._window_info = EnvironmentSensor._mock_window_info
-                return
-                
-            super()._update_window_info()
-            
-            try:
-                if self._active_window:
-                    # 如果窗口是可见的，并且有句柄，则获取窗口信息
-                    if hasattr(self._active_window, 'winId'):
-                        hwnd = self._active_window.winId()
-                        
-                        # 获取窗口信息
-                        rect = win32gui.GetWindowRect(hwnd)
-                        title = win32gui.GetWindowText(hwnd)
-                        
-                        # 获取窗口样式信息
-                        style = win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE)
-                        ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-                        
-                        # 更新窗口信息
-                        self._window_info.update({
-                            'hwnd': hwnd,
-                            'title': title,
-                            'rect': rect,
-                            'x': rect[0],
-                            'y': rect[1],
-                            'width': rect[2] - rect[0],
-                            'height': rect[3] - rect[1],
-                            'style': style,
-                            'ex_style': ex_style,
-                            'visible': bool(style & win32con.WS_VISIBLE),
-                            'maximized': bool(style & win32con.WS_MAXIMIZE),
-                            'minimized': bool(style & win32con.WS_MINIMIZE)
-                        })
-                else:
-                    # 如果活动窗口不存在，则获取前台窗口信息
-                    hwnd = win32gui.GetForegroundWindow()
-                    if hwnd:
-                        rect = win32gui.GetWindowRect(hwnd)
-                        title = win32gui.GetWindowText(hwnd)
-                        
-                        # 获取前台窗口线程和进程ID
-                        _, pid = win32process.GetWindowThreadProcessId(hwnd)
-                        try:
-                            process = psutil.Process(pid)
-                            process_name = process.name()
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            process_name = "unknown"
-                        
-                        # 更新窗口信息
-                        self._window_info = {
-                            'hwnd': hwnd,
-                            'title': title,
-                            'rect': rect,
-                            'x': rect[0],
-                            'y': rect[1],
-                            'width': rect[2] - rect[0],
-                            'height': rect[3] - rect[1],
-                            'process_name': process_name,
-                            'pid': pid
-                        }
-            
-            except Exception as e:
-                logger.error(f"获取Windows窗口信息失败: {e}")
-        
-        def _enum_windows_callback(self, hwnd, results):
-            """EnumWindows回调函数，用于检测所有窗口"""
-            if not win32gui.IsWindowVisible(hwnd):
-                return True
-            
-            # 过滤掉非顶级窗口和子窗口
-            if win32gui.GetParent(hwnd) != 0:
-                return True
-                
-            # 过滤掉没有标题的窗口
-            title = win32gui.GetWindowText(hwnd)
-            if not title:
-                return True
-            
-            # 获取窗口位置和大小
-            try:
-                rect = win32gui.GetWindowRect(hwnd)
-                
-                # 过滤掉无效的窗口
-                if rect[0] == -32000 or rect[1] == -32000:
-                    return True
-                
-                # 过滤掉太小或太小的窗口
-                width = rect[2] - rect[0]
-                height = rect[3] - rect[1]
-                if width < 50 or height < 50:
-                    return True
-                
-                # 获取窗口线程和进程ID
-                _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                global win32api, win32gui, win32process, win32con, psutil, GPUtil
+                import win32api
+                import win32gui
+                import win32process
+                import win32con
+                import psutil
                 try:
-                    process = psutil.Process(pid)
-                    process_name = process.name()
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    process_name = "unknown"
-                
-                # 创建桌面对象
-                desktop_obj = DesktopObject(
-                    handle=hwnd,
-                    title=title,
-                    rect=QRect(rect[0], rect[1], width, height),
-                    process_name=process_name,
-                    visible=True
-                )
-                
-                results.append(desktop_obj)
-            
-            except Exception as e:
-                logger.error(f"获取窗口信息失败: {e}")
-            
-            return True
+                    import GPUtil
+                except ImportError:
+                    GPUtil = None # Handle optional GPUtil
+                    logger.info("GPUtil not found, GPU info will be limited.")
+            except ImportError as e:
+                logger.error(f"Failed to import Windows API libraries (pywin32? psutil?): {e}")
+                # Potentially raise or disable sensor if essential libs missing
+                raise
         
-        def _update_desktop_objects(self):
-            """使用Windows API更新桌面对象信息"""
-            # 如果启用模拟模式，则使用模拟对象
-            if EnvironmentSensor._mock_mode:
-                self._desktop_objects = EnvironmentSensor._mock_desktop_objects
-                return
-                
+        def _get_environment_data(self) -> EnvironmentData:
+            data = EnvironmentData()
+            data.timestamp = time.time()
+
+            if self._is_mock:
+                data.screen_info = list(self._mock_screen_info)
+                data.window_info = list(self._mock_window_info)
+                data.desktop_objects = list(self._mock_desktop_objects)
+                data.active_window = data.window_info[0] if data.window_info else None
+                data.cursor_position = (500, 500)
+            else:
+                try:
+                    # Fetch actual data using imported libs
+                    data.screen_info = self._get_screen_info()
+                    data.window_info = self._get_window_info()
+                    data.desktop_objects = self._get_desktop_objects()
+                    data.active_window = self._get_active_window(data.window_info)
+                    data.cursor_position = self._get_cursor_position()
+                except Exception as e:
+                    logger.error(f"Error fetching Windows env data: {e}", exc_info=True)
+                    self.error_occurred.emit(f"Error fetching Windows data: {e}")
+                    # Return partially filled data or last known data?
+                    # For now, return potentially incomplete data
+
+            return data
+
+        # --- Helper methods for fetching specific data --- 
+
+        def _get_screen_info(self) -> List[Dict[str, Any]]:
+            screens = []
             try:
-                objects = []
-                callback_type = ctypes.WINFUNCTYPE(
-                    ctypes.c_bool, 
-                    ctypes.c_int, 
-                    ctypes.py_object
-                )
-                
-                # 注册回调函数
-                self._enum_windows_proc = callback_type(
-                    lambda hwnd, results: self._enum_windows_callback(hwnd, results)
-                )
-                
-                # 遍历所有窗口
-                windll.user32.EnumWindows(self._enum_windows_proc, ctypes.py_object(objects))
-                
-                # 更新桌面对象信息
-                self._desktop_objects = objects
-                
-                logger.debug(f"检测到 {len(self._desktop_objects)} 个桌面对象")
-                
+                monitors = win32api.EnumDisplayMonitors()
+                primary_monitor_handle = win32api.MonitorFromPoint((0, 0), win32con.MONITOR_DEFAULTTOPRIMARY)
+                for i, monitor_info in enumerate(monitors):
+                    handle = monitor_info[0].handle
+                    rect_tuple = monitor_info[2] # (left, top, right, bottom)
+                    is_primary = (handle == primary_monitor_handle)
+                    screens.append({
+                        'id': i,
+                        'handle': handle,
+                        'geometry': QRect(rect_tuple[0], rect_tuple[1], rect_tuple[2]-rect_tuple[0], rect_tuple[3]-rect_tuple[1]),
+                        'primary': is_primary
+                    })
             except Exception as e:
-                logger.error(f"更新Windows桌面对象信息失败: {e}")
-                # 如果失败，则清空所有桌面对象
-                self._desktop_objects = []
-    
+                logger.error(f"Error getting screen info: {e}")
+                self.error_occurred.emit(f"Error getting screen info: {e}")
+            return screens
+
+        def _get_window_info(self) -> List[Dict[str, Any]]:
+            windows = []
+            try:
+                def win_enum_handler(hwnd, results):
+                    if win32gui.IsWindowVisible(hwnd) and win32gui.GetWindowText(hwnd):
+                        try:
+                            rect = win32gui.GetWindowRect(hwnd)
+                            tid, pid = win32process.GetWindowThreadProcessId(hwnd)
+                            process_name = "N/A"
+                            try:
+                                process = psutil.Process(pid)
+                                process_name = process.name()
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                pass # Ignore processes we can't access
+
+                            results.append({
+                                'hwnd': hwnd,
+                                'title': win32gui.GetWindowText(hwnd),
+                                'class': win32gui.GetClassName(hwnd),
+                                'rect': QRect(*rect),
+                                'pid': pid,
+                                'process_name': process_name
+                            })
+                        except Exception as inner_e:
+                            # Log error for specific window but continue enumeration
+                            # logger.warning(f"Could not get info for HWND {hwnd}: {inner_e}")
+                            pass # Silently ignore errors for individual windows
+
+                win32gui.EnumWindows(win_enum_handler, windows)
+            except Exception as e:
+                logger.error(f"Error enumerating windows: {e}")
+                self.error_occurred.emit(f"Error enumerating windows: {e}")
+            return windows
+
+        def _get_active_window(self, all_windows: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+            try:
+                active_hwnd = win32gui.GetForegroundWindow()
+                # Find the active window info from the list we already gathered
+                return next((w for w in all_windows if w['hwnd'] == active_hwnd), None)
+            except Exception as e:
+                logger.error(f"Error getting active window: {e}")
+                self.error_occurred.emit(f"Error getting active window: {e}")
+                return None
+
+        def _get_cursor_position(self) -> Optional[Tuple[int, int]]:
+            try:
+                return win32api.GetCursorPos()
+            except Exception as e:
+                logger.error(f"Error getting cursor position: {e}")
+                self.error_occurred.emit(f"Error getting cursor position: {e}")
+                return None
+
+        def _get_desktop_objects(self) -> List[Dict[str, Any]]:
+            # This is complex, involves iterating over ListView under Progman/SHELLDLL_DefView
+            # Placeholder implementation
+            return []
+
     # 如果环境传感器实例不存在，并且是Windows平台，则尝试初始化Windows环境传感器
     if EnvironmentSensor._instance is None and platform.system() == "Windows":
         try:
@@ -833,3 +842,26 @@ except ImportError as e:
     # 如果无法导入Windows模块，则提示并忽略
     logger.info(f"无法初始化环境传感器: {e}")
     pass 
+
+def get_environment_sensor(platform_system: Optional[str] = None, **kwargs: Any) -> Optional[EnvironmentSensor]:
+    """根据平台获取环境传感器实例"""
+    current_platform = platform_system or platform.system()
+    logger.info(f"Detected platform: {current_platform}")
+
+    sensor_instance: Optional[EnvironmentSensor] = None # Initialize with None
+
+    if current_platform == "Windows":
+        # Pass kwargs to the constructor
+        sensor_instance = WindowsEnvironmentSensor(**kwargs)
+    elif current_platform == "Darwin":  # macOS
+        sensor_instance = MacEnvironmentSensor(**kwargs)
+    elif current_platform == "Linux":
+        sensor_instance = LinuxEnvironmentSensor(**kwargs)
+    else:
+        logger.warning(f"Unsupported platform: {current_platform}. No environment sensor created.")
+        # sensor_instance remains None
+
+    if sensor_instance:
+         logger.info(f"Created {type(sensor_instance).__name__} instance.")
+
+    return sensor_instance # Return the instance or None

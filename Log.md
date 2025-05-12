@@ -101,6 +101,7 @@
 ## 行为系统
 - [详细日志](Logs/behavior_system_changes.md)
 - [2025-05-14] [行为系统] Emotion System 修复与测试 - 详见 [Logs/Behavior/2025-05-14_emotion_system_fix_and_test.md]
+- [2025-05-11] [行为系统] 基础行为测试修复与逻辑优化 - 详见 [Logs/Behavior/2025-05-11_basic_behaviors_fixes.md]
 - 版本: 0.1.0
 - 最近更新: 2023-11-12
 - 相关任务: 桌宠行为系统基础实现
@@ -176,4 +177,86 @@
 - **更新 (2025-05-12):** 清理范围已扩展，包括根目录下的多个文件和目录、`assets` 内的空子目录、`status/` 内的多个模块（如config, monitor, examples, launcher等）、`status/ui/` 内的部分文件和目录，以及 `tests/` 目录内的大量文件和子目录。同时，对 `status/interaction/interaction_manager.py` 进行了解耦编辑（移除CommandManager引用，但附带linter错误）。
 - **注意**: 部分二进制资源文件（如旧主题的 .png）和非空目录的删除仍需手动完成。
 - **完整详情参见**: [Logs/2025-04-17_project_cleanup_phase1.md]
+
+
+---
+**重要通知: 项目演进与日志分割**
+
+以上日志主要记录了本项目在早期阶段（可能使用名称如 "Hollow-ming" 或早期 "Status"）的开发历史和演进过程，直至 `2025-05-12` 的大规模项目清理（详情参见 `Logs/2025-04-17_project_cleanup_phase1.md`）。
+
+自 `2025-05-12` 起，项目已正式更名为 **`Status-Ming`**，并确立了新的开发方向：
+- **主题**: 猫咪（当前使用占位符）
+- **核心技术**: PySide6
+- **主要目标**: MVP版本 - 实现核心的桌面宠物系统参数监控反馈功能。
+
+后续 `Status-Ming` 项目的主要开发活动、重要变更和版本发布将通过以下方式记录：
+1.  **新的详细日志文件**: 将存放于 `Logs/Status-Ming/` 子目录下（例如 `Logs/Status-Ming/2025-05-15_mvp_pet_window_setup.md`）。
+2.  **本 `Log.md` 文件更新**: 将会在此通知下方，创建一个新的二级标题 `## Status-Ming (猫咪主题 - 2025-05-12 起)`，用于索引这些新的详细日志文件，或记录关键的里程碑摘要。
+
+感谢您对项目历史的关注。敬请期待 `Status-Ming` 的新进展！
+---
+
+## Status-Ming (猫咪主题 - 2025-05-12 起) 变更日志索引
+
+*(此区域将用于索引 `Status-Ming` 的新日志文件或记录关键更新)*
+
+- [模板] [YYYY-MM-DD] [模块/功能] 简要描述 - 详见 [Logs/Status-Ming/YYYY-MM-DD_log_file_name.md]
+
+# 日志索引
+
+> **注意**: 本文件仅包含日志索引信息，具体日志内容请查看 `Logs/` 目录下的对应文件
+
+## 旧 Status 项目日志
+以下是旧版 Status 项目的开发日志，这些日志可能与当前 Status-Ming 项目不完全相关：
+
+- [2025-04-17 项目清理第一阶段](Logs/2025-04-17_project_cleanup_phase1.md)
+- [2025-04-10 渲染系统重构](Logs/2025-04-10_renderer_refactoring.md)
+- [2025-04-03 资源管理系统实现](Logs/2025-04-03_resource_system_implementation.md)
+
+--------------------
+
+## Status-Ming 项目日志
+
+### 基础设施与环境
+
+- [2025-05-12 类型提示系统优化](Logs/2025-05-12_type_hints_optimization.md)
+- [2025-05-18 核心组件添加](Logs/2025-05-18_core_components_addition.md)
+
+### 功能开发
+
+*尚未添加功能开发日志*
+
+### 测试与修复
+
+*尚未添加测试与修复日志*
+
+## 类型系统
+
+- [2025-05-12] [类型提示系统优化](Logs/2025-05-12_type_hints_optimization.md) - 创建通用类型模块并修复主要模块（包括 `resource_pack`, `resource_loader`, `cache`, `config_manager`, `interaction_manager`）的类型提示和Linter问题
+- [2025-05-15] [类型提示系统优化 - 监控模块](Logs/2025-05-15_type_hints_monitoring.md) - 修复监控模块（包括 `system_info`, `data_process`, `monitor`, `ui_controller`）的类型提示问题
+- [2025-05-12] [类型提示系统优化 - Renderer模块] 完成 status/renderer/ 目录下所有文件的类型检查与修复 - 详见 [Logs/Status-Ming/2025-05-12_type_hints_renderer.md]
+- [2025-05-12] [类型提示系统优化 - Resources模块] 完成 status/resources/ 目录下所有文件的类型检查与修复 - 详见 [Logs/Status-Ming/2025-05-12_type_hints_resources.md]
+- [2025-05-20] [类型提示系统优化 - Interaction模块] 完成 status/interaction/ 目录下所有文件的类型检查与修复 - 详见 [Logs/2025-05-20_interaction_typehints.md]
+- [2025-05-18] [类型提示系统优化 - Behavior模块] 添加缺失的组件基类和实用工具类，解决导入错误 - 详见 [Logs/Status-Ming/2025-05-18_behavior_dependencies_fix.md]
+
+### 2025-05-18: 组件基类和工具类添加
+- [核心] 创建了组件基类 ComponentBase，实现了组件的基本功能和接口 [Logs/Status-Ming/2025-05-18_behavior_dependencies_fix.md]
+- [工具] 添加了二维向量类 Vector2D，提供向量数学操作功能 [Logs/Status-Ming/2025-05-18_behavior_dependencies_fix.md]
+- [工具] 添加了衰减函数模块，包含指数衰减等多种衰减函数 [Logs/Status-Ming/2025-05-18_behavior_dependencies_fix.md]
+- [修复] 解决了behavior模块的依赖导入错误问题 [Logs/Status-Ming/2025-05-18_behavior_dependencies_fix.md]
+
+### 2025-05-15: 监控模块类型提示优化
+- [监控] 修复了system_info.py中的Collection[Any]类型索引错误 [Logs/2025-05-15_monitor_typehints.md]
+- [监控] 修复了_initialized类型问题 [Logs/2025-05-15_monitor_typehints.md]
+- [监控] 纠正了导入语句，使Event类导入正确 [Logs/2025-05-15_monitor_typehints.md]
+
+### 2025-05-12: 资源模块类型提示优化
+- [资源] 修复了resource_pack.py, resource_loader.py的类型注解问题 [Logs/2025-05-12_type_hints_optimization.md]
+- [资源] 改进了ResourcePackManager的类型提示 [Logs/2025-05-12_type_hints_optimization.md]
+- [测试] 修复了资源系统测试中的类型问题 [Logs/2025-05-12_type_hints_optimization.md]
+
+### 2025-05-20: 交互模块类型提示优化
+- [交互] 修复了event_filter.py和event_throttler.py中的方法返回类型问题 [Logs/2025-05-20_interaction_typehints.md]
+- [交互] 修复了interaction_event.py中的类型处理，优化事件类型系统 [Logs/2025-05-20_interaction_typehints.md]
+- [类型] 完成了项目类型提示修复中期进度报告 [Logs/2025-05-20_type_hints_progress.md]
 

@@ -17,6 +17,8 @@ Changed history:
                             2025/05/16: 添加FallBehavior、SleepBehavior和PlayAnimationBehavior类;
                             2025/05/16: 修复_on_update方法参数，调整类以匹配测试;
                             2025/05/16: 修复测试失败问题;
+                            2025/05/18: 添加BasicBehavior类修复导入错误;
+                            2025/05/18: 修复类定义顺序问题;
 ----
 """
 
@@ -31,6 +33,9 @@ import threading
 
 from PySide6.QtCore import QPointF, QPoint, QRect
 
+from status.core.component_base import ComponentBase
+from status.utils.vector import Vector2D
+
 
 class BehaviorType(Enum):
     """行为类型枚举"""
@@ -42,82 +47,7 @@ class BehaviorType(Enum):
     CUSTOM = auto()  # 自定义
 
 
-class BehaviorRegistry:
-    """行为注册表
-    
-    单例模式，用于管理所有注册的行为类型
-    """
-    _instance = None
-    
-    @staticmethod
-    def get_instance():
-        """获取单例实例"""
-        if BehaviorRegistry._instance is None:
-            BehaviorRegistry._instance = BehaviorRegistry()
-        return BehaviorRegistry._instance
-    
-    def __init__(self):
-        """初始化"""
-        if BehaviorRegistry._instance is not None:
-            raise RuntimeError("BehaviorRegistry is a singleton!")
-        self.behaviors = {}
-        self.logger = logging.getLogger("BehaviorRegistry")
-    
-    def register(self, behavior_id: str, behavior_class: Type["BasicBehavior"], **kwargs) -> None:
-        """注册行为类
-        
-        Args:
-            behavior_id: 行为唯一标识符
-            behavior_class: 行为类
-            **kwargs: 创建行为实例时的默认参数
-        """
-        if behavior_id in self.behaviors:
-            self.logger.warning(f"行为ID '{behavior_id}' 已存在，将被覆盖")
-        
-        self.behaviors[behavior_id] = (behavior_class, kwargs)
-        self.logger.debug(f"注册行为: {behavior_id} -> {behavior_class.__name__}")
-    
-    def unregister(self, behavior_id: str) -> None:
-        """注销行为类
-        
-        Args:
-            behavior_id: 行为唯一标识符
-        
-        Raises:
-            ValueError: 如果行为ID不存在
-        """
-        if behavior_id not in self.behaviors:
-            raise ValueError(f"行为ID '{behavior_id}' 不存在")
-        
-        del self.behaviors[behavior_id]
-        self.logger.debug(f"注销行为: {behavior_id}")
-    
-    def create(self, behavior_id: str, **kwargs) -> "BasicBehavior":
-        """创建行为实例
-        
-        Args:
-            behavior_id: 行为唯一标识符
-            **kwargs: 传递给行为构造函数的参数，会覆盖注册时的默认参数
-        
-        Returns:
-            BasicBehavior: 行为实例
-        
-        Raises:
-            ValueError: 如果行为ID不存在
-        """
-        if behavior_id not in self.behaviors:
-            raise ValueError(f"行为ID '{behavior_id}' 不存在")
-        
-        behavior_class, default_params = self.behaviors[behavior_id]
-        
-        # 合并默认参数和传入的参数
-        params = default_params.copy()
-        params.update(kwargs)
-        
-        return behavior_class(**params)
-
-
-class BasicBehavior:
+class BehaviorBase(ComponentBase):
     """基础行为类
     
     所有具体行为的基类
@@ -132,6 +62,7 @@ class BasicBehavior:
             loop: 是否循环执行
             behavior_type: 行为类型
         """
+        super().__init__()
         self.name = name or self.__class__.__name__
         self.duration = duration
         self.loop = loop
@@ -194,41 +125,179 @@ class BasicBehavior:
         
         # 更新行为
         result = self._on_update(dt)
-        return result
+        return False
     
     def _on_start(self) -> None:
-        """行为开始时调用"""
+        """开始时的回调"""
         pass
     
     def _on_stop(self) -> None:
-        """行为停止时调用"""
+        """停止时的回调"""
         pass
     
     def _on_finish(self) -> None:
-        """行为完成时调用"""
+        """完成时的回调"""
         pass
     
     def _on_loop(self) -> None:
-        """行为循环时调用"""
+        """循环时的回调"""
         pass
     
     def _on_update(self, dt: float) -> bool:
-        """行为更新时调用
+        """更新时的回调
         
         Args:
             dt: 时间增量（秒）
         
         Returns:
-            bool: 行为是否完成
+            bool: 行为是否应该结束
         """
         return False
     
     def _on_complete(self) -> None:
-        """行为完成后调用，用于测试"""
+        """完成时的自定义回调"""
         pass
 
 
-class IdleBehavior(BasicBehavior):
+class BehaviorRegistry:
+    """行为注册表
+    
+    单例模式，用于管理所有注册的行为类型
+    """
+    _instance = None
+    
+    @staticmethod
+    def get_instance():
+        """获取单例实例"""
+        if BehaviorRegistry._instance is None:
+            BehaviorRegistry._instance = BehaviorRegistry()
+        return BehaviorRegistry._instance
+    
+    def __init__(self):
+        """初始化"""
+        if BehaviorRegistry._instance is not None:
+            raise RuntimeError("BehaviorRegistry is a singleton!")
+        self.behaviors = {}
+        self.logger = logging.getLogger("BehaviorRegistry")
+    
+    def register(self, behavior_id: str, behavior_class: Type[BehaviorBase], **kwargs) -> None:
+        """注册行为类
+        
+        Args:
+            behavior_id: 行为唯一标识符
+            behavior_class: 行为类
+            **kwargs: 创建行为实例时的默认参数
+        """
+        if behavior_id in self.behaviors:
+            self.logger.warning(f"行为ID '{behavior_id}' 已存在，将被覆盖")
+        
+        self.behaviors[behavior_id] = (behavior_class, kwargs)
+        self.logger.debug(f"注册行为: {behavior_id} -> {behavior_class.__name__}")
+    
+    def unregister(self, behavior_id: str) -> None:
+        """注销行为类
+        
+        Args:
+            behavior_id: 行为唯一标识符
+        
+        Raises:
+            ValueError: 如果行为ID不存在
+        """
+        if behavior_id not in self.behaviors:
+            raise ValueError(f"行为ID '{behavior_id}' 不存在")
+        
+        del self.behaviors[behavior_id]
+        self.logger.debug(f"注销行为: {behavior_id}")
+    
+    def create(self, behavior_id: str, **kwargs) -> BehaviorBase:
+        """创建行为实例
+        
+        Args:
+            behavior_id: 行为唯一标识符
+            **kwargs: 传递给行为构造函数的参数，会覆盖注册时的默认参数
+        
+        Returns:
+            BehaviorBase: 行为实例
+        
+        Raises:
+            ValueError: 如果行为ID不存在
+        """
+        if behavior_id not in self.behaviors:
+            raise ValueError(f"行为ID '{behavior_id}' 不存在")
+        
+        behavior_class, default_params = self.behaviors[behavior_id]
+        
+        # 合并默认参数和传入的参数
+        params = default_params.copy()
+        params.update(kwargs)
+        
+        return behavior_class(**params)
+
+
+# 添加BasicBehavior类，它继承自BehaviorBase，用作所有具体行为的基类
+class BasicBehavior(BehaviorBase):
+    """基础行为类
+    
+    所有具体行为的基类，提供基本行为功能和类型支持
+    """
+    
+    def __init__(self, name: str = "", duration: float = 0, loop: bool = False, 
+                 behavior_type: BehaviorType = BehaviorType.CUSTOM, 
+                 priority: float = 0.0, trigger_condition: Optional[Callable[[], bool]] = None):
+        """初始化
+        
+        Args:
+            name: 行为名称
+            duration: 行为持续时间（秒），0表示无限
+            loop: 是否循环执行
+            behavior_type: 行为类型
+            priority: 行为优先级，数值越大优先级越高
+            trigger_condition: 行为触发条件回调函数
+        """
+        super().__init__(name, duration, loop, behavior_type)
+        self.priority = priority
+        self.trigger_condition = trigger_condition
+        self.callbacks: List[Callable[[BasicBehavior], None]] = []
+        
+    def add_callback(self, callback: Callable):
+        """添加回调函数
+        
+        Args:
+            callback: 回调函数
+        """
+        if callback not in self.callbacks:
+            self.callbacks.append(callback)
+            
+    def remove_callback(self, callback: Callable):
+        """移除回调函数
+        
+        Args:
+            callback: 回调函数
+        """
+        if callback in self.callbacks:
+            self.callbacks.remove(callback)
+            
+    def can_trigger(self) -> bool:
+        """检查是否可以触发行为
+        
+        Returns:
+            bool: 是否可以触发
+        """
+        if self.trigger_condition:
+            return self.trigger_condition()
+        return True
+        
+    def _on_complete(self) -> None:
+        """完成时的回调"""
+        super()._on_complete()
+        for callback in self.callbacks:
+            try:
+                callback(self)
+            except Exception as e:
+                self.logger.error(f"执行回调时出错: {e}")
+
+
+class IdleBehavior(BehaviorBase):
     """空闲行为基类"""
     
     def __init__(self, animation_name: str = "idle", **kwargs):
@@ -263,7 +332,7 @@ class IdleBehavior(BasicBehavior):
         return False
 
 
-class JumpBehavior(BasicBehavior):
+class JumpBehavior(BehaviorBase):
     """跳跃行为"""
     
     def __init__(self, height: float = 50, **kwargs):
@@ -341,7 +410,7 @@ class JumpBehavior(BasicBehavior):
             self.entity.y = self.original_y
 
 
-class MoveBehavior(BasicBehavior):
+class MoveBehavior(BehaviorBase):
     """移动行为"""
     
     def __init__(self, target_x: Optional[float] = None, target_y: Optional[float] = None, 
@@ -500,7 +569,7 @@ class MoveBehavior(BasicBehavior):
             self.entity.y = self.target_y
 
 
-class FallBehavior(BasicBehavior):
+class FallBehavior(BehaviorBase):
     """下落行为"""
     
     def __init__(self, gravity: float = 9.8, max_speed: float = 500, **kwargs):
@@ -602,7 +671,7 @@ class FallBehavior(BasicBehavior):
             self.entity.y = self.ground_y
 
 
-class SleepBehavior(BasicBehavior):
+class SleepBehavior(BehaviorBase):
     """睡眠行为"""
     
     def __init__(self, duration: float = 5.0, animation_name: str = "sleep", **kwargs):
@@ -655,7 +724,7 @@ class SleepBehavior(BasicBehavior):
                 self.entity.set_animation(self.original_animation)
 
 
-class PlayAnimationBehavior(BasicBehavior):
+class PlayAnimationBehavior(BehaviorBase):
     """播放动画行为"""
     
     def __init__(self, animation_name: str, duration: float = 1.0, frame_rate: float = 10, **kwargs):
@@ -708,7 +777,7 @@ class PlayAnimationBehavior(BasicBehavior):
             self.entity.set_animation(self.original_animation, self.frame_rate)
 
 
-class FollowPathBehavior(BasicBehavior):
+class FollowPathBehavior(BehaviorBase):
     """路径跟随行为"""
     
     def __init__(self, path: List[Tuple[float, float]], speed: float = 100, loop: bool = False, **kwargs):
@@ -809,7 +878,7 @@ class FollowPathBehavior(BasicBehavior):
         return False
 
 
-class EmotionBehavior(BasicBehavior):
+class EmotionBehavior(BehaviorBase):
     """情绪表达行为"""
     
     def __init__(self, emotion: str, intensity: float = 1.0, **kwargs):
@@ -846,7 +915,7 @@ class EmotionBehavior(BasicBehavior):
         return True
 
 
-class AnimationBehavior(BasicBehavior):
+class AnimationBehavior(BehaviorBase):
     """动画行为"""
     
     def __init__(self, animation_name: str, frame_rate: float = 10, **kwargs):

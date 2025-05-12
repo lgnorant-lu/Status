@@ -15,10 +15,13 @@ import time
 import math
 import random
 import logging
+from collections import deque
 from enum import Enum, auto
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Callable, Set, Union
 from unittest.mock import Mock
+from status.core.events import Event, EventType, EventManager
+from status.utils.decay import exponential_decay
 
 
 class EmotionType(Enum):
@@ -412,22 +415,43 @@ class EmotionSystem:
         )
     }
     
-    def __init__(self, entity=None, initial_state: Optional[EmotionState] = None):
+    def __init__(self, entity=None, initial_state: Optional[EmotionState] = None,
+                 initial_emotions: Optional[Dict[str, float]] = None,
+                 emotion_decay_rate: float = 0.1,
+                 event_emotion_mapping: Optional[Dict[EventType, Dict[str, float]]] = None,
+                 short_term_memory_duration: float = 60.0,
+                 long_term_mood_influence: float = 0.2):
         """初始化情绪系统
         
         Args:
             entity: 关联的实体对象
             initial_state: 初始情绪状态，如果为None则创建默认状态
+            initial_emotions: 初始情绪字典
+            emotion_decay_rate: 情绪衰减率
+            event_emotion_mapping: 事件到情绪影响的映射
+            short_term_memory_duration: 短期记忆持续时间
+            long_term_mood_influence: 长期情绪影响权重
         """
         self.entity = entity
         self.emotion_state = initial_state or EmotionState()
         self.event_mappings = self.DEFAULT_EVENT_MAPPINGS.copy()
         self.recent_events = []  # 最近的事件历史
         self.last_update_time = time.time()
-        self.decay_rate = 0.05  # 情绪衰减率
+        self.decay_rate = emotion_decay_rate
         self.max_event_history = 20  # 事件历史最大长度
         self.logger = logging.getLogger("EmotionSystem")
         self.logger.info("情绪系统已初始化")
+        self.emotions: Dict[str, EmotionState] = {}
+        self.current_mood: float = 0.5 # Example: Neutral mood
+        self.short_term_decay_time = short_term_memory_duration
+        self.long_term_mood_influence = long_term_mood_influence
+        self.recent_events: List[Tuple[float, EmotionalEvent]] = []
+
+        if initial_emotions:
+            for name, value in initial_emotions.items():
+                self.emotions[name] = EmotionState(EmotionParams(pleasure=value, arousal=value, social=value))
+        else:
+            self._initialize_default_emotions()
     
     def update(self, dt: Optional[float] = None):
         """更新情绪系统状态
@@ -508,7 +532,7 @@ class EmotionSystem:
             self.emotion_state.update(0)
             
             # Add to recent_events
-            self.recent_events.append(event_to_apply)
+            self.recent_events.append((time.time(), event_to_apply))
             if len(self.recent_events) > self.max_event_history:
                 self.recent_events.pop(0)
             return True
@@ -586,6 +610,44 @@ class EmotionSystem:
         """
         self.decay_rate = max(0.0, min(1.0, rate))
         self.logger.debug(f"设置情绪衰减率: {self.decay_rate}")
+
+    def _update_short_term_mood(self, current_time: float) -> None:
+        """更新短期情绪，考虑最近事件的衰减影响"""
+        # Use deque's automatic removal of old items if maxlen is set properly
+        # Or manually remove if maxlen isn't used or needs finer control
+        # Manual removal example:
+        while self.recent_events and current_time - self.recent_events[0][0] > self.short_term_decay_time:
+            self.recent_events.pop(0)
+
+        # --- Calculate mood based on recent events --- 
+        mood_shift = 0.0
+        # Add type hint for loop variable
+        timestamp: float 
+        event: EmotionalEvent
+        for timestamp, event in self.recent_events:
+            if event.event_type in self.event_mappings:
+                emotion_changes = self.event_mappings[event.event_type]
+                # 修复调用：添加dt参数，计算时间差作为dt
+                time_elapsed = current_time - timestamp
+                time_decay = exponential_decay(value=1.0, decay_rate=0.1, dt=time_elapsed)
+                
+                # Simple mood calculation: sum weighted changes
+                # Can be made more sophisticated
+                for emotion_name, change in emotion_changes.items():
+                     # Example: map emotion changes to positive/negative mood shift
+                     if change > 0:
+                          mood_shift += change * time_decay * 0.1 # Scale factor
+                     elif change < 0:
+                          mood_shift -= abs(change) * time_decay * 0.1 # Scale factor
+        
+        # Apply mood shift to current mood (can be more complex)
+        # self.current_mood += mood_shift # Direct application (can drift easily)
+        # Example: Move towards a target mood based on shift
+        target_mood = 0.5 + mood_shift # Target around neutral 0.5
+        target_mood = max(0.0, min(1.0, target_mood)) # Clamp to [0, 1]
+        # Smoothly update towards target mood
+        self.current_mood += (target_mood - self.current_mood) * 0.1 # Smoothing factor
+        self.current_mood = max(0.0, min(1.0, self.current_mood)) # Clamp final mood
 
 
 # 创建情绪系统的全局实例
