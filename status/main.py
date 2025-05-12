@@ -3,146 +3,225 @@
 File name:                  main.py
 Author:                     Ignorant-lu
 Date created:               2025/04/16
-Description:                Status 桌宠主程序入口
+Description:                Status-Ming 主应用入口
 ----------------------------------------------------------------
 
 Changed history:            
-                            2025/04/16: 初始创建，实现基本窗口和Idle动画渲染;
-                            2025/04/17: 从PyQt6迁移到PySide6;
+                            2025/04/16: 初始创建;
+                            2025/05/13: 实现系统托盘功能;
+                            2025/05/13: 优化UI性能，添加平滑拖动;
 ----
 """
 
 import sys
-import logging
 import time
+import logging
+from typing import Optional
 
-# 尝试导入 PySide6，如果失败则记录错误并退出
-try:
-    from PySide6.QtWidgets import QApplication
-    from PySide6.QtCore import QTimer
-except ImportError as e:
-    logging.basicConfig(level=logging.CRITICAL)
-    logging.critical(f"无法导入 PySide6 模块: {e}. 请确保已安装 PySide6。")
-    sys.exit(1)
+from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QImage, QPixmap, QColor, QPainter, QPen, QBrush
+from PySide6.QtCore import QTimer, QPoint
 
-# 添加当前目录到系统路径，以便能够导入 status 模块
-sys.path.insert(0, '.')
-
-# 导入核心模块
-try:
-    from status.core.app import Application
-    from status.resources.asset_manager import AssetManager
-    from status.renderer.sprite import Sprite
-    from status.renderer.animation import FrameAnimation, AnimationManager
-    from status.ui.main_pet_window import MainPetWindow
-    from status.renderer.pyside_renderer import PySideRenderer
-    from status.renderer.renderer_manager import RendererManager, RendererType
-except ImportError as e:
-    # 如果这里报错，说明其他文件可能有问题或路径错误
-    logging.basicConfig(level=logging.CRITICAL)
-    logging.critical(f"导入项目模块时出错: {e}. 检查模块是否存在以及 Python 路径设置。")
-    sys.exit(1)
-except SyntaxError as e:
-    # 如果这里捕获到 SyntaxError，特别是 null byte 错误，说明被导入的文件有问题
-    logging.basicConfig(level=logging.CRITICAL)
-    logging.critical(f"导入项目模块时遇到语法错误 (可能文件损坏): {e}. 检查文件 {e.filename} 的内容。")
-    sys.exit(1)
-
+from status.ui.main_pet_window import MainPetWindow
+from status.ui.system_tray import SystemTrayManager
+from status.animation.animation import Animation
+# 我们将在initialize方法中导入Application类，以避免循环导入问题
 
 # 配置日志
-logging.basicConfig(level=logging.DEBUG,
+logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 logger = logging.getLogger("StatusApp")
 
-# --- 配置 --- (稍后移到 config.py)
-WINDOW_WIDTH = 150
-WINDOW_HEIGHT = 150
-CHARACTER_IDLE_PATH = "assets/images/characters/default/idle" # 桌宠角色Idle动画资源路径
-CHARACTER_IDLE_FPS = 10 # Idle动画帧率
-
-class StatusPet(Application):
-    """桌宠主应用程序类"""
+class StatusPet:
+    """Status Pet 应用主类"""
+    
     def __init__(self):
-        super().__init__()
-        self.asset_manager = AssetManager.get_instance()
-        self.animation_manager = AnimationManager() # 管理所有动画
-        self.renderer_manager = RendererManager.get_instance() # 获取渲染管理器实例
-        self.main_window = None # <-- 添加主窗口实例变量
-        self.knight_sprite = None
-        self.idle_animation = None
-        self._last_update_time = time.perf_counter()
-
-    def initialize(self):
-        """初始化应用程序"""
+        """初始化应用"""
         logger.info("Initializing Status Pet...")
-        super().initialize() # 调用父类初始化 (如果需要)
-
-        # 初始化资源管理器 (指定资源根目录)
-        # 假设脚本是从项目根目录运行的
-        self.asset_manager.initialize(base_path=".")
-        logger.info(f"AssetManager initialized with base path: {self.asset_manager.get_base_path()}")
-
-        # 初始化渲染器
-        self.renderer_manager.register_renderer(RendererType.PYSIDE, PySideRenderer)
         
-        # 加载桌宠角色 Idle 动画帧
-        logger.info(f"Loading character idle animation from: {CHARACTER_IDLE_PATH}")
-        idle_frames = self.asset_manager.load_image_sequence(CHARACTER_IDLE_PATH)
-
-        if not idle_frames:
-            logger.error("Failed to load character idle frames. Exiting.")
-            sys.exit(1) # 加载失败则退出
-
-        logger.info(f"Loaded {len(idle_frames)} idle frames.")
-
-        # 创建 Idle 动画实例
-        self.idle_animation = FrameAnimation(frames=idle_frames, fps=CHARACTER_IDLE_FPS, loop=True, auto_start=False)
-        self.animation_manager.add(self.idle_animation) # 添加到管理器
+        # 创建应用实例
+        self.app = QApplication(sys.argv)
 
         # 创建主窗口
+        self.main_window: Optional[MainPetWindow] = None
+        
+        # 创建系统托盘
+        self.system_tray: Optional[SystemTrayManager] = None
+        
+        # 动画
+        self.animation_manager = None  # 动画管理器
+        self.idle_animation: Optional[Animation] = None  # 待机动画
+        
+        # 更新相关
+        self._last_update_time = time.perf_counter()
+        self._update_timer = QTimer()
+        self._update_timer.setInterval(16)  # 约60fps
+        self._update_timer.timeout.connect(self.update)
+    
+    def create_main_window(self):
+        """创建主窗口"""
+        # 创建主窗口
         self.main_window = MainPetWindow()
+        
+        # 设置窗口标题
+        self.main_window.setWindowTitle("Status Pet")
+        
+        # 创建并设置一个占位符图像
+        placeholder_image = self._create_placeholder_image()
+        if placeholder_image:
+            self.main_window.set_image(placeholder_image)
+        
         logger.info(f"MainPetWindow created. Initial size: {self.main_window.size()}")
 
-        # 创建 Sprite 实例
-        if idle_frames:
-            frame_width = idle_frames[0].width()
-            frame_height = idle_frames[0].height()
-            initial_x = (WINDOW_WIDTH - frame_width) // 2 # 初始位置可能由窗口自己管理
-            initial_y = (WINDOW_HEIGHT - frame_height) // 2
-            # 创建 Sprite，但不一定需要立即设置 image，因为 MainPetWindow 会处理
-            self.knight_sprite = Sprite(x=initial_x, y=initial_y, width=frame_width, height=frame_height)
-            logger.info(f"Character sprite logic instance created with initial size {frame_width}x{frame_height}.")
-            # 让窗口适应第一帧大小 (重要，否则窗口初始大小可能不对)
-            self.main_window.set_image(idle_frames[0]) 
-            logger.info(f"MainPetWindow initial image set, size should be adjusted.")
-
+        return self.main_window
+    
+    def create_system_tray(self):
+        """创建系统托盘"""
+        # 创建系统托盘管理器
+        self.system_tray = SystemTrayManager(self.app)
+        
+        # 设置菜单
+        self.system_tray.setup_menu(
+            show_hide_callback=self.toggle_window_visibility,
+            exit_callback=self.exit_app,
+            drag_mode_callback=self.set_drag_mode
+        )
+        
+        logger.info("系统托盘初始化完成")
+    
+    def toggle_window_visibility(self):
+        """切换窗口可见性"""
+        if not self.main_window:
+            return
+        
+        if self.main_window.isVisible():
+            self.main_window.hide()
         else:
-            logger.warning("No idle frames loaded, cannot create sprite properly.")
-            self.knight_sprite = Sprite(x=50, y=50)
+            self.main_window.show()
+        
+        # 更新托盘菜单项文本
+        if self.system_tray:
+            self.system_tray.set_window_visibility(self.main_window.isVisible())
+    
+    def set_drag_mode(self, mode):
+        """设置拖动模式
+        
+        Args:
+            mode: 拖动模式 - "smart", "precise", "smooth"
+        """
+        if self.main_window:
+            self.main_window.set_drag_mode(mode)
+            logger.info(f"拖动模式已设置为: {mode}")
+            
+            # 根据不同模式显示不同的提示消息
+            messages = {
+                "smart": "智能拖动模式：根据拖动速度自动调整平滑度",
+                "precise": "精确拖动模式：精确跟随鼠标位置",
+                "smooth": "平滑拖动模式：最大程度平滑拖动效果"
+            }
+            
+            if mode in messages and self.system_tray:
+                self.system_tray.show_message("拖动模式已更改", messages[mode])
+    
+    def exit_app(self):
+        """退出应用"""
+        logger.info("用户请求退出应用程序")
+        self.app.quit()
+    
+    def _create_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
+        """创建一个占位符图像
+        
+        Args:
+            width: 图像宽度
+            height: 图像高度
+            
+        Returns:
+            QImage: 创建的图像，如果失败则为None
+        """
+        try:
+            logger.info("Creating placeholder image for pet")
 
-        # 显示窗口
-        self.main_window.show()
-        logger.info("MainPetWindow shown.")
+            # 创建一个QImage
+            image = QImage(width, height, QImage.Format.Format_ARGB32)
+            image.fill(QColor(0, 0, 0, 0))  # 透明背景
+            
+            # 添加绘制代码，使图像可见
+            painter = QPainter(image)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            
+            # 绘制猫咪轮廓
+            painter.setPen(QPen(QColor(70, 70, 70), 2))
+            painter.setBrush(QBrush(QColor(200, 200, 200, 220)))
+            
+            # 绘制头部（圆形）
+            painter.drawEllipse(10, 10, 44, 44)
+            
+            # 绘制耳朵
+            painter.setBrush(QBrush(QColor(180, 180, 180, 220)))
+            # 左耳
+            painter.drawPolygon([
+                QPoint(15, 15),
+                QPoint(25, 5),
+                QPoint(30, 15)
+            ])
+            # 右耳
+            painter.drawPolygon([
+                QPoint(49, 15),
+                QPoint(39, 5),
+                QPoint(34, 15)
+            ])
+            
+            # 绘制眼睛
+            painter.setPen(QPen(QColor(30, 30, 30), 1))
+            painter.setBrush(QBrush(QColor(30, 30, 30)))
+            # 左眼
+            painter.drawEllipse(20, 25, 8, 8)
+            # 右眼
+            painter.drawEllipse(36, 25, 8, 8)
+            
+            # 绘制鼻子
+            painter.setBrush(QBrush(QColor(255, 150, 150)))
+            painter.drawEllipse(29, 35, 6, 4)
 
-        # 启动 Idle 动画
-        if self.idle_animation:
-             self.idle_animation.play()
-             logger.info("Idle animation started.")
-
-        # 启动主更新循环
-        self.start_update_loop()
-        logger.info("Update loop started.")
-
-    def start_update_loop(self):
-        """启动主更新定时器"""
-        self.update_timer = QTimer()
-        # 设置一个较快的更新频率，例如 60 FPS (大约 16ms)
-        self.update_timer.setInterval(16)
-        self.update_timer.timeout.connect(self.update)
-        self.update_timer.start()
+            # 绘制嘴
+            painter.setPen(QPen(QColor(70, 70, 70), 1))
+            painter.drawLine(32, 39, 32, 42)
+            painter.drawLine(32, 42, 28, 45)
+            painter.drawLine(32, 42, 36, 45)
+            
+            painter.end()
+            
+            logger.info(f"Created placeholder image: {width}x{height}")
+            return image
+        except Exception as e:
+            logger.error(f"Failed to create placeholder image: {str(e)}")
+            return None
+    
+    def create_character_sprite(self):
+        """创建角色精灵(即桌宠角色)
+        
+        这里是一个极简的实现，实际上应该使用资源管理器加载资源
+        """
+        # 创建一个简单的动画用于测试
+        placeholder_image = self._create_placeholder_image()
+        if placeholder_image:
+            # 创建一个Animation对象
+            self.idle_animation = Animation()
+            self.idle_animation.add_frame(placeholder_image, 500)  # 添加一帧，持续500ms
+            
+            # 设置动画为循环播放
+            self.idle_animation.set_loop(True)
+            
+            logger.info(f"Character sprite logic instance created with initial size {placeholder_image.width()}x{placeholder_image.height()}.")
 
     def update(self):
         """主更新循环"""
+        # 如果窗口不可见，无需进行全部更新
+        if self.main_window and not self.main_window.isVisible():
+            # 只需最小程度的更新以保持应用响应
+            self._last_update_time = time.perf_counter()
+            return
+
         current_time = time.perf_counter()
         dt = current_time - self._last_update_time
         # 防止 dt 过大或过小导致的问题
@@ -153,41 +232,73 @@ class StatusPet(Application):
         # self.handle_input(dt)
 
         # 2. 更新动画
-        self.animation_manager.update(dt)
+        if self.animation_manager:
+            self.animation_manager.update(dt)
 
         # 3. 更新行为/状态机 (后续添加)
         # self.behavior_manager.update(dt)
 
         # 4. 更新窗口显示的图像
-        if self.main_window and self.idle_animation and self.idle_animation.is_playing():
+        if self.main_window and self.idle_animation and self.idle_animation.is_playing:
             current_frame = self.idle_animation.get_current_frame() # 获取 QImage
             if current_frame:
-                 # 直接让 MainPetWindow 更新它的图像，它内部会调用 update() 触发重绘
                  self.main_window.set_image(current_frame)
-                 # logger.debug(f"Updating window image to frame index: {self.idle_animation.current_frame_index}")
+    
+    def initialize(self):
+        """初始化应用"""
+        # 在这里导入Application，避免循环导入问题
+        from status.core.app import Application
+        
+        # 初始化核心系统
+        self.core_app = Application()
+        self.core_app.initialize()
+        
+        # 跳过获取资源管理器、渲染器等组件
+        # 因为目前Application尚未实现get_renderer_manager方法
+        # self.animation_manager = self.core_app.get_renderer_manager()
+        
+        # 创建主窗口
+        self.create_main_window()
+
+        # 创建系统托盘
+        self.create_system_tray()
+        
+        # 创建角色精灵
+        self.create_character_sprite()
+        
+        # 显示窗口
+        if self.main_window:
+            self.main_window.show()
+            logger.info("MainPetWindow shown.")
+        
+        # 更新系统托盘菜单项状态
+        if self.system_tray and self.main_window:
+            self.system_tray.set_window_visibility(self.main_window.isVisible())
+        
+        # 启动待机动画
+        if self.idle_animation:
+            self.idle_animation.play()
+            logger.info("Idle animation started.")
+        
+        # 启动更新循环
+        self._update_timer.start()
+        logger.info("Update loop started.")
+        
+        logger.info("Status Pet initialized successfully. Starting event loop...")
+    
+    def run(self):
+        """运行应用"""
+        # 初始化
+        self.initialize()
+        
+        # 进入事件循环
+        return self.app.exec()
 
 def main():
-    """应用程序主入口"""
-    # 在创建 QApplication 之前设置高 DPI 缩放策略 (可选, 但推荐)
-    # QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
-    # QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
-
-    app = QApplication(sys.argv)
-
-    # 确保日志在 QApplication 创建后能正常工作
-    global logger
-    logger = logging.getLogger("StatusApp") # 重新获取 logger 实例
-
-
+    """主函数"""
     pet_app = StatusPet()
-    try:
-        pet_app.initialize()
-        # pet_app.run() # Application 基类可能需要一个 run 方法来启动 PyQt 事件循环
-        logger.info("Status Pet initialized successfully. Starting event loop...")
-        sys.exit(app.exec()) # PySide6中可以使用exec()或exec_()
-    except Exception as e:
-        logger.exception(f"Application failed to initialize or run: {e}")
-        sys.exit(1)
+    exit_code = pet_app.run()
+    sys.exit(exit_code)
 
 if __name__ == "__main__":
     main()

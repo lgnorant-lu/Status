@@ -9,12 +9,15 @@ Description:                桌宠拖拽管理模块
 Changed history:            
                             2025/04/03: 初始创建;
                             2025/04/04: 添加拖拽移动事件节流;
+                            2025/05/20: 添加屏幕边界检测;
 ----
 """
 
 import logging
-from PySide6.QtCore import QObject, QRect, Signal
-from status.core.events import EventManager
+from typing import Tuple, Optional
+from PySide6.QtCore import QObject, QRect, Signal, QPoint
+from PySide6.QtWidgets import QApplication
+from status.core.events import EventManager, EventType
 from status.interaction.interaction_event import InteractionEvent, InteractionEventType
 from status.interaction.event_throttler import TimeThrottler
 
@@ -22,7 +25,10 @@ from status.interaction.event_throttler import TimeThrottler
 logger = logging.getLogger(__name__)
 
 # 拖拽移动事件节流间隔（毫秒）
-DRAG_MOVE_THROTTLE_MS = 30
+DRAG_MOVE_THROTTLE_MS = 75
+
+# 边界保护设置
+SCREEN_EDGE_MARGIN = 20  # 窗口至少需要在屏幕内保留的像素数
 
 class DragManager(QObject):
     """拖拽管理器
@@ -47,12 +53,15 @@ class DragManager(QObject):
         
         # 拖拽状态
         self.is_dragging = False
-        self.drag_start_pos = None
-        self.drag_start_window_pos = None
+        self.drag_start_pos: Optional[Tuple[int, int]] = None
+        self.drag_start_window_pos: Optional[QPoint] = None
         
         # 可拖拽区域
         self.draggable_regions = []
         self.whole_window_draggable = True  # 默认整个窗口可拖拽
+        
+        # 启用边界保护
+        self.boundary_protection = True
         
         # 创建拖拽移动事件节流器
         self.drag_move_throttler = TimeThrottler(
@@ -122,6 +131,15 @@ class DragManager(QObject):
         )
         logger.debug(f"Drag move throttle interval set to {interval_ms}ms")
     
+    def set_boundary_protection(self, enabled):
+        """设置边界保护是否启用
+        
+        Args:
+            enabled (bool): 是否启用边界保护
+        """
+        self.boundary_protection = enabled
+        logger.debug(f"Boundary protection set to: {enabled}")
+    
     def _can_start_drag(self, x, y):
         """检查是否可以开始拖拽
         
@@ -167,7 +185,56 @@ class DragManager(QObject):
         logger.debug(f"Started dragging at ({x}, {y})")
         return True
     
-    def update_drag(self, x, y):
+    def _get_screen_bounds(self):
+        """获取当前屏幕边界
+        
+        Returns:
+            QRect: 屏幕边界矩形
+        """
+        screen = QApplication.screenAt(self.window.pos())
+        if not screen:
+            # 如果获取不到屏幕，使用主屏幕
+            screen = QApplication.primaryScreen()
+        
+        return screen.availableGeometry()
+    
+    def _apply_boundary_constraints(self, pos_x, pos_y):
+        """应用边界约束，确保窗口不会完全移出屏幕
+        
+        Args:
+            pos_x (int): 窗口x坐标
+            pos_y (int): 窗口y坐标
+            
+        Returns:
+            tuple: 调整后的(x, y)坐标
+        """
+        if not self.boundary_protection:
+            return pos_x, pos_y
+            
+        # 获取屏幕边界
+        screen_rect = self._get_screen_bounds()
+        
+        # 获取窗口大小
+        window_width = self.window.width()
+        window_height = self.window.height()
+        
+        # 计算允许的最小/最大位置
+        min_x = screen_rect.left() - window_width + SCREEN_EDGE_MARGIN
+        max_x = screen_rect.right() - SCREEN_EDGE_MARGIN
+        min_y = screen_rect.top() - window_height + SCREEN_EDGE_MARGIN
+        max_y = screen_rect.bottom() - SCREEN_EDGE_MARGIN
+        
+        # 应用约束
+        constrained_x = max(min_x, min(pos_x, max_x))
+        constrained_y = max(min_y, min(pos_y, max_y))
+        
+        # 如果位置被调整，记录日志
+        if constrained_x != pos_x or constrained_y != pos_y:
+            logger.debug(f"Position constrained from ({pos_x}, {pos_y}) to ({constrained_x}, {constrained_y})")
+        
+        return constrained_x, constrained_y
+    
+    def update_drag(self, x: int, y: int) -> bool:
         """更新拖拽位置
         
         Args:
@@ -177,16 +244,23 @@ class DragManager(QObject):
         Returns:
             bool: 更新是否成功
         """
-        if not self.is_dragging:
+        if not self.is_dragging or self.drag_start_pos is None or self.drag_start_window_pos is None:
             return False
         
         # 计算偏移量
         dx = x - self.drag_start_pos[0]
         dy = y - self.drag_start_pos[1]
         
-        # 移动窗口
-        new_pos = self.drag_start_window_pos.x() + dx, self.drag_start_window_pos.y() + dy
-        self.window.move(new_pos[0], new_pos[1])
+        # 计算新位置
+        new_x = self.drag_start_window_pos.x() + dx
+        new_y = self.drag_start_window_pos.y() + dy
+        
+        # 应用边界约束
+        constrained_x, constrained_y = self._apply_boundary_constraints(new_x, new_y)
+        
+        # 移动窗口 (现在由MainPetWindow的平滑移动处理)
+        # 这里只需要发送目标位置
+        self.window.move(constrained_x, constrained_y)
         
         # 发出拖拽移动信号
         self.drag_move_signal.emit(x, y)
@@ -199,7 +273,8 @@ class DragManager(QObject):
         
         # 应用节流器，决定是否发送事件
         if self.drag_move_throttler.throttle(move_event):
-            self.event_manager.emit("interaction", move_event)
+            # 使用dispatch方法分发事件
+            self.event_manager.dispatch(move_event)
         
         return True
     
@@ -248,9 +323,7 @@ class DragManager(QObject):
         # 如果有正在进行的拖拽，立即结束
         if self.is_dragging:
             # 使用最后位置结束拖拽
-            self.end_drag(0, 0)
+            last_pos = self.window.pos()
+            self.end_drag(last_pos.x(), last_pos.y())
         
-        # 清空可拖拽区域
-        self.draggable_regions.clear()
-        logger.info("DragManager shut down")
         return True 
