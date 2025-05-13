@@ -2,25 +2,31 @@
 ---------------------------------------------------------------
 File name:                  system_monitor.py
 Author:                     Ignorant-lu
-Date created:               2025/05/13
-Description:                提供获取系统监控信息的功能
+Date created:               2025/05/14
+Description:                系统监控模块，获取CPU、内存等系统信息
 ----------------------------------------------------------------
 
-Changed history:
-                            2025/05/13: 初始创建;
-                            2025/05/13: 添加获取详细系统信息的功能;
-                            2025/05/13: 添加实时磁盘I/O和网络速度监控;
-                            2025/05/13: 添加GPU监控功能;
+Changed history:            
+                            2025/04/07: 初始创建;
+                            2025/04/08: 添加详细系统信息;
+                            2025/05/14: 添加时间数据功能;
 ----
 """
 
 import psutil
+import platform
 import logging
 import time
-from typing import Dict, Any, List, Optional
+import datetime
+from enum import Enum, auto
+import os
+from typing import Dict, Any, Optional, List, Tuple
 
 # 导入事件系统相关
-from status.core.events import EventManager, SystemStatsUpdatedEvent
+from status.core.events import EventManager, SystemStatsUpdatedEvent, EventType, get_app_instance
+
+# 直接导入时间相关模块，避免依赖于应用实例
+from status.behavior.time_based_behavior import TimePeriod, SpecialDate, LunarHelper
 
 logger = logging.getLogger(__name__)
 
@@ -396,44 +402,328 @@ def get_gpu_info() -> dict:
         logger.error(f"获取GPU信息时出错: {e}")
         return {"error": str(e)}
 
-def publish_stats(include_details=False):
+def get_current_time_period() -> TimePeriod:
+    """获取当前时间段
+    
+    Returns:
+        TimePeriod: 当前时间段
     """
-    收集所有系统统计信息并将其作为事件发布。
-    如果 include_details 为 True，则会收集更详细的信息。
-    """
-    logger.info("开始收集系统统计信息...") # 保留此INFO，标记周期的开始
+    now = datetime.datetime.now()
+    hour = now.hour
+    
+    if 5 <= hour < 12:
+        return TimePeriod.MORNING
+    elif 12 <= hour < 14:
+        return TimePeriod.NOON
+    elif 14 <= hour < 18:
+        return TimePeriod.AFTERNOON
+    elif 18 <= hour < 23:
+        return TimePeriod.EVENING
+    else:  # 23, 0, 1, 2, 3, 4
+        return TimePeriod.NIGHT
 
+def get_special_dates() -> List[Tuple[SpecialDate, datetime.date]]:
+    """获取当前活跃的特殊日期
+    
+    Returns:
+        List[Tuple[SpecialDate, datetime.date]]: 特殊日期列表，每个元素是一个元组(特殊日期, 对应的公历日期)
+    """
+    try:
+        # 获取今天日期
+        today = datetime.date.today()
+        
+        # 创建一些默认的特殊日期
+        special_dates = []
+        
+        # 检查是否是某些重要节日
+        # 这里仅作示例，实际应使用完整实现
+        if today.month == 5 and today.day == 19:
+            special_dates.append(
+                (SpecialDate.create_solar_festival("Birth of Status-Ming", 5, 19, "Status-Ming 诞辰"), today)
+            )
+        elif today.month == 1 and today.day == 1:
+            special_dates.append(
+                (SpecialDate.create_solar_festival("元旦", 1, 1, "新的一年开始了"), today)
+            )
+        elif today.month == 6 and today.day == 1:
+            special_dates.append(
+                (SpecialDate.create_solar_festival("儿童节", 6, 1, "六一儿童节"), today)
+            )
+        elif today.month == 5 and today.day == 31:
+            special_dates.append(
+                (SpecialDate.create_solar_festival("端午节", 5, 31, "端午节，吃粽子"), today)
+            )
+        
+        return special_dates
+    except Exception as e:
+        logger.error(f"获取特殊日期出错: {e}")
+        return []
+
+def get_upcoming_special_dates(days: int = 7) -> List[Tuple[SpecialDate, datetime.date]]:
+    """获取未来n天内的特殊日期
+    
+    Args:
+        days: 往后检查的天数
+        
+    Returns:
+        List[Tuple[SpecialDate, datetime.date]]: 特殊日期列表，每个元素是一个元组(特殊日期, 对应的公历日期)
+    """
+    try:
+        today = datetime.date.today()
+        upcoming_dates = []
+        
+        # 创建一些默认的特殊日期
+        # 这里仅作示例
+        birth_date = SpecialDate.create_solar_festival("Birth of Status-Ming", 5, 19, "Status-Ming 诞辰")
+        children_day = SpecialDate.create_solar_festival("儿童节", 6, 1, "六一儿童节")
+        dragon_boat = SpecialDate.create_solar_festival("端午节", 5, 31, "端午节，吃粽子")
+        
+        # 检查日期是否在接下来的days天内
+        birth_date_date = datetime.date(today.year, 5, 19)
+        if birth_date_date < today:
+            birth_date_date = datetime.date(today.year + 1, 5, 19)
+        if (birth_date_date - today).days <= days:
+            upcoming_dates.append((birth_date, birth_date_date))
+            
+        children_day_date = datetime.date(today.year, 6, 1)
+        if children_day_date < today:
+            children_day_date = datetime.date(today.year + 1, 6, 1)
+        if (children_day_date - today).days <= days:
+            upcoming_dates.append((children_day, children_day_date))
+            
+        dragon_boat_date = datetime.date(today.year, 5, 31)
+        if dragon_boat_date < today:
+            dragon_boat_date = datetime.date(today.year + 1, 5, 31)
+        if (dragon_boat_date - today).days <= days:
+            upcoming_dates.append((dragon_boat, dragon_boat_date))
+            
+        # 按日期排序
+        upcoming_dates.sort(key=lambda x: x[1])
+        
+        return upcoming_dates
+    except Exception as e:
+        logger.error(f"获取未来特殊日期出错: {e}")
+        return []
+
+def get_time_data() -> Dict[str, Any]:
+    """获取时间相关数据
+    
+    Returns:
+        Dict[str, Any]: 包含时间段、特殊日期等信息的字典
+    """
+    time_data = {}
+    
+    # 获取当前时间段
+    current_period = get_current_time_period()
+    time_data["period"] = current_period.name
+    
+    # 尝试获取特殊日期信息
+    try:
+        # 获取当前特殊日期
+        special_dates = get_special_dates()
+        if special_dates:
+            first_date, _ = special_dates[0]
+            time_data["special_date"] = {
+                "name": first_date.name,
+                "description": first_date.description
+            }
+        
+        # 获取即将到来的特殊日期
+        upcoming_dates = get_upcoming_special_dates(days=7)
+        if upcoming_dates:
+            upcoming_list = []
+            for date_obj, date_time in upcoming_dates[:3]:  # 只取前3个
+                upcoming_list.append({
+                    "name": date_obj.name,
+                    "date": date_time.strftime("%Y-%m-%d"),
+                    "description": date_obj.description
+                })
+            time_data["upcoming_dates"] = upcoming_list
+    except Exception as e:
+        logger.error(f"获取特殊日期数据失败: {e}")
+    
+    return time_data
+
+def publish_stats(include_details: bool = False):
+    """发布系统统计信息
+    
+    Args:
+        include_details: 是否包含详细的系统指标
+    """
+    logger.info("开始收集系统统计信息...")
+
+    # 获取基本指标
     cpu_usage = get_cpu_usage()
     memory_usage = get_memory_usage()
-    network_speed = get_network_speed() # 获取网络速度
-    disk_io_speed = get_disk_io_speed() # 获取磁盘IO速度
-
-    stats_data_dict = {
+    
+    # 构建基本数据
+    stats_data: Dict[str, Any] = {
         "cpu_usage": cpu_usage,
         "memory_usage": memory_usage,
-        "network_speed": network_speed, # 添加网络速度数据
-        "disk_io_speed": disk_io_speed, # 添加磁盘IO数据
-        "gpu_info": get_gpu_info() # 添加GPU信息
     }
-
-    if include_details:
-        logger.debug("正在收集详细系统信息...") # 改为debug
-        stats_data_dict["cpu_cores_usage"] = get_cpu_cores_usage()
-        stats_data_dict["memory_details"] = get_memory_details()
-        # 通常我们监控根目录，但可以根据需要扩展
-        stats_data_dict["disk_usage_root"] = get_disk_usage('/')
-        stats_data_dict["network_info"] = get_network_info()
-        # GPU信息已在上面获取
-
-    # 创建事件实例
-    event = SystemStatsUpdatedEvent(stats_data=stats_data_dict)
     
-    # 获取事件管理器实例并分发事件
+    # 如果需要详细指标
+    if include_details:
+        # 获取CPU核心使用率
+        try:
+            cpu_cores = get_cpu_cores_usage()
+            stats_data["cpu_cores_usage"] = cpu_cores
+        except Exception as e:
+            logger.error(f"获取CPU核心使用率失败: {e}")
+        
+        # 获取内存详情
+        try:
+            memory_details = get_memory_details()
+            stats_data["memory_details"] = memory_details
+        except Exception as e:
+            logger.error(f"获取内存详情失败: {e}")
+            
+        # 获取磁盘使用率
+        try:
+            disk_info = get_disk_usage()
+            # 保存完整磁盘信息，而不仅仅是百分比
+            stats_data["disk_usage_root"] = disk_info
+            # 同时保持原有的disk_usage百分比，确保兼容性
+            stats_data["disk_usage"] = disk_info.get("percent", 0.0)
+        except Exception as e:
+            logger.error(f"获取磁盘使用率失败: {e}")
+        
+        # 获取网络信息
+        try:
+            network_info = get_network_info()
+            stats_data["network_info"] = network_info
+        except Exception as e:
+            logger.error(f"获取网络信息失败: {e}")
+            
+        # 获取网络速度
+        try:
+            network_speed = get_network_speed()
+            stats_data["network_speed"] = network_speed
+            
+            # 计算总网络使用率（上传+下载）作为指标
+            total_network = network_speed.get("upload_kbps", 0.0) + network_speed.get("download_kbps", 0.0)
+            # 转换为百分比形式（假设100Mbps为标准带宽）
+            network_percent = min(100.0, (total_network / 1024) * 10)  # 10Mbps = 100%
+            stats_data["network_usage"] = network_percent
+        except Exception as e:
+            logger.error(f"获取网络速度失败: {e}")
+            
+        # 获取磁盘IO速度
+        try:
+            disk_io_speed = get_disk_io_speed()
+            stats_data["disk_io_speed"] = disk_io_speed
+        except Exception as e:
+            logger.error(f"获取磁盘IO速度失败: {e}")
+            
+        # 获取GPU信息
+        try:
+            gpu_info = get_gpu_info()
+            stats_data["gpu_info"] = gpu_info
+            
+            # 提取GPU使用率
+            if isinstance(gpu_info, dict) and "load" in gpu_info:
+                # 如果是单个GPU，直接使用其负载
+                stats_data["gpu_usage"] = gpu_info.get("load", 0.0)
+            elif isinstance(gpu_info, dict) and "gpus" in gpu_info:
+                # 如果是多GPU，计算平均负载
+                gpus = gpu_info.get("gpus", [])
+                if gpus:
+                    avg_load = sum(gpu.get("load", 0.0) for gpu in gpus) / len(gpus)
+                    stats_data["gpu_usage"] = avg_load
+                else:
+                    stats_data["gpu_usage"] = 0.0
+            else:
+                stats_data["gpu_usage"] = 0.0
+        except Exception as e:
+            logger.error(f"获取GPU信息失败: {e}")
+        
+        # 添加时间数据 - 首先尝试从时间行为系统获取
+        try:
+            # 使用全局函数获取应用主实例
+            app = get_app_instance()
+            time_data_added = False
+            
+            # 如果找到应用实例且存在时间行为系统
+            if app and hasattr(app, 'time_behavior_system') and app.time_behavior_system and app.time_behavior_system.is_active:
+                tbs = app.time_behavior_system
+                logger.debug(f"时间行为系统实例: {tbs}, 已初始化: {tbs.is_initialized}, 已激活: {tbs.is_active}")
+                
+                # 添加当前时间段
+                current_period = tbs.get_current_period()
+                if current_period:
+                    stats_data["period"] = current_period.name
+                    logger.debug(f"从时间行为系统获取到当前时间段: {current_period.name}")
+                
+                # 添加当前特殊日期
+                special_dates = tbs.get_current_special_dates()
+                if special_dates:
+                    first_date = special_dates[0]
+                    stats_data["special_date"] = {
+                        "name": first_date.name,
+                        "description": first_date.description
+                    }
+                    logger.debug(f"从时间行为系统获取到当前特殊日期: {first_date.name}")
+                
+                # 添加即将到来的特殊日期
+                upcoming_dates = tbs.get_upcoming_special_dates(days=7)
+                if upcoming_dates:
+                    upcoming_list = []
+                    for date_obj, date_time in upcoming_dates[:3]:  # 只取前3个
+                        upcoming_list.append({
+                            "name": date_obj.name,
+                            "date": date_time.strftime("%Y-%m-%d"),
+                            "description": date_obj.description
+                        })
+                    stats_data["upcoming_dates"] = upcoming_list
+                    logger.debug(f"从时间行为系统获取到即将到来的特殊日期: {len(upcoming_list)}个")
+                
+                logger.debug(f"已添加时间行为系统数据: 当前时间段={current_period.name if current_period else '未知'}")
+                time_data_added = True
+            
+            # 如果无法从时间行为系统获取数据，使用独立函数
+            if not time_data_added:
+                logger.debug("无法从时间行为系统获取数据，使用独立函数获取时间数据")
+                time_data = get_time_data()
+                stats_data.update(time_data)
+                logger.debug(f"使用独立函数获取的时间数据: {time_data}")
+        except Exception as e:
+            # 如果上述方法失败，确保至少有基本的时间数据
+            logger.error(f"获取时间数据失败, 使用备用方法: {e}", exc_info=True)
+            try:
+                # 使用备用方法获取时间数据
+                time_data = get_time_data()
+                stats_data.update(time_data)
+                logger.debug("使用备用方法成功获取时间数据")
+            except Exception as e2:
+                logger.error(f"备用时间数据获取也失败: {e2}")
+    
+    # 检查并记录时间相关数据
+    time_related_keys = ['period', 'special_date', 'upcoming_dates']
+    time_data_exists = any(key in stats_data for key in time_related_keys)
+    
+    if time_data_exists:
+        # 只记录确实存在的数据
+        time_data = {k: stats_data[k] for k in time_related_keys if k in stats_data}
+        time_keys = list(time_data.keys())
+        logger.info(f"系统统计包含时间数据: 包含{time_keys}")
+    else:
+        # 如果没有时间数据但需要详细信息，尝试添加基本时间段
+        if include_details:
+            try:
+                current_period = get_current_time_period()
+                stats_data['period'] = current_period.name
+                logger.info(f"添加基本时间段信息: {current_period.name}")
+            except Exception as e:
+                logger.error(f"添加基本时间段失败: {e}")
+    
+    # 创建事件对象
+    event = SystemStatsUpdatedEvent(stats_data=stats_data, sender="SystemMonitor")
+    
+    # 发布事件
     event_manager = EventManager.get_instance()
     event_manager.dispatch(event)
     
-    logger.info(f"系统统计信息已发布: CPU {cpu_usage:.1f}%, Mem {memory_usage:.1f}%") # 保留此INFO，标记周期的结束和关键数据
-    # 可以选择性地在这里也记录更详细的数据到DEBUG级别
-    logger.debug(f"详细发布的统计数据: {stats_data_dict}")
+    detailed_str = "详细" if include_details else "基本"
+    logger.info(f"系统{detailed_str}统计信息已发布: CPU {cpu_usage:.1f}%, Mem {memory_usage:.1f}%")
 
 # 可以在这里添加其他系统监控函数

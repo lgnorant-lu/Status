@@ -2,150 +2,205 @@
 ---------------------------------------------------------------
 File name:                  decay.py
 Author:                     Ignorant-lu
-Date created:               2025/05/18
-Description:                衰减函数工具，提供各种衰减计算方法
+Date created:               2025/05/13
+Description:                定义各种衰减函数，用于模拟数值随时间的衰减
 ----------------------------------------------------------------
 
 Changed history:            
-                            2025/05/18: 初始创建;
+                            2025/05/13: 初始创建;
 ----
 """
 
 import math
-from typing import Callable, Optional, Tuple, List, Union
+from typing import Callable, Optional
+from abc import ABC, abstractmethod
 
 
-def exponential_decay(value: float, decay_rate: float, dt: float) -> float:
-    """指数衰减函数
+class DecayFunction(ABC):
+    """衰减函数基类"""
     
-    计算公式: value * e^(-decay_rate * dt)
-    
-    Args:
-        value: 初始值
-        decay_rate: 衰减率，值越大衰减越快
-        dt: 时间增量（秒）
+    @abstractmethod
+    def compute(self, value: float, elapsed_time: float) -> float:
+        """计算衰减后的值
         
-    Returns:
-        float: 衰减后的值
+        Args:
+            value: 原始值
+            elapsed_time: 经过的时间（秒）
+            
+        Returns:
+            float: 衰减后的值
+        """
+        pass
+
+
+class ExponentialDecay(DecayFunction):
+    """指数衰减
+    
+    formula: value * exp(-decay_factor * elapsed_time)
     """
-    return value * math.exp(-decay_rate * dt)
-
-
-def linear_decay(value: float, decay_rate: float, dt: float, min_value: float = 0.0) -> float:
-    """线性衰减函数
     
-    计算公式: max(value - decay_rate * dt, min_value)
-    
-    Args:
-        value: 初始值
-        decay_rate: 衰减率，每秒减少的值
-        dt: 时间增量（秒）
-        min_value: 最小值
+    def __init__(self, decay_factor: float = 0.1):
+        """初始化指数衰减函数
         
-    Returns:
-        float: 衰减后的值
-    """
-    return max(value - decay_rate * dt, min_value)
-
-
-def quadratic_decay(value: float, decay_rate: float, dt: float, min_value: float = 0.0) -> float:
-    """二次衰减函数
+        Args:
+            decay_factor: 衰减因子，值越大衰减越快
+        """
+        self.decay_factor = decay_factor
     
-    计算公式: max(value - decay_rate * dt^2, min_value)
-    
-    Args:
-        value: 初始值
-        decay_rate: 衰减率
-        dt: 时间增量（秒）
-        min_value: 最小值
+    def compute(self, value: float, elapsed_time: float) -> float:
+        """计算指数衰减
         
-    Returns:
-        float: 衰减后的值
-    """
-    return max(value - decay_rate * (dt * dt), min_value)
-
-
-def logarithmic_decay(value: float, decay_rate: float, dt: float, 
-                     min_value: float = 0.0, base: float = math.e) -> float:
-    """对数衰减函数
+        Args:
+            value: 原始值
+            elapsed_time: 经过的时间（秒）
+            
+        Returns:
+            float: 衰减后的值
+        """
+        return value * math.exp(-self.decay_factor * elapsed_time)
     
-    计算公式: max(value - decay_rate * log(dt + 1, base), min_value)
-    
-    Args:
-        value: 初始值
-        decay_rate: 衰减率
-        dt: 时间增量（秒）
-        min_value: 最小值
-        base: 对数的底数
+    def get_half_life(self) -> float:
+        """获取半衰期（值减半所需的时间）
         
-    Returns:
-        float: 衰减后的值
+        Returns:
+            float: 半衰期（秒）
+        """
+        return math.log(2) / self.decay_factor
+
+
+class LinearDecay(DecayFunction):
+    """线性衰减
+    
+    formula: value * (1 - decay_factor * elapsed_time)
+    如果结果小于0，则返回0
     """
-    if dt <= 0:
+    
+    def __init__(self, decay_factor: float = 0.1):
+        """初始化线性衰减函数
+        
+        Args:
+            decay_factor: 衰减因子，表示每单位时间衰减的比例
+        """
+        self.decay_factor = decay_factor
+    
+    def compute(self, value: float, elapsed_time: float) -> float:
+        """计算线性衰减
+        
+        Args:
+            value: 原始值
+            elapsed_time: 经过的时间（秒）
+            
+        Returns:
+            float: 衰减后的值
+        """
+        result = value * (1 - self.decay_factor * elapsed_time)
+        return max(0.0, result)
+    
+    def get_zero_time(self, value: float = 1.0) -> float:
+        """获取值衰减到0所需的时间
+        
+        Args:
+            value: 初始值，默认为1.0
+            
+        Returns:
+            float: 衰减到0所需的时间（秒）
+        """
+        return 1.0 / self.decay_factor
+
+
+class StepDecay(DecayFunction):
+    """阶梯衰减
+    
+    在特定时间点有固定的衰减率
+    """
+    
+    def __init__(self, steps: list, decay_rates: list):
+        """初始化阶梯衰减函数
+        
+        Args:
+            steps: 时间点列表，必须升序排列
+            decay_rates: 每个时间点的累积衰减率，例如[0.5, 0.25]表示第一步衰减到原值的50%，第二步衰减到原值的25%
+        """
+        if len(steps) != len(decay_rates):
+            raise ValueError("steps和decay_rates长度必须相同")
+        
+        self.steps = steps
+        self.decay_rates = decay_rates
+    
+    def compute(self, value: float, elapsed_time: float) -> float:
+        """计算阶梯衰减
+        
+        Args:
+            value: 原始值
+            elapsed_time: 经过的时间（秒）
+            
+        Returns:
+            float: 衰减后的值
+        """
+        for i, step in enumerate(self.steps):
+            if elapsed_time < step:
+                if i == 0:
+                    return value  # 还未到第一个衰减点
+                else:
+                    return value * self.decay_rates[i-1]
+        
+        # 超过所有时间点，使用最后一个衰减率
+        if self.steps:
+            return value * self.decay_rates[-1]
         return value
-    return max(value - decay_rate * math.log(dt + 1, base), min_value)
 
 
-def cosine_decay(value: float, decay_rate: float, dt: float, 
-                period: float = 1.0, min_value: float = 0.0) -> float:
-    """余弦衰减函数
+class CustomDecay(DecayFunction):
+    """自定义衰减函数"""
     
-    计算公式: max(value * (1 + cos(π * dt / period)) / 2 * e^(-decay_rate * dt), min_value)
+    def __init__(self, decay_function: Callable[[float, float], float]):
+        """初始化自定义衰减函数
+        
+        Args:
+            decay_function: 自定义衰减计算函数，接受原始值和经过时间，返回衰减后的值
+        """
+        self.decay_function = decay_function
+    
+    def compute(self, value: float, elapsed_time: float) -> float:
+        """计算自定义衰减
+        
+        Args:
+            value: 原始值
+            elapsed_time: 经过的时间（秒）
+            
+        Returns:
+            float: 衰减后的值
+        """
+        return self.decay_function(value, elapsed_time)
+
+
+def create_decay_function(decay_type: str, **params) -> DecayFunction:
+    """创建衰减函数
     
     Args:
-        value: 初始值
-        decay_rate: 衰减率
-        dt: 时间增量（秒）
-        period: 振荡周期
-        min_value: 最小值
+        decay_type: 衰减类型，可选值: 'exponential', 'linear', 'step', 'custom'
+        **params: 各衰减函数特定的参数
         
     Returns:
-        float: 衰减后的值
-    """
-    if dt <= 0:
-        return value
-    cosine_factor = (1 + math.cos(math.pi * dt / period)) / 2
-    exp_factor = math.exp(-decay_rate * dt)
-    return max(value * cosine_factor * exp_factor, min_value)
-
-
-def stepped_decay(value: float, decay_steps: List[Tuple[float, float]], 
-                 dt: float, min_value: float = 0.0) -> float:
-    """阶梯式衰减函数
-    
-    Args:
-        value: 初始值
-        decay_steps: 衰减步骤列表，每个元素为(时间阈值, 衰减百分比)
-        dt: 时间增量（秒）
-        min_value: 最小值
+        DecayFunction: 衰减函数对象
         
-    Returns:
-        float: 衰减后的值
+    Raises:
+        ValueError: 不支持的衰减类型
     """
-    if dt <= 0 or not decay_steps:
-        return value
-        
-    # 按时间阈值排序
-    sorted_steps = sorted(decay_steps, key=lambda x: x[0])
-    
-    result = value
-    for time_threshold, decay_percent in sorted_steps:
-        if dt >= time_threshold:
-            result *= (1.0 - decay_percent)
-    
-    return max(result, min_value)
-
-
-def create_custom_decay(decay_function: Callable[[float, float, float], float]) -> Callable[[float, float, float], float]:
-    """创建自定义衰减函数
-    
-    Args:
-        decay_function: 衰减函数，接受(value, decay_rate, dt)参数
-        
-    Returns:
-        Callable: 自定义衰减函数
-    """
-    def custom_decay(value: float, decay_rate: float, dt: float) -> float:
-        return decay_function(value, decay_rate, dt)
-    
-    return custom_decay 
+    if decay_type == 'exponential':
+        decay_factor = params.get('decay_factor', 0.1)
+        return ExponentialDecay(decay_factor)
+    elif decay_type == 'linear':
+        decay_factor = params.get('decay_factor', 0.1)
+        return LinearDecay(decay_factor)
+    elif decay_type == 'step':
+        steps = params.get('steps', [])
+        decay_rates = params.get('decay_rates', [])
+        return StepDecay(steps, decay_rates)
+    elif decay_type == 'custom':
+        decay_function = params.get('decay_function')
+        if not decay_function:
+            raise ValueError("必须提供decay_function参数")
+        return CustomDecay(decay_function)
+    else:
+        raise ValueError(f"不支持的衰减类型: {decay_type}") 

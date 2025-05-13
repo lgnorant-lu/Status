@@ -8,7 +8,8 @@ Description:                桌宠情绪系统
 
 Changed history:            
                             2025/04/04: 初始创建;
-                            2025/05/18: 修复类型注解和函数调用问题;
+                            2025/05/12: 修复类型注解和函数调用问题;
+                            2025/05/13: 修复decay导入和使用问题;
 ----
 """
 
@@ -22,7 +23,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Callable, Set, Union, Any
 from unittest.mock import Mock
 from status.core.events import Event, EventType, EventManager
-from status.utils.decay import exponential_decay
+from status.utils.decay import ExponentialDecay
 
 
 class EmotionType(Enum):
@@ -642,9 +643,10 @@ class EmotionSystem:
             if event.event_type in self.event_mappings:
                 # 获取事件对应的情绪事件对象
                 base_event = self.event_mappings[event.event_type]
-                # 修复调用：添加dt参数，计算时间差作为dt
+                # 修复调用：使用ExponentialDecay类计算衰减
                 time_elapsed = current_time - timestamp
-                time_decay = exponential_decay(value=1.0, decay_rate=0.1, dt=time_elapsed)
+                decay = ExponentialDecay(decay_factor=0.1)
+                time_decay = decay.compute(value=1.0, elapsed_time=time_elapsed)
                 
                 # 计算特定事件的情绪影响
                 pleasure_effect = base_event.pleasure_effect

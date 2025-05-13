@@ -9,15 +9,85 @@ Description:                事件系统模块导出，兼容性包装器
 Changed history:            
                             2025/04/04: 初始创建;
                             2025/04/05: 添加InteractionEvent和InteractionEventType类;
+                            2025/04/09: 添加系统状态更新事件;
+                            2025/05/13: 添加全局访问函数;
+                            2025/05/14: 添加获取应用实例函数;
 ----
 """
 
 from enum import Enum, auto
+import logging
+from typing import Dict, Any, Optional, List
 
 # 从event_system.py导入所有内容
 from status.core.event_system import EventType # 直接导入原始 EventType
 from status.core.event_system import Event
 from status.core.event_system import EventSystem as _EventSystem
+
+# 创建模块级日志器
+logger = logging.getLogger(__name__)
+
+# 应用实例缓存
+_app_instance = None
+
+
+def get_app_instance():
+    """获取应用程序主实例
+    
+    Returns:
+        Any: 应用实例，如果无法获取则返回None
+    """
+    global _app_instance
+    
+    # 如果缓存中有实例，直接返回
+    if _app_instance is not None:
+        return _app_instance
+    
+    # 尝试从各种方式获取应用实例
+    try:
+        # 方法1：直接从main模块导入instance变量
+        try:
+            import status.main
+            if hasattr(status.main, 'instance'):
+                _app_instance = status.main.instance
+                if _app_instance is not None:
+                    logger.debug(f"从status.main模块获取到应用实例")
+                    return _app_instance
+        except (ImportError, AttributeError) as e:
+            logger.debug(f"无法从status.main直接导入: {e}")
+        
+        # 方法2：遍历sys.modules查找instance变量
+        import sys
+        if 'status.main' in sys.modules and hasattr(sys.modules['status.main'], 'instance'):
+            _app_instance = sys.modules['status.main'].instance
+            if _app_instance is not None:
+                logger.debug(f"从sys.modules获取到应用实例")
+                return _app_instance
+        
+        # 方法3：直接获取StatusPet类并实例化（如果存在）
+        if 'status.main' in sys.modules and hasattr(sys.modules['status.main'], 'StatusPet'):
+            StatusPet = sys.modules['status.main'].StatusPet
+            # 检查是否已有实例（通过单例模式或实例跟踪）
+            if hasattr(StatusPet, 'instance') and StatusPet.instance is not None:
+                _app_instance = StatusPet.instance
+                logger.debug("从StatusPet类获取到现有实例")
+                return _app_instance
+        
+        # 方法4：从其他位置查找实例
+        for module_name, module in list(sys.modules.items()):
+            if 'status.' in module_name and hasattr(module, 'instance') and module.instance is not None:
+                _app_instance = module.instance
+                logger.debug(f"从模块 {module_name} 获取到应用实例")
+                return _app_instance
+        
+        # 如果上面的方法都失败，但这只是首次调用而不是错误
+        if not hasattr(get_app_instance, '_logged_warning'):
+            logger.info("首次尝试获取应用实例失败，这可能是正常的初始化序列")
+            get_app_instance._logged_warning = True
+        return None
+    except Exception as e:
+        logger.error(f"获取应用实例出错: {e}")
+        return None
 
 # 交互事件类型枚举
 class InteractionEventType(Enum):
@@ -100,15 +170,16 @@ class EventManager(_EventSystem):
 
 # 新的系统统计信息更新事件
 class SystemStatsUpdatedEvent(Event):
-    """当系统统计信息 (CPU, 内存等) 更新时触发的事件。"""
-    def __init__(self, stats_data: dict, sender=None):
-        """初始化系统统计信息更新事件。
-
+    """系统状态更新事件"""
+    
+    def __init__(self, stats_data: Dict[str, Any], sender: Optional[object] = None):
+        """初始化系统状态更新事件
+        
         Args:
-            stats_data (dict): 包含统计信息的字典，例如 {'cpu': 50.5, 'memory': 75.2}。
-            sender: 事件发送者，通常是 SystemMonitor。
+            stats_data: 系统状态数据字典
+            sender: 事件发送者
         """
-        super().__init__(EventType.SYSTEM_STATS_UPDATED, sender, stats_data)
+        super().__init__(EventType.SYSTEM_STATS_UPDATED, sender)
         self.stats_data = stats_data
 
     def __str__(self) -> str:

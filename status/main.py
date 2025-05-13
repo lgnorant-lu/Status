@@ -2,40 +2,66 @@
 ---------------------------------------------------------------
 File name:                  main.py
 Author:                     Ignorant-lu
-Date created:               2025/04/16
-Description:                Status-Ming 主应用入口
+Date created:               2025/05/13
+Description:                Status - 一个跟随系统状态变化的桌宠应用，主程序入口
 ----------------------------------------------------------------
 
 Changed history:            
-                            2025/04/16: 初始创建;
-                            2025/05/13: 实现系统托盘功能;
-                            2025/05/13: 优化UI性能，添加平滑拖动;
-                            2025/05/13: 修复缩进错误;
+                            2025/05/13: 初始创建;
+                            2025/05/13: 添加初步的文件结构和功能框架;
+                            2025/05/13: 添加系统托盘和主窗口实现;
+                            2025/05/13: 添加简单的动画系统;
+                            2025/05/13: 增加系统状态监控功能;
+                            2025/05/13: 实现基础交互功能;
+                            2025/05/14: 添加时间行为系统;
 ----
 """
 
+import logging
 import sys
 import time
-import logging
-from typing import Optional
+from typing import Optional, Dict, Any, List, Tuple
 
-from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QImage, QPixmap, QColor, QPainter, QPen, QBrush
-from PySide6.QtCore import QTimer, QPoint, Qt
+import os
+import random
 
+from PySide6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QMenu, QColorDialog
+from PySide6.QtGui import QIcon, QPixmap, QColor, QPainter, QPen, QBrush, QAction, QImage, QMouseEvent
+from PySide6.QtCore import Qt, QTimer, QRect, QPoint, QSize, Signal, QObject
+
+# 设置日志格式
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
+)
+
+# 创建一个专用的日志记录器
+logger = logging.getLogger("StatusApp")
+
+# 导入本地模块
 from status.ui.main_pet_window import MainPetWindow
 from status.ui.system_tray import SystemTrayManager
-from status.animation.animation import Animation
-from status.monitoring.system_monitor import get_cpu_usage, get_memory_usage, publish_stats
-from status.behavior.pet_state_machine import PetStateMachine
-from status.behavior.pet_state import PetState
 from status.ui.stats_panel import StatsPanel
-# 我们将在initialize方法中导入Application类，以避免循环导入问题
 
-# 配置日志
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
-logger = logging.getLogger("StatusApp")
+from status.animation.animation import Animation
+
+from status.behavior.pet_state import PetState
+from status.behavior.pet_state_machine import PetStateMachine
+from status.behavior.system_state_adapter import SystemStateAdapter
+
+from status.monitoring.system_monitor import publish_stats
+
+from status.interaction.interaction_handler import InteractionHandler
+from status.behavior.interaction_tracker import InteractionTracker
+
+from status.behavior.time_based_behavior import TimeBasedBehaviorSystem
+from status.behavior.time_state_bridge import TimeStateBridge
+
+# 全局实例，允许其他模块访问
+instance = None
+
+# 未来可能需要的模块
+import math
 
 class StatusPet:
     """Status Pet 应用主类"""
@@ -43,6 +69,10 @@ class StatusPet:
     def __init__(self):
         """初始化应用"""
         logger.info("Initializing Status Pet...")
+        
+        # 设置全局实例，确保在初始化早期就可获取
+        global instance
+        instance = self
         
         # 创建应用实例
         self.app = QApplication(sys.argv)
@@ -63,8 +93,22 @@ class StatusPet:
         self.current_animation: Optional[Animation] = None # 当前播放的动画
         self.memory_warning_animation: Optional[Animation] = None # 内存警告动画
         
+        # 时间动画管理器
+        self.time_animation_manager = None  # 时间相关动画管理器
+        
+        # 时间行为系统
+        self.time_behavior_system = None  # 时间行为系统
+        
         # 状态机
         self.state_machine: Optional[PetStateMachine] = None
+        
+        # 状态适配器
+        self.system_state_adapter = None  # 系统状态适配器
+        self.interaction_state_adapter = None  # 交互状态适配器
+        self.time_state_bridge = None  # 时间状态桥接器
+        
+        # 交互处理器
+        self.interaction_handler: Optional[InteractionHandler] = None  # 交互处理器
         
         # 更新相关
         self._last_update_time = time.perf_counter()
@@ -230,6 +274,32 @@ class StatusPet:
     def exit_app(self):
         """退出应用"""
         logger.info("用户请求退出应用程序")
+        
+        # 关闭时间状态桥接器
+        if hasattr(self, 'time_state_bridge') and self.time_state_bridge:
+            self.time_state_bridge._shutdown()
+            logger.debug("时间状态桥接器已关闭")
+        
+        # 关闭时间行为系统
+        if hasattr(self, 'time_behavior_system') and self.time_behavior_system:
+            self.time_behavior_system._shutdown()
+            logger.debug("时间行为系统已关闭")
+        
+        # 关闭交互状态适配器
+        if hasattr(self, 'interaction_state_adapter') and self.interaction_state_adapter:
+            self.interaction_state_adapter._shutdown()
+            logger.debug("交互状态适配器已关闭")
+        
+        # 关闭系统状态适配器
+        if hasattr(self, 'system_state_adapter') and self.system_state_adapter:
+            self.system_state_adapter._shutdown()
+            logger.debug("系统状态适配器已关闭")
+        
+        # 关闭交互处理器
+        if hasattr(self, 'interaction_handler') and self.interaction_handler:
+            self.interaction_handler._shutdown()
+            logger.debug("交互处理器已关闭")
+        
         self.app.quit()
     
     def _create_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
@@ -410,85 +480,334 @@ class StatusPet:
             return None
 
     def create_character_sprite(self):
-        """创建角色精灵(即桌宠角色)
-        
-        这里是一个极简的实现，实际上应该使用资源管理器加载资源
-        为 IDLE 和 BUSY 状态创建简单的 2 帧动画
-        """
-        # --- 创建 IDLE 动画 ---
-        idle_frame_1 = self._create_placeholder_image() # 标准眼睛
-        idle_frame_2 = self._create_placeholder_image() # 创建第二个idle帧，稍作修改
-        if idle_frame_1 and idle_frame_2:
-             # 稍微修改第二帧的眼睛，让它看起来像眨眼或呼吸
-            painter = QPainter(idle_frame_2)
+        """创建角色精灵/动画"""
+        try:
+            # 创建待机动画
+            self.idle_animation = Animation()
+            idle_image = self._create_placeholder_image()
+            if idle_image:
+                self.idle_animation.add_frame(idle_image)
+                self.idle_animation.set_loop(True)
+                
+            # 创建忙碌动画
+            self.busy_animation = Animation()
+            busy_image = self._create_busy_placeholder_image()
+            if busy_image:
+                self.busy_animation.add_frame(busy_image)
+                self.busy_animation.set_loop(True)
+                
+            # 创建内存警告动画
+            self.memory_warning_animation = Animation()
+            memory_warning_image = self._create_memory_warning_placeholder_image()
+            if memory_warning_image:
+                self.memory_warning_animation.add_frame(memory_warning_image)
+                self.memory_warning_animation.set_loop(True)
+            
+            # 创建早晨动画
+            self.morning_animation = Animation()
+            morning_image = self._create_morning_placeholder_image()
+            if morning_image:
+                self.morning_animation.add_frame(morning_image)
+                self.morning_animation.set_loop(True)
+                
+            # 创建中午动画
+            self.noon_animation = Animation()
+            noon_image = self._create_noon_placeholder_image()
+            if noon_image:
+                self.noon_animation.add_frame(noon_image)
+                self.noon_animation.set_loop(True)
+                
+            # 创建下午动画（新增）
+            self.afternoon_animation = Animation()
+            # 目前复用中午图像，可以在未来创建专用的下午图像
+            afternoon_image = self._create_noon_placeholder_image(color_adjust=True)
+            if afternoon_image:
+                self.afternoon_animation.add_frame(afternoon_image)
+                self.afternoon_animation.set_loop(True)
+                
+            # 创建晚上动画（新增）
+            self.evening_animation = Animation()
+            # 创建较暗的傍晚效果
+            evening_image = self._create_night_placeholder_image(make_darker=False)
+            if evening_image:
+                self.evening_animation.add_frame(evening_image)
+                self.evening_animation.set_loop(True)
+                
+            # 创建深夜动画
+            self.night_animation = Animation()
+            night_image = self._create_night_placeholder_image()
+            if night_image:
+                self.night_animation.add_frame(night_image)
+                self.night_animation.set_loop(True)
+                
+            # 设置初始动画为待机
+            self.current_animation = self.idle_animation
+            if self.current_animation:
+                self.current_animation.play()
+                
+            logger.info("Character animations created successfully")
+        except Exception as e:
+            logger.error(f"Failed to create character animations: {e}")
+
+    def _create_morning_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
+        """创建一个代表'早晨'状态的占位符图像"""
+        try:
+            logger.debug("Creating morning placeholder image for pet")
+
+            image = QImage(width, height, QImage.Format.Format_ARGB32)
+            image.fill(QColor(0, 0, 0, 0))  # 透明背景
+            
+            painter = QPainter(image)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setPen(QPen(QColor(0,0,0,0))) # 透明画笔
-            painter.setBrush(QBrush(QColor(200, 200, 200, 220))) # 用背景色覆盖旧眼睛
-            painter.drawEllipse(20, 25, 8, 8) # 覆盖左眼
-            painter.drawEllipse(36, 25, 8, 8) # 覆盖右眼
+            
+            # 基础形状与普通状态相同
+            painter.setPen(QPen(QColor(70, 70, 70), 2))
+            # 使用暖色调（黄色和橙色）来表示早晨的阳光
+            painter.setBrush(QBrush(QColor(255, 230, 180, 220)))
+            
+            # 绘制头部（圆形）
+            painter.drawEllipse(10, 10, 44, 44)
+            
+            # 绘制耳朵
+            painter.setBrush(QBrush(QColor(255, 210, 160, 220)))
+            # 左耳
+            painter.drawPolygon([QPoint(15, 15), QPoint(25, 5), QPoint(30, 15)])
+            # 右耳
+            painter.drawPolygon([QPoint(49, 15), QPoint(39, 5), QPoint(34, 15)])
+            
+            # 绘制眼睛（睁开的明亮眼睛）
             painter.setPen(QPen(QColor(30, 30, 30), 1))
             painter.setBrush(QBrush(QColor(30, 30, 30)))
-            painter.drawEllipse(20, 26, 8, 6) # 左眼稍微小一点
-            painter.drawEllipse(36, 26, 8, 6) # 右眼稍微小一点
+            painter.drawEllipse(20, 25, 8, 8)  # 左眼
+            painter.drawEllipse(36, 25, 8, 8)  # 右眼
+            
+            # 添加一点点高光表示阳光
+            painter.setBrush(QBrush(QColor(255, 255, 255, 180)))
+            painter.setPen(QPen(QColor(255, 255, 255, 0)))
+            painter.drawEllipse(22, 27, 3, 3)  # 左眼高光
+            painter.drawEllipse(38, 27, 3, 3)  # 右眼高光
+            
+            # 绘制鼻子
+            painter.setPen(QPen(QColor(70, 70, 70), 1))
+            painter.setBrush(QBrush(QColor(255, 150, 150)))
+            painter.drawEllipse(29, 35, 6, 4)
+            
+            # 绘制微笑的嘴
+            painter.setPen(QPen(QColor(70, 70, 70), 1))
+            painter.drawArc(QRect(25, 38, 14, 10), 0, -180 * 16)  # 微笑的弧线
+            
+            # 绘制阳光光芒（额外装饰）
+            painter.setPen(QPen(QColor(255, 200, 0, 100), 1))
+            for i in range(8):
+                angle = i * 45
+                rad = angle * 3.14159 / 180
+                x1 = width / 2 + (width / 2 - 5) * math.cos(rad)
+                y1 = height / 2 + (height / 2 - 5) * math.sin(rad)
+                x2 = width / 2 + (width / 2 + 5) * math.cos(rad)
+                y2 = height / 2 + (height / 2 + 5) * math.sin(rad)
+                painter.drawLine(int(x1), int(y1), int(x2), int(y2))
+            
             painter.end()
             
-            self.idle_animation = Animation()
-            self.idle_animation.add_frame(idle_frame_1, 800)  # 标准帧，持续800ms
-            self.idle_animation.add_frame(idle_frame_2, 200)  # 小眼帧，持续200ms
-            self.idle_animation.set_loop(True)
-            logger.info("Created IDLE animation with 2 frames.")
-        else:
-            logger.error("Failed to create frames for IDLE animation.")
-
-        # --- 创建 BUSY 动画 ---
-        busy_frame_1 = self._create_busy_placeholder_image() # 眯眼
-        busy_frame_2 = self._create_busy_placeholder_image() # 创建第二个busy帧，稍作修改
-        if busy_frame_1 and busy_frame_2:
-            # 修改第二帧为完全闭眼
-            painter = QPainter(busy_frame_2)
+            logger.debug(f"Created morning placeholder image: {width}x{height}")
+            return image
+        except Exception as e:
+            logger.error(f"Failed to create morning placeholder image: {str(e)}")
+            return None
+            
+    def _create_noon_placeholder_image(self, width=64, height=64, color_adjust=False) -> Optional[QImage]:
+        """创建一个代表'中午'/'下午'状态的占位符图像
+        
+        Args:
+            width: 图像宽度
+            height: 图像高度
+            color_adjust: 是否调整颜色（用于区分中午和下午）
+        """
+        try:
+            # 创建透明图像
+            image = QImage(width, height, QImage.Format.Format_ARGB32)
+            image.fill(Qt.GlobalColor.transparent)
+            
+            # 创建画布
+            painter = QPainter(image)
+            
+            # 启用抗锯齿
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setPen(QPen(QColor(0,0,0,0))) # 透明画笔
-            painter.setBrush(QBrush(QColor(200, 200, 200, 220))) # 用背景色覆盖旧眼睛
-            painter.drawEllipse(20, 28, 8, 4) # 覆盖左眼
-            painter.drawEllipse(36, 28, 8, 4) # 覆盖右眼
-            painter.setPen(QPen(QColor(30, 30, 30), 1))
-            # 画两条横线表示闭眼
-            painter.drawLine(21, 29, 27, 29) # 左眼线
-            painter.drawLine(37, 29, 43, 29) # 右眼线
+            
+            # 绘制太阳
+            if color_adjust:
+                # 下午的太阳颜色偏橙
+                sun_color = QColor(255, 180, 80)  # 橙色
+            else:
+                # 中午的太阳颜色偏黄
+                sun_color = QColor(255, 220, 0)  # 亮黄色
+            
+            painter.setBrush(QBrush(sun_color))
+            painter.setPen(Qt.PenStyle.NoPen)
+            
+            # 太阳位置，根据是中午还是下午调整
+            if color_adjust:
+                # 下午的太阳偏右下
+                sun_x, sun_y = 48, 15  # 右边45度位置
+            else:
+                # 中午的太阳在顶部中央
+                sun_x, sun_y = 32, 10  # 顶部中央
+                
+            painter.drawEllipse(sun_x, sun_y, 12, 12)
+            
+            # 绘制身体
+            painter.setBrush(QBrush(QColor(200, 200, 200)))
+            painter.setPen(QPen(QColor(70, 70, 70), 1))
+            painter.drawEllipse(20, 25, 24, 20)
+            
+            # 绘制头部
+            painter.drawEllipse(32, 18, 16, 16)
+            
+            # 绘制耳朵
+            painter.drawEllipse(34, 10, 8, 8)
+            painter.drawEllipse(42, 12, 8, 8)
+            
+            # 绘制眼睛
+            if color_adjust:
+                # 下午状态 - 半睁眼
+                painter.setBrush(QBrush(QColor(70, 70, 70)))
+                painter.drawEllipse(35, 20, 3, 2)
+                painter.drawEllipse(42, 21, 3, 2)
+            else:
+                # 中午状态 - 眯眼（炎热）
+                painter.setBrush(QBrush(QColor(70, 70, 70)))
+                painter.drawEllipse(35, 21, 3, 1)
+                painter.drawEllipse(42, 22, 3, 1)
+            
+            # 绘制嘴巴 - 因炎热伸出舌头
+            painter.setBrush(QBrush(QColor(255, 150, 150)))
+            painter.drawEllipse(38, 26, 4, 2)
+            
+            # 额外的效果
+            if color_adjust:
+                # 下午 - 添加一些小云和阴影
+                painter.setBrush(QBrush(QColor(255, 255, 255, 180)))
+                painter.drawEllipse(10, 15, 12, 8)
+                painter.drawEllipse(15, 12, 10, 7)
+            else:
+                # 中午 - 添加热气线条
+                painter.setPen(QPen(QColor(255, 200, 100, 150), 1, Qt.PenStyle.DashLine))
+                painter.drawLine(28, 18, 26, 10)
+                painter.drawLine(46, 20, 48, 12)
+            
             painter.end()
 
-            self.busy_animation = Animation()
-            self.busy_animation.add_frame(busy_frame_1, 300) # 眯眼帧，持续300ms
-            self.busy_animation.add_frame(busy_frame_2, 150) # 闭眼帧，持续150ms
-            self.busy_animation.set_loop(True)
-            logger.info("Created BUSY animation with 2 frames.")
-        else:
-            logger.error("Failed to create frames for BUSY animation.")
+            logger.debug(f"Created noon/afternoon placeholder image: {width}x{height}, color_adjust={color_adjust}")
+            return image
+        except Exception as e:
+            logger.error(f"Failed to create noon/afternoon placeholder image: {str(e)}")
+            return None
+            
+    def _create_night_placeholder_image(self, width=64, height=64, make_darker=True) -> Optional[QImage]:
+        """创建一个代表'晚上'/'夜晚'状态的占位符图像
+        
+        Args:
+            width: 图像宽度
+            height: 图像高度
+            make_darker: 是否使颜色更暗（区分晚上和深夜）
+        """
+        try:
+            # 创建透明图像
+            image = QImage(width, height, QImage.Format.Format_ARGB32)
+            image.fill(Qt.GlobalColor.transparent)
+            
+            # 创建画布
+            painter = QPainter(image)
+            
+            # 启用抗锯齿
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            
+            # 绘制月亮/星星背景
+            if make_darker:
+                # 深夜 - 深蓝色背景与月亮
+                bg_color = QColor(20, 20, 60, 80)  # 深蓝色半透明背景
+                moon_color = QColor(230, 230, 255)  # 亮白月亮
+            else:
+                # 晚上 - 淡蓝色背景与日落
+                bg_color = QColor(40, 50, 100, 50)  # 淡蓝色半透明背景
+                moon_color = QColor(255, 200, 100)  # 橙黄色月亮/太阳
+            
+            # 添加背景色
+            painter.fillRect(0, 0, width, height, bg_color)
+            
+            # 绘制月亮/落日
+            painter.setBrush(QBrush(moon_color))
+            painter.setPen(Qt.PenStyle.NoPen)
+            
+            if make_darker:
+                # 深夜 - 月亮在右上角
+                painter.drawEllipse(46, 8, 10, 10)
+                
+                # 添加几颗星星
+                painter.setBrush(QBrush(QColor(255, 255, 255, 200)))
+                painter.drawEllipse(10, 12, 2, 2)
+                painter.drawEllipse(22, 8, 2, 2)
+                painter.drawEllipse(35, 6, 2, 2)
+                painter.drawEllipse(15, 20, 1, 1)
+            else:
+                # 晚上 - 落日在左下角
+                painter.drawEllipse(8, 20, 12, 12)
+                
+                # 添加一些云彩
+                painter.setBrush(QBrush(QColor(150, 120, 200, 100)))
+                painter.drawEllipse(30, 15, 10, 6)
+                painter.drawEllipse(25, 12, 12, 8)
 
-        # --- 创建 MEMORY_WARNING 动画 ---
-        mem_warn_frame_1 = self._create_memory_warning_placeholder_image()
-        # 可以简单地使用单帧动画，或者创建第二帧让它闪烁
-        if mem_warn_frame_1:
-            self.memory_warning_animation = Animation()
-            self.memory_warning_animation.add_frame(mem_warn_frame_1, 500) # 持续500ms
-            # 如果需要闪烁效果，可以再添加一个透明或略微变化的帧
-            # mem_warn_frame_2 = self._create_memory_warning_placeholder_image() 
-            # # ... (对 frame_2 做微小修改) ...
-            # self.memory_warning_animation.add_frame(mem_warn_frame_2, 300)
-            self.memory_warning_animation.set_loop(True)
-            logger.info("Created MEMORY_WARNING animation.")
-        else:
-            logger.error("Failed to create frames for MEMORY_WARNING animation.")
-
-        # 设置初始动画
-        if self.idle_animation:
-            self.current_animation = self.idle_animation
-            logger.info(f"Initial animation set to IDLE animation: {self.current_animation}")
-        else:
-            logger.warning("Idle animation not created, cannot set initial animation.")
+            # 绘制身体
+            gray_level = 150 if make_darker else 180
+            painter.setBrush(QBrush(QColor(gray_level, gray_level, gray_level)))
+            painter.setPen(QPen(QColor(70, 70, 70), 1))
+            painter.drawEllipse(20, 25, 24, 20)
+            
+            # 绘制头部
+            painter.drawEllipse(32, 18, 16, 16)
+            
+            # 绘制耳朵
+            painter.drawEllipse(34, 10, 8, 8)
+            painter.drawEllipse(42, 12, 8, 8)
+            
+            # 绘制眼睛
+            if make_darker:
+                # 深夜状态 - 闭眼
+                painter.setPen(QPen(QColor(70, 70, 70), 1))
+                painter.drawLine(35, 22, 38, 22)
+                painter.drawLine(41, 23, 44, 23)
+            else:
+                # 晚上状态 - 半睁眼
+                painter.setBrush(QBrush(QColor(70, 70, 70)))
+                painter.drawEllipse(35, 21, 3, 2)
+                painter.drawEllipse(42, 22, 3, 2)
+            
+            # 绘制鼻子
+            painter.setBrush(QBrush(QColor(255, 150, 150)))
+            painter.drawEllipse(29, 35, 6, 4)
+            
+            # 绘制闭口打哈欠的嘴
+            painter.setPen(QPen(QColor(70, 70, 70), 1))
+            painter.drawLine(28, 42, 36, 42)  # 简单的嘴线
+            
+            # 添加小泡泡表示睡意（Z字）
+            painter.setPen(QPen(QColor(200, 200, 255, 200), 1))
+            painter.drawText(QPoint(48, 15), "z")
+            
+            painter.end()
+            
+            logger.debug(f"Created night/evening placeholder image: {width}x{height}, make_darker={make_darker}")
+            return image
+        except Exception as e:
+            logger.error(f"Failed to create night/evening placeholder image: {str(e)}")
+            return None
 
     def update(self):
         """主更新循环"""
+        # 导入所需的时间枚举
+        from status.behavior.time_based_behavior import TimePeriod
+        
         logger.debug("---- UPDATE METHOD CALLED ----") # 添加 DEBUG 日志
         # 如果窗口不可见，无需进行全部更新
         if self.main_window and not self.main_window.isVisible():
@@ -503,31 +822,92 @@ class StatusPet:
         self._last_update_time = current_time
 
         # 1. 获取系统状态 (通过发布事件)
-        publish_stats(include_details=True) # 添加include_details=True参数，发送详细系统信息
+        publish_stats(include_details=True) # 始终发送详细系统信息
 
-        # 2. 更新状态机 (状态机会监听事件，或者我们在这里仍需获取状态?)
-        #    当前状态机 update 仍需要传入 cpu_usage 和 memory_usage
-        #    为了最小化改动，暂时保留，但理想状态是状态机也监听事件。
-        cpu_usage = get_cpu_usage() # 暂时保留获取
-        memory_usage = get_memory_usage() # 暂时保留获取
-        # 只有在状态机存在时才获取前一个状态
+        # 获取当前状态，用于检测状态变化
+        # 只有在状态机存在时才获取状态
         previous_state = self.state_machine.get_state() if self.state_machine else PetState.IDLE 
-        if self.state_machine:
-            state_changed = self.state_machine.update(cpu_usage, memory_usage)
-            current_state = self.state_machine.get_state()
-        else:
-            state_changed = False
-            current_state = PetState.IDLE
+        current_state = self.state_machine.get_state() if self.state_machine else PetState.IDLE
+        
+        # 检测状态是否变化
+        state_changed = previous_state != current_state
 
         # 3. 根据状态更新动画
         if state_changed:
             new_animation = None
-            if current_state == PetState.IDLE:
+            # 检查是否是时间相关状态
+            if current_state in [PetState.MORNING, PetState.NOON, PetState.AFTERNOON, PetState.EVENING, PetState.NIGHT]:
+                # 尝试从时间动画管理器获取对应的动画
+                if hasattr(self, 'time_animation_manager') and self.time_animation_manager:
+                    # 将PetState映射回TimePeriod
+                    time_period = None
+                    if current_state == PetState.MORNING:
+                        time_period = TimePeriod.MORNING
+                    elif current_state == PetState.NOON:
+                        time_period = TimePeriod.NOON
+                    elif current_state == PetState.AFTERNOON:
+                        time_period = TimePeriod.AFTERNOON
+                    elif current_state == PetState.EVENING:
+                        time_period = TimePeriod.EVENING
+                    elif current_state == PetState.NIGHT:
+                        time_period = TimePeriod.NIGHT
+                    
+                    if time_period:
+                        time_animation = self.time_animation_manager.get_animation_for_time_period(time_period)
+                        if time_animation:
+                            new_animation = time_animation
+                            logger.info(f"时间状态 {current_state.name} 使用时间动画: {time_period.name}")
+            
+            # 如果没有从时间动画管理器获取到动画，使用直接引用的动画
+            if new_animation is None:    
+                if current_state == PetState.IDLE or current_state == PetState.SYSTEM_IDLE:
                 new_animation = self.idle_animation
-            elif current_state == PetState.BUSY:
+                elif current_state in [PetState.BUSY, PetState.VERY_BUSY, PetState.CPU_CRITICAL, 
+                                    PetState.DISK_BUSY, PetState.NETWORK_BUSY, PetState.GPU_BUSY]:
                 new_animation = self.busy_animation
-            elif current_state == PetState.MEMORY_WARNING: # 新增处理
+                elif current_state in [PetState.MEMORY_WARNING, PetState.MEMORY_CRITICAL]:
                 new_animation = self.memory_warning_animation
+                # 用户交互状态
+                elif current_state in [PetState.CLICKED, PetState.HEAD_CLICKED, PetState.BODY_CLICKED, 
+                                    PetState.TAIL_CLICKED, PetState.PETTED, PetState.HEAD_PETTED, 
+                                    PetState.BODY_PETTED, PetState.TAIL_PETTED, PetState.DRAGGED,
+                                    PetState.HAPPY, PetState.ANGRY]:
+                    # 对于MVP阶段，我们可以使用idle动画表示交互，后续可以添加专门的交互动画
+                    new_animation = self.idle_animation  # 可以根据需要替换为专门的交互动画
+                # 时间相关状态
+                elif current_state == PetState.MORNING:
+                    new_animation = self.morning_animation if hasattr(self, 'morning_animation') else self.idle_animation
+                elif current_state == PetState.NOON:
+                    new_animation = self.noon_animation if hasattr(self, 'noon_animation') else self.idle_animation
+                elif current_state == PetState.AFTERNOON:
+                    # 下午可以复用中午动画，或者创建专门的下午动画
+                    new_animation = self.noon_animation if hasattr(self, 'noon_animation') else self.idle_animation
+                elif current_state == PetState.EVENING:
+                    # 傍晚可以复用中午或夜晚动画，或者创建专门的傍晚动画
+                    new_animation = self.noon_animation if hasattr(self, 'noon_animation') else self.idle_animation
+                elif current_state == PetState.NIGHT:
+                    new_animation = self.night_animation if hasattr(self, 'night_animation') else self.idle_animation
+                # 特殊日期状态
+                elif current_state in [PetState.BIRTHDAY, PetState.NEW_YEAR, PetState.VALENTINE]:
+                    # 尝试从时间动画管理器获取特殊日期动画
+                    if hasattr(self, 'time_animation_manager') and self.time_animation_manager:
+                        date_name = None
+                        if current_state == PetState.BIRTHDAY:
+                            date_name = "生日"
+                        elif current_state == PetState.NEW_YEAR:
+                            date_name = "新年"
+                        elif current_state == PetState.VALENTINE:
+                            date_name = "情人节"
+                        
+                        if date_name:
+                            special_animation = self.time_animation_manager.get_animation_for_special_date(date_name)
+                            if special_animation:
+                                new_animation = special_animation
+                                logger.info(f"特殊日期状态 {current_state.name} 使用特殊日期动画: {date_name}")
+                    
+                    # 如果找不到特殊日期动画，使用默认动画
+                    if new_animation is None:
+                        new_animation = self.idle_animation
             # 可以添加更多状态的动画切换
             
             if new_animation and self.current_animation != new_animation:
@@ -557,6 +937,10 @@ class StatusPet:
         # 在这里导入Application，避免循环导入问题
         from status.core.app import Application
         from status.ui.stats_panel import StatsPanel # 导入 StatsPanel
+        from status.behavior.system_state_adapter import SystemStateAdapter # 导入系统状态适配器
+        from status.behavior.interaction_state_adapter import InteractionStateAdapter # 导入交互状态适配器
+        from status.behavior.time_based_behavior import TimeBasedBehaviorSystem # 导入时间行为系统
+        from status.behavior.time_state_bridge import TimeStateBridge # 导入时间状态桥接器
         
         logger.info("Initializing application components...")
         
@@ -575,6 +959,83 @@ class StatusPet:
         # 创建状态机
         self.state_machine = PetStateMachine()
         
+        # 创建系统状态适配器
+        self.system_state_adapter = SystemStateAdapter(self.state_machine)
+        # 初始化系统状态适配器
+        self.system_state_adapter._initialize()
+        logger.info("系统状态适配器已初始化")
+        
+        # 创建交互状态适配器
+        self.interaction_state_adapter = InteractionStateAdapter(self.state_machine)
+        # 初始化交互状态适配器
+        self.interaction_state_adapter._initialize()
+        logger.info("交互状态适配器已初始化")
+        
+        # 创建时间行为系统（每分钟检查一次时间变化）
+        self.time_behavior_system = TimeBasedBehaviorSystem(check_interval=60)
+        # 初始化时间行为系统 (不要直接调用_initialize方法，使用activate方法)
+        self.time_behavior_system.activate()
+        logger.info("时间行为系统已激活")
+        
+        # 创建时间动画管理器
+        from status.animation.time_animation_manager import TimeAnimationManager
+        self.time_animation_manager = TimeAnimationManager()
+        
+        # 将已创建的时间动画添加到管理器中
+        from status.behavior.time_based_behavior import TimePeriod
+        if hasattr(self, 'morning_animation') and self.morning_animation:
+            self.time_animation_manager.time_period_animations[TimePeriod.MORNING] = self.morning_animation
+        
+        if hasattr(self, 'noon_animation') and self.noon_animation:
+            self.time_animation_manager.time_period_animations[TimePeriod.NOON] = self.noon_animation
+        
+        if hasattr(self, 'afternoon_animation') and self.afternoon_animation:
+            self.time_animation_manager.time_period_animations[TimePeriod.AFTERNOON] = self.afternoon_animation
+        
+        if hasattr(self, 'evening_animation') and self.evening_animation:
+            self.time_animation_manager.time_period_animations[TimePeriod.EVENING] = self.evening_animation
+        
+        if hasattr(self, 'night_animation') and self.night_animation:
+            self.time_animation_manager.time_period_animations[TimePeriod.NIGHT] = self.night_animation
+        
+        logger.info("时间动画管理器已初始化")
+        
+        # 连接时间行为系统信号到时间动画管理器
+        if hasattr(self.time_behavior_system, 'signals') and self.time_behavior_system.signals:
+            self.time_behavior_system.signals.time_period_changed.connect(
+                self.time_animation_manager.on_time_period_changed)
+            self.time_behavior_system.signals.special_date_triggered.connect(
+                self.time_animation_manager.on_special_date_triggered)
+            logger.info("时间行为系统信号已连接到时间动画管理器")
+            
+            # 获取当前时间段，记录日志
+            current_period = self.time_behavior_system.get_current_period()
+            logger.info(f"当前时间段: {current_period.name}")
+            
+            # 检查接下来的特殊日期
+            upcoming_dates = self.time_behavior_system.get_upcoming_special_dates(days=30)
+            if upcoming_dates:
+                dates_info = ", ".join([f"{date[0].name} ({date[1].strftime('%Y-%m-%d')})" for date in upcoming_dates[:3]])
+                logger.info(f"未来30天内的特殊日期(前3个): {dates_info}")
+                
+        # 创建时间状态桥接器
+        self.time_state_bridge = TimeStateBridge(
+            pet_state_machine=self.state_machine,
+            time_system=self.time_behavior_system
+        )
+        # 初始化时间状态桥接器
+        self.time_state_bridge._initialize()
+        logger.info("时间状态桥接器已初始化")
+        
+        # 创建交互处理器
+        self.interaction_handler = InteractionHandler(parent_window=self.main_window)
+        # 初始化交互处理器
+        self.interaction_handler._initialize()
+        logger.info("交互处理器已初始化")
+        
+        # 连接窗口事件到交互处理器
+        self.connect_interaction_handler()
+        
         # 显示窗口
         if self.main_window:
             self.main_window.show()
@@ -588,19 +1049,93 @@ class StatusPet:
         logger.info("启动更新定时器，间隔: 1000ms (1fps)") # 修改日志消息
         self._update_timer.start()
     
+    def connect_interaction_handler(self):
+        """将窗口的鼠标事件连接到交互处理器"""
+        if not self.main_window or not hasattr(self, 'interaction_handler') or not self.interaction_handler:
+            logger.warning("主窗口或交互处理器未初始化，无法连接事件")
+            return
+
+        # 添加对interaction_handler方法的显式检查
+        if not hasattr(self.interaction_handler, 'handle_mouse_event'):
+            logger.warning("交互处理器没有handle_mouse_event方法，无法连接事件")
+            return
+            
+        try:
+            # 使用类型断言
+            handler = self.interaction_handler
+            assert isinstance(handler, InteractionHandler), "交互处理器类型错误"
+            
+            # 获取信号引用
+            self.main_window.clicked.connect(
+                lambda pos: handler.handle_mouse_event(
+                    self._create_mouse_event(pos, Qt.MouseButton.LeftButton), 'press'))
+            
+            self.main_window.double_clicked.connect(
+                lambda pos: handler.handle_mouse_event(
+                    self._create_mouse_event(pos, Qt.MouseButton.LeftButton), 'doubleclick'))
+            
+            self.main_window.dragged.connect(
+                lambda pos: handler.handle_mouse_event(
+                    self._create_mouse_event(pos, Qt.MouseButton.LeftButton), 'move'))
+            
+            self.main_window.dropped.connect(
+                lambda pos: handler.handle_mouse_event(
+                    self._create_mouse_event(pos, Qt.MouseButton.LeftButton), 'release'))
+            
+            logger.info("已连接窗口鼠标事件到交互处理器")
+        except (AttributeError, TypeError, AssertionError) as e:
+            logger.error(f"连接鼠标事件失败: {e}")
+            return
+
+    def _create_mouse_event(self, pos, button_type):
+        """创建鼠标事件对象用于传递给交互处理器
+        
+        Args:
+            pos: 鼠标位置（QPoint）
+            button_type: 按钮类型
+            
+        Returns:
+            QMouseEvent: 创建的鼠标事件
+        """
+        from PySide6.QtCore import QPointF, Qt, QEvent
+        from PySide6.QtGui import QMouseEvent
+        
+        # 创建简单的QMouseEvent用于传递给交互处理器
+        return QMouseEvent(
+            QEvent.Type.MouseButtonPress,  # 事件类型，实际由handle_mouse_event的event_type参数决定
+            QPointF(pos),                  # 位置
+            button_type,                   # 按钮类型
+            button_type,                   # 按钮状态
+            Qt.KeyboardModifier.NoModifier # 键盘修饰符
+        )
+    
     def run(self):
         """运行应用"""
+        try:
         # 初始化
         self.initialize()
         
+            # 在启动应用前检查时间行为系统是否正常
+            if hasattr(self, 'time_behavior_system') and self.time_behavior_system:
+                logger.info("时间行为系统集成测试通过，准备进入事件循环")
+            
         # 进入事件循环
         return self.app.exec()
+        except Exception as e:
+            logger.error(f"应用程序运行时发生错误: {e}", exc_info=True)
+            return 1
 
 def main():
-    """主函数"""
-    pet_app = StatusPet()
-    exit_code = pet_app.run()
-    sys.exit(exit_code)
+    """程序入口函数"""
+    # 启动应用
+    app = StatusPet()
+    
+    # 将应用实例保存到全局变量
+    global instance
+    instance = app
+    
+    # 运行应用
+    return app.run()
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

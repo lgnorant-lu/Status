@@ -9,6 +9,7 @@ Description:                事件系统，实现模块间事件通知和处理
 Changed history:            
                             2025/04/04: 初始创建;
                             2025/04/04: 添加系统监控相关事件类型;
+                            2025/05/13: 添加 STATE_CHANGED 事件类型;
 ----
 """
 
@@ -32,7 +33,10 @@ class EventType(Enum):
     ERROR = auto()                 # 错误事件
     SYSTEM_STATS_UPDATED = auto()  # 新增：系统统计信息（CPU,内存等）更新
     WINDOW_POSITION_CHANGED = auto()  # 新增：窗口位置变更
-    WINDOW_SIZE_CHANGED = auto()  # 新增：窗口大小变更
+    WINDOW_SIZE_CHANGED = auto()  # 新增：窗口大小变更(似乎暂未使用)
+    STATE_CHANGED = auto()         # 新增：状态变化事件
+    TIME_PERIOD_CHANGED = auto()   # 新增：时间段变化事件
+    SPECIAL_DATE = auto()          # 新增：特殊日期事件
 
     
 class Event:

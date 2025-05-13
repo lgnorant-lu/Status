@@ -15,6 +15,8 @@ Changed history:
 
 import logging
 from typing import Dict, Any, Optional, List
+import time
+import datetime
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QToolButton, 
@@ -26,6 +28,8 @@ from PySide6.QtGui import QFont, QIcon, QPixmap, QColor, QPalette, QBrush, QLine
 # 导入事件系统相关
 from status.core.events import EventManager, SystemStatsUpdatedEvent, WindowPositionChangedEvent
 from status.core.event_system import EventType, Event # 导入 Event
+# 导入时间行为系统相关
+from status.behavior.time_based_behavior import TimePeriod
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +54,11 @@ class StatsPanel(QWidget):
     disk_io_label: Optional[QLabel] = None  # 磁盘IO
     network_speed_label: Optional[QLabel] = None  # 网络速度
     gpu_label: Optional[QLabel] = None  # GPU信息
+    
+    # 时间状态相关标签
+    time_period_label: Optional[QLabel] = None  # 当前时间段
+    special_date_label: Optional[QLabel] = None  # 特殊日期信息
+    upcoming_dates_label: Optional[QLabel] = None  # 即将到来的特殊日期
     
     # 控制和状态
     is_expanded: bool = False
@@ -82,7 +91,18 @@ class StatsPanel(QWidget):
         self.event_manager.register_handler(EventType.SYSTEM_STATS_UPDATED, self.handle_stats_update)
         self.event_manager.register_handler(EventType.WINDOW_POSITION_CHANGED, self.handle_window_position_changed)
         
+        # 注册时间事件处理器
+        self.event_manager.register_handler(EventType.TIME_PERIOD_CHANGED, self.handle_time_period_changed)
+        self.event_manager.register_handler(EventType.SPECIAL_DATE, self.handle_special_date)
+        
         logger.info("StatsPanel 初始化完成并已注册事件处理器.")
+        
+        # 初始化时加载时间数据
+        self._refresh_time_data()
+        
+        # 设置一个短延迟后再次刷新时间数据并处理时间段变化事件
+        # 确保组件完全初始化并可访问所有模块
+        QTimer.singleShot(1000, self._delayed_refresh)
 
     def _init_ui(self):
         """初始化面板的 UI 元素。"""
@@ -207,6 +227,33 @@ class StatsPanel(QWidget):
         self.gpu_label.setWordWrap(True)
         detailed_layout.addWidget(self.gpu_label)
         
+        # 添加分隔线
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        separator.setStyleSheet("background-color: #5A5A5A;")
+        separator.setFixedHeight(1)
+        detailed_layout.addWidget(separator)
+        
+        # 新增: 时间状态区域
+        # 时间段
+        self.time_period_label = QLabel("时间段: 未知")
+        self.time_period_label.setStyleSheet("color: #FFE0A0; font-size: 11px;")
+        self.time_period_label.setWordWrap(True)
+        detailed_layout.addWidget(self.time_period_label)
+        
+        # 特殊日期
+        self.special_date_label = QLabel("特殊日期: 无")
+        self.special_date_label.setStyleSheet("color: #FFA0A0; font-size: 11px;")
+        self.special_date_label.setWordWrap(True)
+        detailed_layout.addWidget(self.special_date_label)
+        
+        # 即将到来的特殊日期
+        self.upcoming_dates_label = QLabel("即将到来: 无")
+        self.upcoming_dates_label.setStyleSheet("color: #A0FFA0; font-size: 11px;")
+        self.upcoming_dates_label.setWordWrap(True)
+        detailed_layout.addWidget(self.upcoming_dates_label)
+        
         # 将详细信息框架添加到主布局，但默认隐藏
         main_layout.addWidget(self.detailed_info_frame)
         self.detailed_info_frame.setVisible(False)
@@ -221,11 +268,16 @@ class StatsPanel(QWidget):
         """)
         
         # 临时调试：添加明显的背景色和边框
-        self.setStyleSheet("StatsPanel { background-color: red; border: 2px solid black; }")
+        # self.setStyleSheet("StatsPanel { background-color: red; border: 2px solid black; }")
         
         # 设置大小策略
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.setMinimumWidth(170)
+        self.setMinimumHeight(85)  # 添加最小高度
+        
+        # 添加最大尺寸限制以避免窗口几何问题
+        self.setMaximumWidth(320)  # 设置合理的最大宽度
+        self.setMaximumHeight(600)  # 设置合理的最大高度
         
         logger.info("StatsPanel UI 初始化完成")
 
@@ -444,6 +496,96 @@ class StatsPanel(QWidget):
         if data.get('cpu_cores_usage') or data.get('memory_details') or data.get('disk_usage_root') or data.get('network_info'):
             self.adjustSize()
 
+    def update_time_data(self, data: Dict[str, Any]):
+        """更新时间相关数据
+        
+        Args:
+            data: 时间数据字典
+        """
+        logger.debug(f"StatsPanel 更新时间数据: {data}")
+        
+        # 存储时间数据，无论面板是否展开
+        self._time_data = getattr(self, '_time_data', {})
+        self._time_data.update(data)
+        
+        # 如果面板未展开，只更新数据不更新UI
+        if not self.is_expanded:
+            logger.debug("StatsPanel 未展开，仅存储时间数据不更新UI")
+            return
+            
+        # 根据存储的数据更新UI
+        self._update_time_ui(self._time_data)
+    
+    def _update_time_ui(self, time_data):
+        """更新时间UI显示
+
+        Args:
+            time_data: 时间数据字典
+        """
+        logger.debug(f"更新时间UI: {time_data}")
+        
+        # 如果面板未展开，不更新UI
+        if not self.is_expanded:
+            logger.debug("面板未展开，不更新时间UI")
+            return
+            
+        # 更新时间段标签
+        if 'period' in time_data and self.time_period_label:
+            period_name = time_data['period']
+            
+            # 根据时间段名称设置不同颜色
+            if period_name == TimePeriod.MORNING.name:
+                color = "#FFE0A0"  # 淡黄色
+            elif period_name == TimePeriod.NOON.name:
+                color = "#FFCC80"  # 橙色
+            elif period_name == TimePeriod.AFTERNOON.name:
+                color = "#80D0FF"  # 淡蓝色
+            elif period_name == TimePeriod.EVENING.name:
+                color = "#FFA080"  # 淡橙色
+            elif period_name == TimePeriod.NIGHT.name:
+                color = "#A080FF"  # 淡紫色
+            else:
+                color = "#E0E0E0"  # 默认浅灰色
+                
+            # 更新标签文字和颜色
+            self.time_period_label.setText(f"当前时段: {period_name}")
+            self.time_period_label.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: bold;")
+            logger.debug(f"已更新时间段标签: {period_name}")
+        
+        # 更新特殊日期标签
+        if 'special_date' in time_data and self.special_date_label:
+            special_date = time_data['special_date']
+            if special_date:
+                special_date_text = f"{special_date['name']}: {special_date['description']}"
+                self.special_date_label.setText(special_date_text)
+                self.special_date_label.setStyleSheet("color: #FF8080; font-size: 11px;")  # 特殊日期用红色表示
+                self.special_date_label.show()
+                logger.debug(f"已更新特殊日期标签: {special_date['name']}")
+            else:
+                self.special_date_label.setText("今天没有特殊日期")
+                self.special_date_label.setStyleSheet("color: #A0A0A0; font-size: 11px;")
+                logger.debug("今天没有特殊日期")
+        
+        # 更新即将到来的特殊日期标签
+        if 'upcoming_dates' in time_data and self.upcoming_dates_label:
+            upcoming = time_data['upcoming_dates']
+            if upcoming:
+                # 显示最多3个即将到来的特殊日期
+                upcoming_text = "即将到来: "
+                upcoming_text += ", ".join([f"{d['name']} ({d['date']})" for d in upcoming[:3]])
+                self.upcoming_dates_label.setText(upcoming_text)
+                self.upcoming_dates_label.setStyleSheet("color: #80C080; font-size: 11px;")
+                self.upcoming_dates_label.show()
+                logger.debug(f"已更新即将到来的特殊日期标签: {len(upcoming)}个")
+            else:
+                self.upcoming_dates_label.setText("近期没有特殊日期")
+                self.upcoming_dates_label.setStyleSheet("color: #A0A0A0; font-size: 11px;")
+                logger.debug("近期没有特殊日期")
+        
+        # 调整大小
+        self.adjustSize()
+        logger.debug("时间UI更新完成")
+
     def toggle_expand_collapse(self):
         """切换面板的展开/折叠状态。"""
         self.is_expanded = not self.is_expanded
@@ -456,6 +598,15 @@ class StatsPanel(QWidget):
         if self.detailed_info_frame is not None:
             self.detailed_info_frame.setVisible(self.is_expanded)
         
+        # 如果面板展开，尝试直接从全局实例获取时间数据
+        if self.is_expanded:
+            self._refresh_time_data()
+            
+            # 如果存在已存储的时间数据，则更新时间UI
+            if hasattr(self, '_time_data'):
+                logger.debug(f"更新展开后的时间UI，数据: {self._time_data}")
+                self._update_time_ui(self._time_data)
+        
         # 调整大小
         self.adjustSize()
         
@@ -464,6 +615,91 @@ class StatsPanel(QWidget):
             self.update_position(self.parent_window_pos, self.parent_window_size)
         
         logger.debug(f"StatsPanel {'展开' if self.is_expanded else '折叠'}")
+    
+    def _refresh_time_data(self):
+        """直接从时间行为系统获取时间数据"""
+        try:
+            # 首先使用通用函数获取应用实例
+            from status.core.events import get_app_instance
+            from status.monitoring.system_monitor import get_time_data
+            
+            app = get_app_instance()
+            time_data = {}
+            
+            # 尝试从应用实例获取时间数据
+            if app and hasattr(app, 'time_behavior_system') and app.time_behavior_system and app.time_behavior_system.is_active:
+                tbs = app.time_behavior_system
+                logger.debug(f"时间行为系统: {tbs}, 已初始化: {tbs.is_initialized}, 已激活: {tbs.is_active}")
+                
+                # 获取当前时间段
+                current_period = tbs.get_current_period()
+                if current_period:
+                    time_data['period'] = current_period.name
+                    logger.info(f"StatsPanel 刷新时间段数据: {current_period.name}")
+                
+                # 获取当前特殊日期
+                special_dates = tbs.get_current_special_dates()
+                if special_dates:
+                    first_date = special_dates[0]
+                    time_data['special_date'] = {
+                        'name': first_date.name,
+                        'description': first_date.description
+                    }
+                    logger.info(f"StatsPanel 刷新特殊日期数据: {first_date.name}")
+                
+                # 获取即将到来的特殊日期
+                upcoming_dates = tbs.get_upcoming_special_dates(days=7)
+                if upcoming_dates:
+                    upcoming_list = []
+                    for date_obj, date_time in upcoming_dates[:3]:  # 只取前3个
+                        upcoming_list.append({
+                            'name': date_obj.name,
+                            'date': date_time.strftime('%Y-%m-%d'),
+                            'description': date_obj.description
+                        })
+                    time_data['upcoming_dates'] = upcoming_list
+                    logger.info(f"StatsPanel 刷新即将到来的特殊日期数据: {len(upcoming_list)}个")
+            else:
+                # 如果应用实例无法获取或无时间行为系统，使用独立函数
+                logger.debug("无法从应用实例获取时间数据，使用独立函数")
+                time_data = get_time_data()
+                logger.info(f"使用独立函数获取时间数据: {list(time_data.keys())}")
+            
+            # 更新时间数据
+            if time_data:
+                self.update_time_data(time_data)
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"刷新时间数据失败: {e}", exc_info=True)
+            return False
+
+    def _delayed_refresh(self):
+        """延迟刷新函数，在组件完全初始化后执行"""
+        logger.debug("执行延迟刷新操作")
+        
+        # 尝试刷新时间数据
+        success = self._refresh_time_data()
+        
+        if not success:
+            # 如果刷新失败，则尝试创建一个简单的时间数据
+            logger.debug("尝试使用当前时间创建基本时间段数据")
+            try:
+                from status.monitoring.system_monitor import get_current_time_period
+                
+                current_period = get_current_time_period()
+                if current_period:
+                    # 手动创建时间数据
+                    time_data = {
+                        'period': current_period.name
+                    }
+                    
+                    # 更新时间数据
+                    self.update_time_data(time_data)
+                    
+                    logger.info(f"延迟刷新: 使用基本时间段 {current_period.name}")
+            except Exception as e:
+                logger.error(f"创建基本时间段数据失败: {e}", exc_info=True)
 
     def show_panel(self, position: QPoint):
         """在指定位置显示面板。"""
@@ -483,8 +719,43 @@ class StatsPanel(QWidget):
     def handle_stats_update(self, event: Event):
         """处理 SystemStatsUpdatedEvent 事件。"""
         if event.type == EventType.SYSTEM_STATS_UPDATED and isinstance(event, SystemStatsUpdatedEvent):
-            logger.debug(f"StatsPanel 接收到事件: {event.type.name} with data: {event.stats_data}")
+            logger.debug(f"StatsPanel 接收到事件: {event.type.name} with data keys: {list(event.stats_data.keys())}")
+            
+            # 检查是否包含时间数据
+            time_keys = ['period', 'special_date', 'upcoming_dates']
+            time_data_exists = any(key in event.stats_data for key in time_keys)
+            logger.debug(f"事件中包含时间数据: {time_data_exists}")
+            if time_data_exists:
+                logger.debug(f"时间数据详情: {[k for k in time_keys if k in event.stats_data]}")
+            
             self.update_data(event.stats_data)
+            
+            # 提取事件中的时间数据
+            time_data = {}
+            if 'period' in event.stats_data:
+                time_data['period'] = event.stats_data['period']
+                logger.info(f"StatsPanel 收到时间段数据: {event.stats_data['period']}")
+            if 'special_date' in event.stats_data:
+                time_data['special_date'] = event.stats_data['special_date']
+                logger.info(f"StatsPanel 收到特殊日期数据: {event.stats_data['special_date']['name']}")
+            if 'upcoming_dates' in event.stats_data:
+                time_data['upcoming_dates'] = event.stats_data['upcoming_dates']
+                dates_str = ', '.join([f"{d['name']} ({d['date']})" for d in event.stats_data['upcoming_dates'][:2]])
+                logger.info(f"StatsPanel 收到即将到来的特殊日期: {dates_str}")
+                
+            # 如果有时间数据，就更新
+            if time_data:
+                logger.debug(f"更新时间数据: {time_data}")
+                self.update_time_data(time_data)
+                
+                # 如果面板已展开，强制更新UI
+                if self.is_expanded and hasattr(self, '_time_data'):
+                    logger.debug(f"强制更新时间UI，面板已展开")
+                    self._update_time_ui(self._time_data)
+                
+                logger.debug(f"StatsPanel 时间数据更新完成，面板展开状态: {self.is_expanded}")
+            else:
+                logger.warning("未在事件中找到任何时间数据")
         else:
             logger.warning(f"StatsPanel 收到非预期的事件类型: {event.type.name}")
     
@@ -552,6 +823,23 @@ class StatsPanel(QWidget):
                 # 切换到底部
                 new_pos.setY(parent_pos.y() + parent_size.height() + PANEL_OFFSET_Y)
         
+        # 最终检查，确保面板完全在屏幕内
+        # 检查右边界
+        if new_pos.x() + panel_size.width() > screen_geometry.right():
+            new_pos.setX(screen_geometry.right() - panel_size.width())
+        
+        # 检查左边界
+        if new_pos.x() < screen_geometry.left():
+            new_pos.setX(screen_geometry.left())
+        
+        # 检查下边界
+        if new_pos.y() + panel_size.height() > screen_geometry.bottom():
+            new_pos.setY(screen_geometry.bottom() - panel_size.height())
+        
+        # 检查上边界
+        if new_pos.y() < screen_geometry.top():
+            new_pos.setY(screen_geometry.top())
+        
         # 移动面板
         self.move(new_pos)
         logger.info(f"StatsPanel.update_position: Moved to {new_pos}. Panel Geometry: {self.geometry()}, Visible: {self.isVisible()}")
@@ -563,14 +851,49 @@ class StatsPanel(QWidget):
             try:
                 self.event_manager.unregister_handler(EventType.SYSTEM_STATS_UPDATED, self.handle_stats_update)
                 self.event_manager.unregister_handler(EventType.WINDOW_POSITION_CHANGED, self.handle_window_position_changed)
+                
+                # 注销时间事件处理器
+                self.event_manager.unregister_handler(EventType.TIME_PERIOD_CHANGED, self.handle_time_period_changed)
+                self.event_manager.unregister_handler(EventType.SPECIAL_DATE, self.handle_special_date)
+                
                 logger.info("StatsPanel 事件处理器已成功注销。")
             except Exception as e:
                 logger.error(f"注销 StatsPanel 事件处理器时出错: {e}")
-        super().closeEvent(event) 
+        super().closeEvent(event)
         
     def sizeHint(self):
         """提供面板大小的建议值。"""
         if self.is_expanded:
-            return QSize(240, 200)  # 展开时的建议大小
+            # 展开时的建议大小，确保不超过最大限制
+            return QSize(min(240, self.maximumWidth()), 
+                        min(200, self.maximumHeight()))
         else:
-            return QSize(180, 85)   # 折叠时的建议大小
+            # 折叠时的建议大小
+            return QSize(min(180, self.maximumWidth()), 
+                        min(85, self.maximumHeight()))
+
+    def handle_time_period_changed(self, event: Event):
+        """处理时间段变化事件"""
+        if event.type == EventType.TIME_PERIOD_CHANGED:
+            logger.debug(f"StatsPanel 接收到时间段变化事件: {event.data}")
+            
+            # 更新时间数据
+            self.update_time_data({
+                'period': event.data.get('period', 'UNKNOWN')
+            })
+    
+    def handle_special_date(self, event: Event):
+        """处理特殊日期事件"""
+        if event.type == EventType.SPECIAL_DATE:
+            logger.debug(f"StatsPanel 接收到特殊日期事件: {event.data}")
+            
+            # 从事件数据中提取相关信息
+            special_date = {
+                'name': event.data.get('name', '未知'),
+                'description': event.data.get('description', '')
+            }
+            
+            # 更新时间数据
+            self.update_time_data({
+                'special_date': special_date
+            })

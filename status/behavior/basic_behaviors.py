@@ -8,9 +8,10 @@ Description:                基础行为定义
 
 Changed history:            
                             2025/04/05: 初始创建;
-                            2025/05/18: 添加类型注解;
-                            2025/05/19: 修复类型不兼容问题;
-                            2025/05/19: 解决子类继承参数传递问题;
+                            2025/05/12: 添加类型注解;
+                            2025/05/13: 修复类型不兼容问题;
+                            2025/05/13: 解决子类继承参数传递问题;
+                            2025/05/13: 修复decay导入问题;
 ----
 """
 
@@ -27,7 +28,7 @@ from PySide6.QtGui import QColor
 from status.core.component_base import ComponentBase
 from status.utils.vector import Vector2D
 from status.behavior.environment_sensor import EnvironmentSensor
-from status.utils.decay import exponential_decay
+from status.utils.decay import ExponentialDecay
 
 
 class BehaviorType(Enum):
