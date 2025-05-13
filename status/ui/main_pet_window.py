@@ -13,6 +13,7 @@ Changed history:
                             2025/05/13: 添加屏幕边界检测和边缘吸附功能;
                             2025/05/13: 修复精确模式闪动和高速滑动边界问题;
                             2025/05/13: 优化拖拽精度并通过TDD测试;
+                            2025/05/13: 修复拖动功能有时不响应的问题;
 ----
 """
 
@@ -38,6 +39,7 @@ POSITION_CLOSE_THRESHOLD = 2   # 位置接近阈值（像素）
 UPDATE_INTERVAL = 16           # 更新间隔(ms)，约60fps
 PRECISE_UPDATE_INTERVAL = 8    # 精确模式下的更新间隔(ms)，更高刷新率
 MAX_SPEED_HISTORY = 3          # 速度历史记录最大长度
+DRAG_THRESHOLD = 3             # 鼠标移动多少像素才被视为拖动开始
 
 # 屏幕边界限制参数
 SCREEN_EDGE_MARGIN = 20        # 窗口必须在屏幕内保留的最小边距（像素）
@@ -86,6 +88,7 @@ class MainPetWindow(QMainWindow):
         self.is_dragging = False  # 是否正在拖拽
         self.drag_start_pos = QPoint()  # 拖拽开始位置
         self.window_start_pos = QPoint()  # 窗口开始位置
+        self.drag_activated = False  # 是否已激活拖动（超过阈值）
         
         # 平滑拖拽相关
         self.target_pos = QPoint()  # 目标位置
@@ -107,7 +110,26 @@ class MainPetWindow(QMainWindow):
         # 初始化时获取屏幕大小
         self._get_screen_geometry()
         
+        # 看门狗定时器，确保拖动过程不会卡住
+        self.watchdog_timer = QTimer(self)
+        self.watchdog_timer.setInterval(100)  # 100ms检查一次
+        self.watchdog_timer.timeout.connect(self._check_drag_state)
+        
         logger.debug("MainPetWindow初始化完成")
+    
+    def _check_drag_state(self):
+        """检查拖动状态，确保没有卡在拖动状态"""
+        if self.is_dragging:
+            # 检查鼠标是否仍然按下
+            if not (QApplication.mouseButtons() & Qt.MouseButton.LeftButton):
+                logger.debug("检测到鼠标按钮已释放但拖动状态未重置，强制重置")
+                self.is_dragging = False
+                self.drag_activated = False
+                self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+                self.watchdog_timer.stop()
+                
+                # 确保平滑移动完成
+                self._check_smooth_complete()
     
     def _get_screen_geometry(self) -> QRect:
         """获取当前屏幕几何信息
@@ -169,6 +191,7 @@ class MainPetWindow(QMainWindow):
         if event.button() == Qt.MouseButton.LeftButton:
             # 记录拖拽开始位置
             self.is_dragging = True
+            self.drag_activated = False  # 重置激活状态，等待移动超过阈值
             self.drag_start_pos = event.position().toPoint()
             self.window_start_pos = self.pos()
             
@@ -193,6 +216,9 @@ class MainPetWindow(QMainWindow):
             
             # 设置鼠标形状为抓取
             self.setCursor(QCursor(Qt.CursorShape.ClosedHandCursor))
+            
+            # 启动看门狗定时器
+            self.watchdog_timer.start()
         
         super().mousePressEvent(event)
     
@@ -205,61 +231,73 @@ class MainPetWindow(QMainWindow):
         if self.is_dragging:
             current_mouse_pos = event.position().toPoint()
             
-            # 计算鼠标移动速度
-            elapsed = self.last_mouse_time.elapsed()
-            if elapsed > 0:  # 避免除以零
-                # 计算当前速度（像素/毫秒）
-                distance = ((current_mouse_pos - self.last_mouse_pos).x() ** 2 + 
-                           (current_mouse_pos - self.last_mouse_pos).y() ** 2) ** 0.5
-                current_speed = distance / elapsed
+            # 检查是否超过拖动阈值
+            if not self.drag_activated:
+                delta_move = (current_mouse_pos - self.drag_start_pos)
+                move_distance = (delta_move.x() ** 2 + delta_move.y() ** 2) ** 0.5
                 
-                # 记录历史速度用于平滑计算
-                self.speed_history.append(current_speed)
-                if len(self.speed_history) > MAX_SPEED_HISTORY:
-                    self.speed_history.pop(0)
+                if move_distance >= DRAG_THRESHOLD:
+                    self.drag_activated = True
+                    logger.debug(f"拖动已激活，移动距离: {move_distance}像素")
+            
+            # 只有在拖动激活后才处理移动
+            if self.drag_activated:
+                # 计算鼠标移动速度
+                elapsed = self.last_mouse_time.elapsed()
+                if elapsed > 0:  # 避免除以零
+                    # 计算当前速度（像素/毫秒）
+                    distance = ((current_mouse_pos - self.last_mouse_pos).x() ** 2 + 
+                               (current_mouse_pos - self.last_mouse_pos).y() ** 2) ** 0.5
+                    current_speed = distance / elapsed
+                    
+                    # 记录历史速度用于平滑计算
+                    self.speed_history.append(current_speed)
+                    if len(self.speed_history) > MAX_SPEED_HISTORY:
+                        self.speed_history.pop(0)
+                    
+                    # 计算平均速度
+                    self.mouse_speed = sum(self.speed_history) / len(self.speed_history)
+                    
+                    # 根据拖动模式和速度动态调整平滑系数
+                    self._update_smoothing_factor()
                 
-                # 计算平均速度
-                self.mouse_speed = sum(self.speed_history) / len(self.speed_history)
+                # 更新最后的鼠标位置和时间
+                self.last_mouse_pos = current_mouse_pos
+                self.last_mouse_time.restart()
                 
-                # 根据拖动模式和速度动态调整平滑系数
-                self._update_smoothing_factor()
-            
-            # 更新最后的鼠标位置和时间
-            self.last_mouse_pos = current_mouse_pos
-            self.last_mouse_time.restart()
-            
-            # 计算拖拽位置
-            delta = current_mouse_pos - self.drag_start_pos
-            new_pos = self.window_start_pos + delta
-            
-            # 限制位置在屏幕边界内
-            screen_geometry = self._get_screen_geometry()
-            constrained_pos = self._constrain_to_screen_boundary(new_pos, screen_geometry)
-            
-            # 更新目标位置
-            self.target_pos = constrained_pos
-            
-            # 精确模式下，考虑直接设置部分位置差，减少延迟感
-            if self.drag_mode == "precise" and self.mouse_speed > DRAG_SPEED_THRESHOLD * 2:
-                # 计算当前位置和目标位置之间的直接差值
-                diff_x = self.target_pos.x() - self.current_pos.x()
-                diff_y = self.target_pos.y() - self.current_pos.y()
+                # 计算拖拽位置
+                delta = current_mouse_pos - self.drag_start_pos
+                new_pos = self.window_start_pos + delta
                 
-                # 如果差值很大，让位置"追赶"过去，以减少跟踪延迟
-                if abs(diff_x) > 50 or abs(diff_y) > 50:
-                    # 直接"跳跃"到接近目标位置的地方
-                    jump_factor = 0.7  # 直接跳跃70%的距离
-                    self.current_pos = QPoint(
-                        int(self.current_pos.x() + diff_x * jump_factor),
-                        int(self.current_pos.y() + diff_y * jump_factor)
-                    )
-            
-            # 如果定时器没有启动，则启动它
-            if not self.smoothing_timer.isActive():
-                self.smoothing_timer.start()
-            
-            # 发送拖拽信号
-            self.dragged.emit(constrained_pos)
+                # 限制位置在屏幕边界内
+                screen_geometry = self._get_screen_geometry()
+                constrained_pos = self._constrain_to_screen_boundary(new_pos, screen_geometry)
+                
+                # 更新目标位置
+                self.target_pos = constrained_pos
+                
+                # 精确模式下，考虑直接设置部分位置差，减少延迟感
+                if self.drag_mode == "precise" and self.mouse_speed > DRAG_SPEED_THRESHOLD * 2:
+                    # 计算当前位置和目标位置之间的直接差值
+                    diff_x = self.target_pos.x() - self.current_pos.x()
+                    diff_y = self.target_pos.y() - self.current_pos.y()
+                    
+                    # 如果差值很大，让位置"追赶"过去，以减少跟踪延迟
+                    if abs(diff_x) > 50 or abs(diff_y) > 50:
+                        # 直接"跳跃"到接近目标位置的地方
+                        jump_factor = 0.7  # 直接跳跃70%的距离
+                        self.current_pos = QPoint(
+                            int(self.current_pos.x() + diff_x * jump_factor),
+                            int(self.current_pos.y() + diff_y * jump_factor)
+                        )
+                
+                # 如果定时器没有启动，则启动它
+                if not self.smoothing_timer.isActive():
+                    logger.debug("启动平滑定时器")
+                    self.smoothing_timer.start()
+                
+                # 发送拖拽信号
+                self.dragged.emit(constrained_pos)
         
         super().mouseMoveEvent(event)
     
@@ -356,6 +394,10 @@ class MainPetWindow(QMainWindow):
         """
         if event.button() == Qt.MouseButton.LeftButton and self.is_dragging:
             self.is_dragging = False
+            self.drag_activated = False
+            
+            # 停止看门狗定时器
+            self.watchdog_timer.stop()
             
             # 计算释放位置
             delta = event.position().toPoint() - self.drag_start_pos
@@ -381,16 +423,22 @@ class MainPetWindow(QMainWindow):
             
             # 发送放下信号
             self.dropped.emit(event.position().toPoint())
+            
+            logger.debug("鼠标释放，拖动结束")
         
         super().mouseReleaseEvent(event)
     
     def _update_position(self) -> None:
         """更新窗口位置（平滑插值）"""
+        # 如果位置更新卡住，强制检查拖动状态
+        self._check_drag_state()
+        
         if not self.is_dragging and self._is_position_close():
             # 如果拖拽结束且位置接近目标，直接设置到目标位置并停止定时器
             self.move(self.target_pos)
             self.current_pos = self.target_pos
             self.smoothing_timer.stop()
+            logger.debug("平滑移动完成，定时器停止")
             return
         
         # 计算插值后的新位置
@@ -419,6 +467,7 @@ class MainPetWindow(QMainWindow):
         """检查平滑移动是否完成"""
         if not self.is_dragging and self._is_position_close():
             self.smoothing_timer.stop()
+            logger.debug("平滑移动检查完成，定时器停止")
     
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
         """鼠标双击事件处理
@@ -427,6 +476,11 @@ class MainPetWindow(QMainWindow):
             event: 鼠标事件
         """
         if event.button() == Qt.MouseButton.LeftButton:
+            # 确保不会处于拖动状态
+            self.is_dragging = False
+            self.drag_activated = False
+            self.watchdog_timer.stop()
+            
             # 发送双击信号
             self.double_clicked.emit(event.position().toPoint())
         
@@ -452,8 +506,18 @@ class MainPetWindow(QMainWindow):
         # 发送位置改变信号
         self.position_changed.emit(event.pos())
         
+        # 发送窗口位置变更事件
+        from status.core.events import EventManager, WindowPositionChangedEvent
+        event_manager = EventManager.get_instance()
+        position_event = WindowPositionChangedEvent(
+            position=event.pos(),
+            size=self.size(),
+            sender=self
+        )
+        event_manager.dispatch(position_event)
+        
         super().moveEvent(event)
-    
+
     def set_drag_mode(self, mode: str) -> None:
         """设置拖动模式
         

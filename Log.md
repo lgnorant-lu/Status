@@ -1,5 +1,7 @@
 # 变更日志索引
 
+*此文档索引记录了 Status-Ming 项目的重要变更。*
+
 ## 核心系统
 - [2025-03-25] [核心系统] 基础引擎架构实现 - 详见 [Logs/2025-03-25_core_framework.md]
 - [2025-03-26] [核心系统] 事件系统实现 - 详见 [Logs/2025-03-26_event_system.md]
@@ -224,7 +226,18 @@
   - 在主应用逻辑中实现了根据状态机状态切换和播放对应动画的功能
   - 手动验证了 IDLE 状态下的动画播放
 
-- [模板] [YYYY-MM-DD] [模块/功能] 简要描述 - 详见 [Logs/Status-Ming/YYYY-MM-DD_log_file_name.md]
+- [2025-05-14] [UI][监控] StatsPanel迭代2完成 - 详见 [Logs/Status-Ming/2025-05-14_statspanel_iteration2.md]
+  - 修复面板和桌宠窗口位置绑定问题，实现自动跟随
+  - 优化面板样式，调整背景、字体颜色和展开框
+  - 修复主程序定时器更新问题，确保数据正常刷新
+  - 添加窗口位置变更事件系统，实现UI组件间位置同步
+
+- [2025-05-15] [监控][功能] 增强系统监控功能 - 详见 [Logs/Status-Ming/2025-05-15_enhanced_monitoring.md]
+  - 添加实时磁盘IO监控，显示读写速度
+  - 添加实时网络速度监控，分别显示上传和下载速率
+  - 集成GPU监控功能，包括负载率、显存使用和温度
+  - 优化UI显示效果，根据各指标负载动态调整颜色
+  - 改进数据采集逻辑，确保实时性和准确性
 
 # 日志索引
 
@@ -241,24 +254,25 @@
 
 ## Status-Ming 项目日志
 
-### 基础设施与环境
+### 项目初始设置
 
-- [2025-05-12 类型提示系统优化](Logs/2025-05-12_type_hints_optimization.md)
-- [2025-05-18 核心组件添加](Logs/2025-05-18_core_components_addition.md)
+- [2025-04-16] [项目初始化](Logs/Setup/2025-04-16_initial_setup.md)
+- [2025-04-18] [基础架构设计](Logs/Setup/2025-04-18_architecture_design.md)
 
 ### 功能开发
 
-*尚未添加功能开发日志*
+- [2025-05-01] [事件系统设计与实现](Logs/Core/2025-05-01_event_system.md)
+- [2025-05-05] [系统监控基础实现](Logs/Status-Ming/2025-05-05_system_monitor.md)
+- [2025-05-15] [增强系统监控功能](Logs/Status-Ming/2025-05-15_enhanced_monitoring.md)
 
 ### 测试与修复
 
-*尚未添加测试与修复日志*
+- [2025-05-17] [实现TDD测试框架](Logs/Tests/2025-05-17_tdd_implementation.md)
 
 ## 类型系统
 
 - [2025-05-12] [类型提示系统优化](Logs/2025-05-12_type_hints_optimization.md) - 创建通用类型模块并修复主要模块（包括 `resource_pack`, `resource_loader`, `cache`, `config_manager`, `interaction_manager`）的类型提示和Linter问题
-- [2025-05-15] [类型提示系统优化 - 监控模块](Logs/2025-05-15_type_hints_monitoring.md) - 修复监控模块（包括 `system_info`, `data_process`, `monitor`, `ui_controller`）的类型提示问题
-- [2025-05-12] [类型提示系统优化 - Renderer模块] 完成 status/renderer/ 目录下所有文件的类型检查与修复 - 详见 [Logs/Status-Ming/2025-05-12_type_hints_renderer.md]
+- [2025-05-15] [类型提示系统优化 - Renderer模块] 完成 status/renderer/ 目录下所有文件的类型检查与修复 - 详见 [Logs/Status-Ming/2025-05-12_type_hints_renderer.md]
 - [2025-05-12] [类型提示系统优化 - Resources模块] 完成 status/resources/ 目录下所有文件的类型检查与修复 - 详见 [Logs/Status-Ming/2025-05-12_type_hints_resources.md]
 - [2025-05-20] [类型提示系统优化 - Interaction模块] 完成 status/interaction/ 目录下所有文件的类型检查与修复 - 详见 [Logs/2025-05-20_interaction_typehints.md]
 - [2025-05-18] [类型提示系统优化 - Behavior模块] 添加缺失的组件基类和实用工具类，解决导入错误 - 详见 [Logs/Status-Ming/2025-05-18_behavior_dependencies_fix.md]
@@ -293,6 +307,11 @@
 
 ## UI相关
 - [2025-05-20 UI拖动性能优化](logs/2025-05-20_ui_optimization.md) - 解决拖动问题，优化UI响应性能
+- [2025-05-10] [主窗口实现](Logs/UI/2025-05-10_main_window.md)
+- [2025-05-13] [系统托盘实现](Logs/UI/2025-05-13_system_tray.md)
+- [2025-05-13] [拖动功能改进](Logs/UI/2025-05-13_drag_improvements.md)
+- [2025-05-13] [统计面板实现](Logs/UI/2025-05-13_stats_panel.md)
+- [2025-05-17] [StatsPanel显示问题修复与TDD测试实现](Logs/Status-Ming/2025-05-17_statsPanel_display_fix.md)
 
 ## 系统托盘
 - [2025-05-13 系统托盘功能实现](logs/2025-05-13_system_tray.md) - 添加系统托盘功能
@@ -305,5 +324,18 @@
 - [2025-05-12 类型提示优化](logs/2025-05-12_type_hints_optimization.md) - 优化类型提示
 
 ## 新功能
+
+## 2025年5月
+
+### 2025-05-17
+- [拖动功能修复](Logs/Status-Ming/2025-05-17_drag_fix.md) - 修复拖动功能有时不响应的问题
+- [开发路线图](docs/development_roadmap.md) - 创建详细的后续开发三阶段规划，包括用户体验优化、功能模块扩展和架构优化
+
+### 2025-05-15
+- [系统监控增强](Logs/Status-Ming/2025-05-15_enhanced_monitoring.md) - 添加磁盘I/O、网络速度和GPU监控功能
+- [系统进阶开发计划](docs/system_advancement_plan.md) - 添加详细的系统进阶开发计划，包括监控增强、行为丰富、配置系统和架构优化
+
+### 2025-05-13
+- [MVP初始版本](Logs/Status-Ming/2025-05-13_mvp_initial.md) - 实现基础窗口、系统托盘、CPU/内存监控和状态机
 
 

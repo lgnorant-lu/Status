@@ -45,7 +45,7 @@ Status-Ming是一个以猫咪为主题的交互式桌面宠物应用，结合系
 
 - Python 3.8+
 - 操作系统：Windows 10/11、macOS、Linux
-- 依赖项：PySide6、psutil
+- 依赖项：PySide6、psutil、GPUtil、SQLite3 (SQLite3为计划使用)
 
 ## 安装方法
 

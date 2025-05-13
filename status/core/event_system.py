@@ -30,7 +30,11 @@ class EventType(Enum):
     RENDER_FRAME = auto()          # 渲染帧
     TIMER_TICK = auto()            # 定时器滴答
     ERROR = auto()                 # 错误事件
+    SYSTEM_STATS_UPDATED = auto()  # 新增：系统统计信息（CPU,内存等）更新
+    WINDOW_POSITION_CHANGED = auto()  # 新增：窗口位置变更
+    WINDOW_SIZE_CHANGED = auto()  # 新增：窗口大小变更
 
+    
 class Event:
     """事件基类"""
     

@@ -15,7 +15,8 @@ Changed history:
 from enum import Enum, auto
 
 # 从event_system.py导入所有内容
-from status.core.event_system import EventType, Event
+from status.core.event_system import EventType # 直接导入原始 EventType
+from status.core.event_system import Event
 from status.core.event_system import EventSystem as _EventSystem
 
 # 交互事件类型枚举
@@ -97,5 +98,40 @@ class EventManager(_EventSystem):
         event = InteractionEvent(interaction_type, sender, data, position)
         self.dispatch(event)
 
+# 新的系统统计信息更新事件
+class SystemStatsUpdatedEvent(Event):
+    """当系统统计信息 (CPU, 内存等) 更新时触发的事件。"""
+    def __init__(self, stats_data: dict, sender=None):
+        """初始化系统统计信息更新事件。
+
+        Args:
+            stats_data (dict): 包含统计信息的字典，例如 {'cpu': 50.5, 'memory': 75.2}。
+            sender: 事件发送者，通常是 SystemMonitor。
+        """
+        super().__init__(EventType.SYSTEM_STATS_UPDATED, sender, stats_data)
+        self.stats_data = stats_data
+
+    def __str__(self) -> str:
+        return (f"SystemStatsUpdatedEvent(sender={self.sender}, stats_data={self.stats_data})")
+
+# 新的窗口位置变更事件
+class WindowPositionChangedEvent(Event):
+    """当窗口位置变更时触发的事件。"""
+    def __init__(self, position, size, sender=None):
+        """初始化窗口位置变更事件。
+
+        Args:
+            position: 窗口的新位置，通常是QPoint对象
+            size: 窗口的大小，通常是QSize对象
+            sender: 事件发送者，通常是MainPetWindow
+        """
+        data = {"position": position, "size": size}
+        super().__init__(EventType.WINDOW_POSITION_CHANGED, sender, data)
+        self.position = position
+        self.size = size
+
+    def __str__(self) -> str:
+        return (f"WindowPositionChangedEvent(sender={self.sender}, position={self.position}, size={self.size})")
+
 # 导出所有成员
-__all__ = ['EventType', 'Event', 'EventManager', 'InteractionEventType', 'InteractionEvent'] 
+__all__ = ['EventType', 'Event', 'EventManager', 'InteractionEventType', 'InteractionEvent', 'SystemStatsUpdatedEvent', 'WindowPositionChangedEvent'] 

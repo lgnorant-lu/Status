@@ -14,258 +14,184 @@ Changed history:
 
 import logging
 import os
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict
 
-from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
-from PySide6.QtGui import QIcon, QAction, QActionGroup
-from PySide6.QtCore import QPoint, Signal
-
+# 将 logger 定义移到最前面
 logger = logging.getLogger(__name__)
 
-class SystemTrayManager:
-    """系统托盘管理器，负责系统托盘的创建和管理"""
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox, QWidget
+from PySide6.QtGui import QIcon, QAction, QActionGroup, QPixmap, QPainter, QColor, QBrush, QPen
+from PySide6.QtCore import QPoint, Signal, QObject
+
+# 移除 try-except，直接使用下面的函数定义
+def get_resource_path(relative_path: str) -> str: # 添加类型提示
+    base_path = os.path.dirname(__file__)
+    # 路径调整：假设 resources 目录在项目根目录下
+    # __file__ 是 status/ui/system_tray.py
+    # os.path.dirname(__file__) 是 status/ui
+    # os.path.join(base_path, '..', '..', 'resources', relative_path) -> status/ui/../../resources/relative_path -> resources/relative_path
+    resource_path = os.path.abspath(os.path.join(base_path, '..', '..', 'resources', relative_path))
+    logger.debug(f"get_resource_path for '{relative_path}': '{resource_path}'")
+    return resource_path
+
+class SystemTrayManager(QObject):
+    """管理系统托盘图标和菜单"""
     
-    def __init__(self, app: QApplication, icon_path: Optional[str] = None):
-        """初始化系统托盘管理器
-        
-        Args:
-            app: QApplication实例
-            icon_path: 系统托盘图标路径
-        """
+    toggle_stats_panel_visibility_requested = Signal(bool)
+    
+    def __init__(self, app: QApplication, parent: QObject | None = None):
+        super().__init__(parent)
         self.app = app
+        self.tray_icon = QSystemTrayIcon(parent=None) # 父对象设为 None 避免随父窗口关闭
         
-        # 创建系统托盘图标
-        self.tray_icon = QSystemTrayIcon()
-        
-        # 设置图标
-        if icon_path and os.path.exists(icon_path):
+        icon_path = get_resource_path("temp_icon.png")
+        if os.path.exists(icon_path):
             self.tray_icon.setIcon(QIcon(icon_path))
-            logger.info(f"使用指定图标创建系统托盘: {icon_path}")
         else:
-            # 创建一个临时图标文件
-            temp_icon_path = self._create_temp_icon()
-            if temp_icon_path:
-                self.tray_icon.setIcon(QIcon(temp_icon_path))
-                logger.info(f"系统托盘已使用临时图标创建: {temp_icon_path}")
-            else:
-                logger.warning("无法创建系统托盘图标，将使用默认图标")
-        
-        # 创建托盘菜单
-        self.tray_menu = QMenu()
-        
-        # 常见操作回调
-        self.on_show_hide = None
-        self.on_exit = None
-        self.on_drag_mode_changed = None
-        
-        # 菜单项
-        self.action_show_hide = None
-        self.action_exit = None
-        self.window_is_visible = True
-        
-        # 拖动模式菜单项
-        self.drag_mode_menu = None
-        self.drag_mode_actions = {}
-        
-        # 显示系统托盘
-        self.tray_icon.show()
-        
-        logger.debug("系统托盘管理器初始化完成")
-    
-    def _create_temp_icon(self) -> Optional[str]:
-        """创建一个临时图标文件
-        
-        Returns:
-            str: 临时图标文件路径
-        """
-        try:
-            from PySide6.QtGui import QPixmap, QPainter, QColor
-            from PySide6.QtCore import Qt, QSize
-            
-            # 创建一个简单的图标
-            size = 32
-            pixmap = QPixmap(size, size)
-            pixmap.fill(Qt.GlobalColor.transparent)
+            logger.warning(f"托盘图标文件未找到: {icon_path}，将创建默认图标")
+            # 创建一个简单的默认图标
+            pixmap = QPixmap(16, 16)
+            pixmap.fill(QColor(0, 0, 0, 0))  # 透明背景
             
             painter = QPainter(pixmap)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             
-            # 绘制一个简单的图形作为临时图标
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(60, 150, 255))
-            painter.drawEllipse(4, 4, 24, 24)
+            # 绘制一个简单的圆形图标
+            painter.setBrush(QBrush(QColor(90, 200, 190)))  # 填充颜色
+            painter.setPen(QPen(QColor(60, 60, 60), 1))  # 边框颜色和宽度
+            painter.drawEllipse(2, 2, 12, 12)  # 在 16x16 的图像上绘制一个 12x12 的圆
             
-            # 绘制猫咪耳朵
-            painter.setBrush(QColor(40, 120, 220))
-            painter.drawPolygon([
-                QPoint(8, 8),
-                QPoint(14, 14),
-                QPoint(8, 14)
-            ])
-            painter.drawPolygon([
-                QPoint(24, 8),
-                QPoint(18, 14),
-                QPoint(24, 14)
-            ])
+            # 添加一个简单的标识
+            painter.setPen(QPen(QColor(255, 255, 255), 1))
+            painter.drawLine(6, 8, 10, 8)  # 绘制一个简单的符号
             
             painter.end()
             
-            # 保存到临时文件
-            temp_path = "status/temp_icon.png"
-            pixmap.save(temp_path)
+            # 设置自定义图标
+            self.tray_icon.setIcon(QIcon(pixmap))
+            logger.info("已创建并设置默认托盘图标")
             
-            return temp_path
+        self.tray_icon.setToolTip("Status-Ming")
         
-        except Exception as e:
-            logger.error(f"创建临时图标失败: {str(e)}")
-            return None
-    
-    def setup_menu(
-        self,
-        show_hide_callback: Callable[[], None],
-        exit_callback: Callable[[], None],
-        drag_mode_callback: Callable[[str], None],
-        toggle_interaction_callback: Callable[[], None]
-    ) -> None:
-        """设置系统托盘菜单
+        self._callbacks: Dict[str, Optional[Callable]] = {} # 初始化回调字典
+        # 初始化动作属性
+        self.show_hide_action: Optional[QAction] = None
+        self.drag_mode_actions: Dict[str, QAction] = {}
+        self.toggle_interaction_action: Optional[QAction] = None
+        self.toggle_stats_action: Optional[QAction] = None
 
-        Args:
-            show_hide_callback: 当"显示/隐藏"菜单项被点击时调用的函数
-            exit_callback: 当"退出"菜单项被点击时调用的函数
-            drag_mode_callback: 当拖动模式子菜单项被点击时调用的函数，参数为模式字符串
-            toggle_interaction_callback: 当"切换交互"菜单项被点击时调用的函数
-        """
-        # 保存回调
-        self.on_show_hide = show_hide_callback
-        self.on_exit = exit_callback
-        self.on_drag_mode_changed = drag_mode_callback
+        self.tray_icon.activated.connect(self.on_tray_activated) # 连接激活事件
+        self.tray_icon.show()
+        logger.info("系统托盘管理器初始化")
+
+    def setup_menu(self, 
+                   show_hide_callback: Optional[Callable] = None, 
+                   exit_callback: Optional[Callable] = None,
+                   drag_mode_callback: Optional[Callable[[str], None]] = None,
+                   toggle_interaction_callback: Optional[Callable] = None):
+        """设置托盘菜单项和回调"""
+        self._callbacks = {
+            'show_hide': show_hide_callback,
+            'exit': exit_callback,
+            'drag_mode': drag_mode_callback,
+            'toggle_interaction': toggle_interaction_callback
+        }
         
-        # 清空菜单
-        self.tray_menu.clear()
+        menu = QMenu() # 创建菜单
         
-        # 添加显示/隐藏菜单项
-        self.action_show_hide = QAction("隐藏", self.tray_menu)
-        self.action_show_hide.triggered.connect(show_hide_callback)
-        self.tray_menu.addAction(self.action_show_hide)
+        # 显示/隐藏 动作
+        self.show_hide_action = QAction("显示桌宠", menu)
+        show_hide_cb = self._callbacks.get('show_hide')
+        if show_hide_cb:
+            self.show_hide_action.triggered.connect(show_hide_cb)
+        menu.addAction(self.show_hide_action)
         
-        # 添加切换交互菜单项
-        self.toggle_interaction_action = QAction("允许鼠标穿透", self.tray_menu)
-        self.toggle_interaction_action.setCheckable(True)
-        self.toggle_interaction_action.setChecked(False)
-        self.toggle_interaction_action.triggered.connect(toggle_interaction_callback)
-        self.toggle_interaction_action.triggered.connect(self._update_toggle_interaction_text)
-        self.tray_menu.addAction(self.toggle_interaction_action)
-        self._update_toggle_interaction_text()
-        
-        # 添加分隔线
-        self.tray_menu.addSeparator()
-        
-        # 创建拖动模式子菜单
-        self.drag_mode_menu = QMenu("拖动模式", self.tray_menu)
-        
-        # 创建动作组以实现单选效果
-        drag_mode_group = QActionGroup(self.tray_menu)
-        
-        # 创建三种拖动模式选项
-        modes = [
-            ("智能模式", "smart", "根据拖动速度自动调整平滑度"),
-            ("精确模式", "precise", "精确跟随鼠标位置"),
-            ("平滑模式", "smooth", "最大程度平滑拖动效果")
-        ]
-        
-        for name, mode, tooltip in modes:
-            action = QAction(name, self.drag_mode_menu)
-            action.setToolTip(tooltip)
+        menu.addSeparator()
+
+        # 拖动模式组
+        drag_mode_group = QActionGroup(menu) # 父对象为 menu
+        drag_mode_group.setExclusive(True)
+        modes = [("智能模式", "smart"), ("精确模式", "precise"), ("平滑模式", "smooth")]
+        self.drag_mode_actions = {}
+        drag_mode_submenu = QMenu("拖动模式", menu) # 创建子菜单
+        drag_mode_cb = self._callbacks.get('drag_mode')
+        for text, mode_id in modes:
+            action = QAction(text, drag_mode_submenu)
             action.setCheckable(True)
-            action.setData(mode)
-            
-            # 默认选中智能模式
-            if mode == "smart":
-                action.setChecked(True)
-            
-            action.triggered.connect(
-                lambda checked, m=mode: self._on_drag_mode_triggered(m)
-            )
-            
-            # 添加到动作组以实现单选
+            # 安全调用回调
+            if drag_mode_cb:
+                action.triggered.connect(lambda checked, m=mode_id, cb=drag_mode_cb: cb(m) if checked else None)
             drag_mode_group.addAction(action)
-            self.drag_mode_menu.addAction(action)
-            self.drag_mode_actions[mode] = action
+            drag_mode_submenu.addAction(action) # 添加到子菜单
+            self.drag_mode_actions[mode_id] = action
+            if mode_id == "smart": # 默认选中智能模式
+                action.setChecked(True)
+        menu.addMenu(drag_mode_submenu) # 添加子菜单到主菜单
         
-        # 添加拖动模式子菜单到主菜单
-        self.tray_menu.addMenu(self.drag_mode_menu)
+        menu.addSeparator()
         
-        # 添加分隔线
-        self.tray_menu.addSeparator()
+        # 鼠标交互切换
+        self.toggle_interaction_action = QAction("启用交互 (可拖动)", menu)
+        self.toggle_interaction_action.setCheckable(True)
+        self.toggle_interaction_action.setChecked(True) # 默认可交互
+        toggle_interaction_cb = self._callbacks.get('toggle_interaction')
+        if toggle_interaction_cb:
+            self.toggle_interaction_action.triggered.connect(toggle_interaction_cb)
+        menu.addAction(self.toggle_interaction_action)
         
-        # 添加退出菜单项
-        self.action_exit = QAction("退出", self.tray_menu)
-        self.action_exit.triggered.connect(exit_callback)
-        self.tray_menu.addAction(self.action_exit)
-        
-        # 设置托盘菜单
-        self.tray_icon.setContextMenu(self.tray_menu)
-        
+        # 统计面板切换
+        menu.addSeparator()
+        self.toggle_stats_action = QAction("显示统计面板", menu)
+        self.toggle_stats_action.setCheckable(True)
+        self.toggle_stats_action.setChecked(False) # 初始隐藏
+        self.toggle_stats_action.triggered.connect(self.on_toggle_stats_panel)
+        menu.addAction(self.toggle_stats_action)
+
+        menu.addSeparator()
+
+        # 退出动作
+        exit_action = QAction("退出", menu)
+        exit_cb = self._callbacks.get('exit')
+        if exit_cb:
+            exit_action.triggered.connect(exit_cb)
+        menu.addAction(exit_action)
+
+        self.tray_icon.setContextMenu(menu)
         logger.debug("系统托盘菜单设置完成")
-    
-    def _update_toggle_interaction_text(self):
-        """根据当前选中状态更新'切换交互'菜单项的文本"""
-        if self.toggle_interaction_action.isChecked():
-            self.toggle_interaction_action.setText("禁止鼠标穿透 (可交互)")
-        else:
-            self.toggle_interaction_action.setText("允许鼠标穿透 (不可交互)")
-    
-    def set_window_visibility(self, visible: bool) -> None:
-        """设置窗口可见性状态，用于更新菜单项文本
         
-        Args:
-            visible: 窗口是否可见
-        """
-        self.window_is_visible = visible
-        if self.action_show_hide:
-            self.action_show_hide.setText("隐藏" if visible else "显示")
-    
-    def set_current_drag_mode(self, mode: str) -> None:
-        """设置当前选中的拖动模式
+    def set_window_visibility(self, is_visible: bool):
+        if self.show_hide_action:
+            self.show_hide_action.setText("隐藏桌宠" if is_visible else "显示桌宠")
         
-        Args:
-            mode: 拖动模式 - "smart", "precise", "smooth"
-        """
+    def on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            show_hide_cb = self._callbacks.get('show_hide')
+            if show_hide_cb:
+                show_hide_cb()
+            else:
+                logger.warning("托盘左键单击，但未设置 show_hide_callback")
+    
+    def set_interaction_state(self, is_interactive: bool):
+        if self.toggle_interaction_action:
+            self.toggle_interaction_action.setChecked(is_interactive)
+            self.toggle_interaction_action.setText("禁用交互 (鼠标穿透)" if is_interactive else "启用交互 (可拖动)")
+
+    def set_drag_mode_action(self, mode: str):
         if mode in self.drag_mode_actions:
             self.drag_mode_actions[mode].setChecked(True)
-    
-    def _on_show_hide_triggered(self) -> None:
-        """显示/隐藏菜单项被触发"""
-        if self.on_show_hide:
-            self.on_show_hide()
-            logger.info(f"用户通过托盘菜单请求{'隐藏' if self.window_is_visible else '显示'}窗口")
-    
-    def _on_exit_triggered(self) -> None:
-        """退出菜单项被触发"""
-        if self.on_exit:
-            self.on_exit()
-            logger.info("用户通过托盘菜单请求退出应用")
-    
-    def _on_drag_mode_triggered(self, mode: str) -> None:
-        """拖动模式菜单项被触发
+        else:
+            logger.warning(f"尝试设置未知的拖动模式动作: {mode}")
+            
+    def on_toggle_stats_panel(self):
+        if self.toggle_stats_action:
+            show = self.toggle_stats_action.isChecked()
+            self.toggle_stats_panel_visibility_requested.emit(show)
+            self.toggle_stats_action.setText("隐藏统计面板" if show else "显示统计面板")
+            logger.debug(f"请求切换统计面板可见性: {show}")
+        else:
+            logger.error("on_toggle_stats_panel called but toggle_stats_action does not exist")
         
-        Args:
-            mode: 选择的拖动模式
-        """
-        if self.on_drag_mode_changed:
-            self.on_drag_mode_changed(mode)
-            logger.info(f"用户将拖动模式切换为: {mode}")
-    
-    def show_message(self, title: str, message: str) -> None:
-        """显示托盘消息
-        
-        Args:
-            title: 消息标题
-            message: 消息内容
-        """
-        self.tray_icon.showMessage(
-            title, 
-            message, 
-            QSystemTrayIcon.MessageIcon.Information, 
-            5000  # 显示5秒
-        ) 
+    def show_message(self, title: str, message: str, 
+                     icon: QSystemTrayIcon.MessageIcon = QSystemTrayIcon.MessageIcon.Information, 
+                     timeout: int = 3000):
+        self.tray_icon.showMessage(title, message, icon, timeout) 

@@ -10,6 +10,7 @@ Changed history:
                             2025/04/16: 初始创建;
                             2025/05/13: 实现系统托盘功能;
                             2025/05/13: 优化UI性能，添加平滑拖动;
+                            2025/05/13: 修复缩进错误;
 ----
 """
 
@@ -25,9 +26,10 @@ from PySide6.QtCore import QTimer, QPoint, Qt
 from status.ui.main_pet_window import MainPetWindow
 from status.ui.system_tray import SystemTrayManager
 from status.animation.animation import Animation
-from status.monitoring.system_monitor import get_cpu_usage, get_memory_usage
+from status.monitoring.system_monitor import get_cpu_usage, get_memory_usage, publish_stats
 from status.behavior.pet_state_machine import PetStateMachine
 from status.behavior.pet_state import PetState
+from status.ui.stats_panel import StatsPanel
 # 我们将在initialize方法中导入Application类，以避免循环导入问题
 
 # 配置日志
@@ -51,6 +53,9 @@ class StatusPet:
         # 创建系统托盘
         self.system_tray: Optional[SystemTrayManager] = None
         
+        # 统计面板 (新增)
+        self.stats_panel: Optional[StatsPanel] = None
+        
         # 动画
         self.animation_manager = None  # 动画管理器
         self.idle_animation: Optional[Animation] = None  # 待机动画
@@ -64,7 +69,7 @@ class StatusPet:
         # 更新相关
         self._last_update_time = time.perf_counter()
         self._update_timer = QTimer()
-        self._update_timer.setInterval(16)  # 约60fps
+        self._update_timer.setInterval(1000)  # 修改此处，原为16ms
         self._update_timer.timeout.connect(self.update)
     
     def create_main_window(self):
@@ -89,14 +94,19 @@ class StatusPet:
         # 创建系统托盘管理器
         self.system_tray = SystemTrayManager(self.app)
         
-        # 设置菜单
+        # 设置菜单回调
         self.system_tray.setup_menu(
             show_hide_callback=self.toggle_window_visibility,
             exit_callback=self.exit_app,
             drag_mode_callback=self.set_drag_mode,
             toggle_interaction_callback=self.toggle_pet_interaction
+            # toggle_stats_panel_visibility_requested 连接将在下面处理
         )
         
+        # 连接 SystemTrayManager 的新信号
+        if self.system_tray:
+            self.system_tray.toggle_stats_panel_visibility_requested.connect(self._handle_toggle_stats_panel)
+            
         logger.info("系统托盘初始化完成")
     
     def toggle_window_visibility(self):
@@ -161,18 +171,62 @@ class StatusPet:
             if new_flags != current_flags:
                 self.main_window.setWindowFlags(new_flags)
                 # 必须重新显示窗口以使标志生效
-                self.main_window.show() 
+                self.main_window.show()
                 logger.debug(f"Window flags set to: {new_flags}")
             else:
-                 logger.debug("Window flags already set correctly, no change needed.")
+                logger.debug("Window flags already set correctly, no change needed.")
 
             # 显示托盘消息 (如果托盘存在)
             if self.system_tray:
                 self.system_tray.show_message("桌宠交互状态", message)
                 
         except Exception as e:
-             logger.error(f"切换窗口交互状态时出错: {e}", exc_info=True)
+            logger.error(f"切换窗口交互状态时出错: {e}", exc_info=True)
     
+    def _handle_toggle_stats_panel(self, show: bool):
+        """处理显示/隐藏统计面板的请求。"""
+        if not self.stats_panel or not self.main_window:
+            logger.warning("StatsPanel 或主窗口不存在，无法切换统计面板可见性。")
+            return
+
+        if show:
+            # 不再需要手动计算位置，面板会自动跟随主窗口
+            # 只需要在主窗口当前位置显示面板
+            if self.main_window.isVisible():
+                # 获取当前主窗口位置和大小
+                pet_pos = self.main_window.pos()
+                pet_size = self.main_window.size()
+                
+                logger.info(f"展示统计面板 - 主窗口当前位置: {pet_pos}, 大小: {pet_size}")
+                
+                # 主动调用更新位置方法
+                self.stats_panel.parent_window_pos = pet_pos
+                self.stats_panel.parent_window_size = pet_size
+                self.stats_panel.update_position(pet_pos, pet_size)
+                
+                # 显示面板，使用show_panel方法
+                panel_pos = QPoint(pet_pos.x() + pet_size.width() + 10, pet_pos.y())
+                self.stats_panel.show_panel(panel_pos)
+                
+                # 确保面板可见
+                if not self.stats_panel.isVisible():
+                    logger.warning("StatsPanel.isVisible() 仍然是 False，尝试直接调用 show()")
+                    self.stats_panel.show()
+                    self.stats_panel.raise_()
+                    self.stats_panel.activateWindow()
+                
+                logger.info(f"显示统计面板于 {pet_pos}，面板实际位置: {self.stats_panel.pos()}")
+                logger.info(f"统计面板可见状态: {self.stats_panel.isVisible()}, 几何属性: {self.stats_panel.geometry()}")
+            else:
+                logger.warning("主窗口不可见，无法显示统计面板。")
+        else:
+            self.stats_panel.hide_panel()
+            logger.info("隐藏统计面板")
+            
+        # 确保托盘菜单项的文本状态同步 (这一步已由 SystemTrayManager 内部处理)
+        # if self.system_tray and hasattr(self.system_tray, 'toggle_stats_action'):
+        #     self.system_tray.toggle_stats_action.setChecked(show)
+
     def exit_app(self):
         """退出应用"""
         logger.info("用户请求退出应用程序")
@@ -448,41 +502,41 @@ class StatusPet:
         dt = max(0.001, min(dt, 0.1))
         self._last_update_time = current_time
 
-        # 1. 处理输入 (后续添加)
-        # self.handle_input(dt)
+        # 1. 获取系统状态 (通过发布事件)
+        publish_stats(include_details=True) # 添加include_details=True参数，发送详细系统信息
 
-        # 2. 获取系统状态
-        cpu_usage = get_cpu_usage()
-        memory_usage = get_memory_usage() # 获取内存使用率
-
-        # 3. 更新行为/状态机
-        state_changed = False
-        previous_state = self.state_machine.get_state() if self.state_machine else None
+        # 2. 更新状态机 (状态机会监听事件，或者我们在这里仍需获取状态?)
+        #    当前状态机 update 仍需要传入 cpu_usage 和 memory_usage
+        #    为了最小化改动，暂时保留，但理想状态是状态机也监听事件。
+        cpu_usage = get_cpu_usage() # 暂时保留获取
+        memory_usage = get_memory_usage() # 暂时保留获取
+        # 只有在状态机存在时才获取前一个状态
+        previous_state = self.state_machine.get_state() if self.state_machine else PetState.IDLE 
         if self.state_machine:
-            state_changed = self.state_machine.update(cpu_usage, memory_usage) # 传递内存使用率
-            # 可以在状态改变时触发其他逻辑，例如切换动画
+            state_changed = self.state_machine.update(cpu_usage, memory_usage)
             current_state = self.state_machine.get_state()
-            logger.debug(f"当前状态: {current_state.name} (CPU: {cpu_usage:.1f}%, Mem: {memory_usage:.1f}%)")
+        else:
+            state_changed = False
+            current_state = PetState.IDLE
+
+        # 3. 根据状态更新动画
+        if state_changed:
+            new_animation = None
+            if current_state == PetState.IDLE:
+                new_animation = self.idle_animation
+            elif current_state == PetState.BUSY:
+                new_animation = self.busy_animation
+            elif current_state == PetState.MEMORY_WARNING: # 新增处理
+                new_animation = self.memory_warning_animation
+            # 可以添加更多状态的动画切换
             
-            # --- 动画切换逻辑 ---
-            if state_changed:
-                new_animation = None
-                if current_state == PetState.IDLE:
-                    new_animation = self.idle_animation
-                elif current_state == PetState.BUSY:
-                    new_animation = self.busy_animation
-                elif current_state == PetState.MEMORY_WARNING: # 新增处理
-                    new_animation = self.memory_warning_animation
-                # 可以添加更多状态的动画切换
-                
-                if new_animation and self.current_animation != new_animation:
-                    previous_state_name = previous_state.name if previous_state else "Unknown"
-                    logger.debug(f"状态变化: {previous_state_name} -> {current_state.name}. 切换动画 -> {new_animation}") 
-                    if self.current_animation and self.current_animation.is_playing:
-                        self.current_animation.stop()
-                    self.current_animation = new_animation
-                    self.current_animation.play()
-            # --- 结束动画切换逻辑 ---
+            if new_animation and self.current_animation != new_animation:
+                previous_state_name = previous_state.name if previous_state else "Unknown"
+                logger.debug(f"状态变化: {previous_state_name} -> {current_state.name}. 切换动画 -> {new_animation}") 
+                if self.current_animation and self.current_animation.is_playing:
+                    self.current_animation.stop()
+                self.current_animation = new_animation
+                self.current_animation.play()
 
         # 4. 更新动画 - 只需调用 update() 让动画自己处理帧切换和循环
         if self.current_animation and self.current_animation.is_playing:
@@ -500,29 +554,26 @@ class StatusPet:
     
     def initialize(self):
         """初始化应用"""
-        # logger.critical("%%%% INITIALIZE METHOD CALLED %%%%") # 移除诊断日志
         # 在这里导入Application，避免循环导入问题
         from status.core.app import Application
+        from status.ui.stats_panel import StatsPanel # 导入 StatsPanel
         
-        # 初始化核心系统
-        self.core_app = Application()
-        self.core_app.initialize()
-        
-        # 跳过获取资源管理器、渲染器等组件
-        # 因为目前Application尚未实现get_renderer_manager方法
-        # self.animation_manager = self.core_app.get_renderer_manager()
+        logger.info("Initializing application components...")
         
         # 创建主窗口
         self.create_main_window()
-
+        
         # 创建系统托盘
         self.create_system_tray()
         
+        # 创建 StatsPanel 实例 (但不显示)
+        self.stats_panel = StatsPanel()
+        
+        # 创建角色精灵/动画
+        self.create_character_sprite()
+        
         # 创建状态机
         self.state_machine = PetStateMachine()
-        
-        # 创建角色精灵
-        self.create_character_sprite()
         
         # 显示窗口
         if self.main_window:
@@ -532,6 +583,10 @@ class StatusPet:
         # 更新系统托盘菜单项状态
         if self.system_tray and self.main_window:
             self.system_tray.set_window_visibility(self.main_window.isVisible())
+            
+        # 启动更新定时器 (之前未启动)
+        logger.info("启动更新定时器，间隔: 1000ms (1fps)") # 修改日志消息
+        self._update_timer.start()
     
     def run(self):
         """运行应用"""
