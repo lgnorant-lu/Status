@@ -27,3 +27,16 @@ def get_cpu_usage() -> float:
     except Exception as e:
         logger.error(f"获取CPU使用率时发生错误: {e}")
         return 0.0 # 发生错误时返回0.0，确保函数总有float返回 
+
+def get_memory_usage() -> float:
+    """获取当前内存使用率百分比"""
+    try:
+        memory_info = psutil.virtual_memory()
+        logger.debug(f"内存信息: {memory_info}") # 记录原始信息以供调试
+        return memory_info.percent
+    except Exception as e:
+        logger.error(f"获取内存使用率时出错: {e}")
+        return 0.0 # 发生错误时返回 0
+
+# 可以在这里添加其他系统监控函数
+# 例如：获取磁盘使用率、网络速度等 

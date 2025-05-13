@@ -75,12 +75,29 @@
     *   **Status**: [已完成]
     *   **Description**: 运行单元测试并通过，手动验证托盘菜单切换鼠标穿透功能。
 *   **Task 5.1: 文档与收尾**
-    *   **Status**: [正实现]
+    *   **Status**: [已完成]
     *   **Description**: 更新文档，准备提交 Day 3 的工作。
 
-### Day 4: [计划中]
+### Day 4: 核心稳定与功能扩展 (MVP收尾) [进行中]
 
-*   **Task**: [计划中]
+*   **Task 5.2: 核心循环完整性手动测试**
+    *   **Status**: [计划中]
+    *   **Description**: 手动运行程序，观察不同CPU负载下状态切换、动画播放的稳定性和流畅性。
+*   **Task 5.3: TDD - 实现内存监控数据获取**
+    *   **Status**: [计划中]
+    *   **Description**: 在 `system_monitor.py` 添加 `get_memory_usage()` 并编写单元测试。
+*   **Task 5.4: TDD - 更新状态机以包含内存警告状态**
+    *   **Status**: [计划中]
+    *   **Description**: 在 `pet_state.py` 添加 `MEMORY_WARNING` 状态，更新 `pet_state_machine.py` 及其测试以处理内存阈值。
+*   **Task 5.5: 为内存警告状态创建并集成占位符动画**
+    *   **Status**: [计划中]
+    *   **Description**: 在 `main.py` 中创建新的占位符动画，并集成到状态切换逻辑中。
+*   **Task 5.6: 更新 README.md 文件**
+    *   **Status**: [计划中]
+    *   **Description**: 创建或更新根目录的 `README.md`，包含项目描述、MVP功能、安装和运行指南。
+*   **Task 5.7: 文档更新 (Thread.md, Log.md/VERSION)**
+    *   **Status**: [计划中]
+    *   **Description**: 完成本日任务后，更新 `Thread.md` 状态，并确保 `VERSION` 文件通过commit反映变更。
 
 ## 三、当前开发环境准备状态
 

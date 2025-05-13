@@ -1,6 +1,6 @@
 # Status-Ming - 桌面交互式宠物应用
 
-![新主题预览图待更新]()
+![占位符猫咪预览](status/temp_icon.png) <!-- 临时使用占位符图标 -->
 
 [![GitHub License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
@@ -21,12 +21,21 @@ Status-Ming是一个以猫咪为主题的交互式桌面宠物应用，结合系
 
 ## 功能特点
 
-- **沉浸式监控**：将系统监控数据可视化为生动的桌宠行为
-- **多场景切换**：根据监控重点或系统状态自动切换场景（远期规划）
-- **交互功能**：通过点击角色或场景元素触发操作（基础交互优先）
-- **个性化设置**：自定义角色外观、场景元素和动画效果（远期规划，新主题素材确定后）
-- **丰富细节**：计划采用精美的像素风格视觉效果（新主题素材确定后）
-- **低资源占用**：优化的性能确保应用本身资源占用最小化
+- **实时系统监控**: 
+    - **CPU 使用率**: 猫咪根据 CPU 负载在 `IDLE` (空闲) 和 `BUSY` (忙碌) 状态间切换，并播放对应动画。
+    - **内存使用率**: 当内存使用超过阈值时，猫咪进入 `MEMORY_WARNING` 状态，并播放特殊动画。
+- **交互式桌宠**: 
+    - **拖拽移动**: 可以按住猫咪移动窗口。
+    - **多种拖动模式**: 通过托盘菜单切换 `智能 (Smart)`、`精确 (Precise)`、`平滑 (Smooth)` 拖动模式。
+    - **鼠标穿透**: 通过托盘菜单切换窗口是否响应鼠标点击 (穿透/可交互)。
+- **系统托盘菜单**: 
+    - 快速显示/隐藏桌宠窗口。
+    - 切换拖动模式。
+    - 切换鼠标交互状态。
+    - 安全退出应用。
+- **基础动画**: 目前包含 `IDLE`, `BUSY`, `MEMORY_WARNING` 状态的占位符动画。
+- **低资源占用**: 优化性能，确保应用本身资源占用最小化。
+- **跨平台支持**: 基于 PySide6，理论上支持 Windows, macOS, Linux。
 
 ## 场景预览
 
@@ -36,7 +45,7 @@ Status-Ming是一个以猫咪为主题的交互式桌面宠物应用，结合系
 
 - Python 3.8+
 - 操作系统：Windows 10/11、macOS、Linux
-- 依赖项：PySide6、psutil、GPUtil、SQLite3 (SQLite3为计划使用)
+- 依赖项：PySide6、psutil
 
 ## 安装方法
 
@@ -49,30 +58,26 @@ pip install status-ming
 ### 从源码安装
 
 ```bash
-git clone https://github.com/lgnorant-lu/Status-Ming.git # 假设的仓库路径，请用户确认
+git clone <YOUR_REPOSITORY_URL> # 请替换为实际的仓库 URL
 cd Status-Ming
-pip install -r requirements.txt # 确保 requirements.txt 已更新为 PySide6
-python setup.py install # 若使用setup.py
+pip install -r requirements.txt
 ```
 
 ## 快速开始
 
 ```bash
-# 启动应用 (待定具体命令)
-status-ming
-
-# 或从源码运行
-python -m status.main # 假设的主入口，请用户确认
+# 从项目根目录运行
+python -m status.main
 ```
 
 ## 使用指南
 
-- **左键点击角色**：打开/关闭主控制面板 (远期规划)
-- **右键点击角色**：显示快捷菜单 (MVP包含退出)
-- **拖动角色**：移动整个窗口 (MVP)
-- **点击场景元素**：显示对应资源详情 (远期规划)
-- **特殊功能**：通过菜单启用不同功能 (远期规划)
-- **场景切换**：通过菜单或自动条件触发场景切换 (远期规划)
+- **拖动角色**: 按住鼠标左键拖动猫咪以移动窗口 (需在非鼠标穿透模式下)。
+- **系统托盘菜单 (右键点击任务栏图标)**:
+    - **显示/隐藏**: 控制桌宠窗口的可见性。
+    - **拖动模式**: 选择 `智能`, `精确`, 或 `平滑` 模式。
+    - **鼠标交互**: 切换 `启用交互 (可拖动)` 或 `禁用交互 (鼠标穿透)`。
+    - **退出**: 关闭应用程序。
 
 ## 开发文档
 

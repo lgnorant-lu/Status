@@ -25,7 +25,7 @@ from PySide6.QtCore import QTimer, QPoint, Qt
 from status.ui.main_pet_window import MainPetWindow
 from status.ui.system_tray import SystemTrayManager
 from status.animation.animation import Animation
-from status.monitoring.system_monitor import get_cpu_usage
+from status.monitoring.system_monitor import get_cpu_usage, get_memory_usage
 from status.behavior.pet_state_machine import PetStateMachine
 from status.behavior.pet_state import PetState
 # 我们将在initialize方法中导入Application类，以避免循环导入问题
@@ -56,6 +56,7 @@ class StatusPet:
         self.idle_animation: Optional[Animation] = None  # 待机动画
         self.busy_animation: Optional[Animation] = None  # 忙碌动画
         self.current_animation: Optional[Animation] = None # 当前播放的动画
+        self.memory_warning_animation: Optional[Animation] = None # 内存警告动画
         
         # 状态机
         self.state_machine: Optional[PetStateMachine] = None
@@ -140,19 +141,19 @@ class StatusPet:
 
         try:
             current_flags = self.main_window.windowFlags()
-            is_transparent = current_flags & Qt.WindowTransparentForInput
+            is_transparent = current_flags & Qt.WindowType.WindowTransparentForInput
             
-            new_flags = Qt.WindowFlags()
+            new_flags: Qt.WindowType = current_flags
             message = ""
             
             if is_transparent:
                 # 当前是穿透状态 -> 改为可交互
-                new_flags = current_flags & ~Qt.WindowTransparentForInput
+                new_flags = current_flags & ~Qt.WindowType.WindowTransparentForInput
                 logger.info("桌宠交互已启用 (鼠标可点击)")
                 message = "交互已启用 (可拖动)"
             else:
                 # 当前是可交互状态 -> 改为穿透
-                new_flags = current_flags | Qt.WindowTransparentForInput
+                new_flags = current_flags | Qt.WindowType.WindowTransparentForInput
                 logger.info("桌宠交互已禁用 (鼠标穿透)")
                 message = "交互已禁用 (鼠标穿透)"
             
@@ -302,6 +303,58 @@ class StatusPet:
             logger.error(f"Failed to create busy placeholder image: {str(e)}")
             return None
     
+    def _create_memory_warning_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
+        """创建一个代表'内存警告'状态的占位符图像"""
+        try:
+            logger.debug("Creating memory warning placeholder image for pet")
+
+            image = QImage(width, height, QImage.Format.Format_ARGB32)
+            image.fill(QColor(0, 0, 0, 0))  # 透明背景
+            
+            painter = QPainter(image)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            
+            # --- 修改主体颜色为橙红色 --- 
+            painter.setPen(QPen(QColor(150, 50, 0), 2)) # 深橙色边框
+            painter.setBrush(QBrush(QColor(255, 100, 0, 220))) # 橙红色填充
+            # --- 结束修改 --- 
+            
+            painter.drawEllipse(10, 10, 44, 44) # Head
+            
+            # 耳朵颜色也调整
+            painter.setBrush(QBrush(QColor(220, 80, 0, 220)))
+            painter.drawPolygon([QPoint(15, 15), QPoint(25, 5), QPoint(30, 15)]) # Left Ear
+            painter.drawPolygon([QPoint(49, 15), QPoint(39, 5), QPoint(34, 15)]) # Right Ear
+            
+            # 眼睛 (可以夸张一点，比如用X表示或者瞪大的眼睛)
+            painter.setPen(QPen(QColor(50, 0, 0), 1))
+            painter.setBrush(QBrush(QColor(50, 0, 0)))
+            # 左眼 (瞪大)
+            painter.drawEllipse(18, 23, 12, 12) 
+            # 右眼 (瞪大)
+            painter.drawEllipse(34, 23, 12, 12)
+            # 眼白部分可以稍微亮一点
+            painter.setBrush(QBrush(QColor(255, 200, 200)))
+            painter.drawEllipse(21, 26, 6, 6)
+            painter.drawEllipse(37, 26, 6, 6)
+            
+            # 鼻子 (与idle相同)
+            painter.setBrush(QBrush(QColor(255, 150, 150)))
+            painter.drawEllipse(29, 35, 6, 4)
+
+            # 嘴 (张开表示惊讶/警告)
+            painter.setPen(QPen(QColor(70, 70, 70), 1))
+            painter.setBrush(QBrush(QColor(70,70,70)))
+            painter.drawEllipse(28, 40, 8, 8) # 张开的嘴
+            
+            painter.end()
+            
+            logger.debug(f"Created memory warning placeholder image: {width}x{height}")
+            return image
+        except Exception as e:
+            logger.error(f"Failed to create memory warning placeholder image: {str(e)}")
+            return None
+
     def create_character_sprite(self):
         """创建角色精灵(即桌宠角色)
         
@@ -358,6 +411,21 @@ class StatusPet:
         else:
             logger.error("Failed to create frames for BUSY animation.")
 
+        # --- 创建 MEMORY_WARNING 动画 ---
+        mem_warn_frame_1 = self._create_memory_warning_placeholder_image()
+        # 可以简单地使用单帧动画，或者创建第二帧让它闪烁
+        if mem_warn_frame_1:
+            self.memory_warning_animation = Animation()
+            self.memory_warning_animation.add_frame(mem_warn_frame_1, 500) # 持续500ms
+            # 如果需要闪烁效果，可以再添加一个透明或略微变化的帧
+            # mem_warn_frame_2 = self._create_memory_warning_placeholder_image() 
+            # # ... (对 frame_2 做微小修改) ...
+            # self.memory_warning_animation.add_frame(mem_warn_frame_2, 300)
+            self.memory_warning_animation.set_loop(True)
+            logger.info("Created MEMORY_WARNING animation.")
+        else:
+            logger.error("Failed to create frames for MEMORY_WARNING animation.")
+
         # 设置初始动画
         if self.idle_animation:
             self.current_animation = self.idle_animation
@@ -367,6 +435,7 @@ class StatusPet:
 
     def update(self):
         """主更新循环"""
+        logger.debug("---- UPDATE METHOD CALLED ----") # 添加 DEBUG 日志
         # 如果窗口不可见，无需进行全部更新
         if self.main_window and not self.main_window.isVisible():
             # 只需最小程度的更新以保持应用响应
@@ -384,15 +453,16 @@ class StatusPet:
 
         # 2. 获取系统状态
         cpu_usage = get_cpu_usage()
+        memory_usage = get_memory_usage() # 获取内存使用率
 
         # 3. 更新行为/状态机
         state_changed = False
         previous_state = self.state_machine.get_state() if self.state_machine else None
         if self.state_machine:
-            state_changed = self.state_machine.update(cpu_usage)
+            state_changed = self.state_machine.update(cpu_usage, memory_usage) # 传递内存使用率
             # 可以在状态改变时触发其他逻辑，例如切换动画
             current_state = self.state_machine.get_state()
-            logger.debug(f"当前状态: {current_state.name} (CPU: {cpu_usage:.1f}%)")
+            logger.debug(f"当前状态: {current_state.name} (CPU: {cpu_usage:.1f}%, Mem: {memory_usage:.1f}%)")
             
             # --- 动画切换逻辑 ---
             if state_changed:
@@ -401,50 +471,36 @@ class StatusPet:
                     new_animation = self.idle_animation
                 elif current_state == PetState.BUSY:
                     new_animation = self.busy_animation
+                elif current_state == PetState.MEMORY_WARNING: # 新增处理
+                    new_animation = self.memory_warning_animation
                 # 可以添加更多状态的动画切换
                 
                 if new_animation and self.current_animation != new_animation:
                     previous_state_name = previous_state.name if previous_state else "Unknown"
-                    logger.info(f"状态变化: {previous_state_name} -> {current_state.name}. 切换动画 -> {new_animation}")
+                    logger.debug(f"状态变化: {previous_state_name} -> {current_state.name}. 切换动画 -> {new_animation}") 
                     if self.current_animation and self.current_animation.is_playing:
                         self.current_animation.stop()
                     self.current_animation = new_animation
                     self.current_animation.play()
             # --- 结束动画切换逻辑 ---
 
-        # 4. 更新动画 (应基于状态机状态 - 现在由切换逻辑处理播放/停止)
+        # 4. 更新动画 - 只需调用 update() 让动画自己处理帧切换和循环
         if self.current_animation and self.current_animation.is_playing:
             self.current_animation.update(dt)
-        else:
-            # 如果没有动画在播放（或没有当前动画），可以选择播放默认动画
-            if not self.current_animation and self.idle_animation:
-                self.current_animation = self.idle_animation
-                self.current_animation.play()
-            elif self.current_animation and not self.current_animation.is_playing:
-                self.current_animation.play() # 重新播放停止的动画
 
-        # 5. 更新窗口显示的图像 (暂时仍用 idle_animation)
+        # 5. 更新窗口显示的图像
         if self.main_window and self.current_animation and self.current_animation.is_playing:
             current_frame = self.current_animation.get_current_frame() # 获取 QImage
             if current_frame:
                  self.main_window.set_image(current_frame)
         
+        # 更新托盘可见性状态
         if self.system_tray and self.main_window:
             self.system_tray.set_window_visibility(self.main_window.isVisible())
-        
-        # 启动当前动画
-        if self.current_animation:
-            self.current_animation.play()
-            logger.info(f"Initial animation ({self.current_animation}) started.")
-        else:
-            logger.warning("No current animation set to play during initialization.")
-        
-        # 启动更新循环
-        self._update_timer.start()
-        logger.info("Update loop started.")
     
     def initialize(self):
         """初始化应用"""
+        # logger.critical("%%%% INITIALIZE METHOD CALLED %%%%") # 移除诊断日志
         # 在这里导入Application，避免循环导入问题
         from status.core.app import Application
         
@@ -476,19 +532,6 @@ class StatusPet:
         # 更新系统托盘菜单项状态
         if self.system_tray and self.main_window:
             self.system_tray.set_window_visibility(self.main_window.isVisible())
-        
-        # 启动当前动画
-        if self.current_animation:
-            self.current_animation.play()
-            logger.info(f"Initial animation ({self.current_animation}) started.")
-        else:
-            logger.warning("No current animation set to play during initialization.")
-        
-        # 启动更新循环
-        self._update_timer.start()
-        logger.info("Update loop started.")
-        
-        logger.info("Status Pet initialized successfully. Starting event loop...")
     
     def run(self):
         """运行应用"""
