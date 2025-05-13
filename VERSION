@@ -1,0 +1,15 @@
+Version: 1.1.2
+Date: 2025-05-13
+Author: Ignorant-lu
+Task Reference: TDD for mouse interaction toggle (Task 4.1, 4.2, 4.3)
+Details: 
+  - Implemented `toggle_pet_interaction` in `status/main.py`.
+  - Added menu item in `status/ui/system_tray.py`.
+  - Created tests in `tests/test_app_features.py` for toggling mouse click-through. Tests passed.
+  - Manually verified the feature.
+Files Modified: 
+  - `status/main.py`
+  - `status/ui/system_tray.py`
+  - `tests/test_app_features.py`
+  - `Thread.md`
+  - `Log.md` 

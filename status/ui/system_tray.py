@@ -18,7 +18,7 @@ from typing import Callable, Optional
 
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from PySide6.QtGui import QIcon, QAction, QActionGroup
-from PySide6.QtCore import QPoint
+from PySide6.QtCore import QPoint, Signal
 
 logger = logging.getLogger(__name__)
 
@@ -120,16 +120,20 @@ class SystemTrayManager:
             logger.error(f"创建临时图标失败: {str(e)}")
             return None
     
-    def setup_menu(self, 
-                    show_hide_callback: Optional[Callable] = None, 
-                    exit_callback: Optional[Callable] = None,
-                    drag_mode_callback: Optional[Callable] = None) -> None:
-        """设置托盘菜单
-        
+    def setup_menu(
+        self,
+        show_hide_callback: Callable[[], None],
+        exit_callback: Callable[[], None],
+        drag_mode_callback: Callable[[str], None],
+        toggle_interaction_callback: Callable[[], None]
+    ) -> None:
+        """设置系统托盘菜单
+
         Args:
-            show_hide_callback: 显示/隐藏回调函数
-            exit_callback: 退出回调函数
-            drag_mode_callback: 拖动模式变更回调函数
+            show_hide_callback: 当"显示/隐藏"菜单项被点击时调用的函数
+            exit_callback: 当"退出"菜单项被点击时调用的函数
+            drag_mode_callback: 当拖动模式子菜单项被点击时调用的函数，参数为模式字符串
+            toggle_interaction_callback: 当"切换交互"菜单项被点击时调用的函数
         """
         # 保存回调
         self.on_show_hide = show_hide_callback
@@ -141,8 +145,17 @@ class SystemTrayManager:
         
         # 添加显示/隐藏菜单项
         self.action_show_hide = QAction("隐藏", self.tray_menu)
-        self.action_show_hide.triggered.connect(self._on_show_hide_triggered)
+        self.action_show_hide.triggered.connect(show_hide_callback)
         self.tray_menu.addAction(self.action_show_hide)
+        
+        # 添加切换交互菜单项
+        self.toggle_interaction_action = QAction("允许鼠标穿透", self.tray_menu)
+        self.toggle_interaction_action.setCheckable(True)
+        self.toggle_interaction_action.setChecked(False)
+        self.toggle_interaction_action.triggered.connect(toggle_interaction_callback)
+        self.toggle_interaction_action.triggered.connect(self._update_toggle_interaction_text)
+        self.tray_menu.addAction(self.toggle_interaction_action)
+        self._update_toggle_interaction_text()
         
         # 添加分隔线
         self.tray_menu.addSeparator()
@@ -187,13 +200,20 @@ class SystemTrayManager:
         
         # 添加退出菜单项
         self.action_exit = QAction("退出", self.tray_menu)
-        self.action_exit.triggered.connect(self._on_exit_triggered)
+        self.action_exit.triggered.connect(exit_callback)
         self.tray_menu.addAction(self.action_exit)
         
         # 设置托盘菜单
         self.tray_icon.setContextMenu(self.tray_menu)
         
         logger.debug("系统托盘菜单设置完成")
+    
+    def _update_toggle_interaction_text(self):
+        """根据当前选中状态更新'切换交互'菜单项的文本"""
+        if self.toggle_interaction_action.isChecked():
+            self.toggle_interaction_action.setText("禁止鼠标穿透 (可交互)")
+        else:
+            self.toggle_interaction_action.setText("允许鼠标穿透 (不可交互)")
     
     def set_window_visibility(self, visible: bool) -> None:
         """设置窗口可见性状态，用于更新菜单项文本
