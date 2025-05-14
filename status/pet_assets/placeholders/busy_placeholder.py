@@ -74,7 +74,7 @@ def create_animation() -> Animation:
     if busy_image:
         frames.append(busy_image)
     
-    animation = Animation(name=PetState.BUSY.name.lower(), frames=frames, fps=1)
+    animation = Animation(name="busy", frames=frames, fps=1)
     animation.metadata["placeholder"] = True
     animation.metadata["description"] = "忙碌状态占位符动画"
     animation.set_loop(True)

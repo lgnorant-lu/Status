@@ -252,7 +252,11 @@
       - 添加了标准化的系统事件类型定义
       - 编写了全面的单元测试，覆盖各类事件处理场景
 
-*   **Task 2.3.3: 更新架构文档**
+*   **Task 2.3.3: 重构 main.py 动画创建逻辑**
+    *   **Status**: [已完成]
+    *   **Description**: 将 `main.py` 中的动画创建逻辑迁移到 `PlaceholderFactory` 和各状态占位符模块，降低 `main.py` 复杂度，提升模块化。涉及移除旧的 `_create_*_placeholder_image` 方法，更新 `create_character_sprite` 以使用工厂，并确保文档（`Structure.md`, `Log.md`, 详细日志）同步更新。
+
+*   **Task 2.3.4: 更新架构文档**
     *   **Status**: [已完成]
     *   **Description**:
       - [已完成] 更新架构设计文档及示意图
@@ -271,7 +275,7 @@
       - **[2025-05-26]** 在Design.md中添加了事件系统迁移与兼容层的说明
       - **[2025-05-26]** 所有文档更新均已完成，确保与代码保持一致
 
-*   **Task 2.3.4 (TDD): 实现可插拔的宠物状态占位符系统**
+*   **Task 2.3.5 (TDD): 实现可插拔的宠物状态占位符系统**
     *   **Status**: [已完成]
     *   **Description**:
       - [已完成] 设计和实现单状态单文件的占位符管理架构
@@ -294,6 +298,11 @@
       - **[2025-05-15]** 实现了"开心"状态的占位符动画
       - **[2025-05-15]** 编写了全面的单元测试和集成测试
       - **[2025-05-15]** 集成到主应用程序，支持动态加载状态占位符
+
+*   **Task 2.3.6: 为核心占位符动画编写单元测试**
+    *   **Status**: [已完成]
+    *   **Description**: 为 `idle_placeholder.py`, `busy_placeholder.py`, `clicked_placeholder.py`, `morning_placeholder.py`, 和 `night_placeholder.py` 模块的 `create_animation()` 函数编写单元测试。测试将验证返回类型、帧内容、元数据和循环性。
+    *   **Date**: 2025-05-15
 
 ## 四、当前开发环境准备状态
 
