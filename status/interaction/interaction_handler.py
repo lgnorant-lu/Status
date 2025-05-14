@@ -56,6 +56,7 @@ class InteractionHandler(ComponentBase):
         self.last_click_pos: Optional[QPoint] = None
         self.last_click_time = 0  # 用于检测双击
         self.double_click_interval = 500  # 双击间隔(毫秒)
+        self.drag_zone: Optional[str] = None
         
         # 当前悬停区域ID
         self.current_hover_zone: Optional[str] = None
@@ -112,18 +113,18 @@ class InteractionHandler(ComponentBase):
             
         try:
             # 获取窗口大小
-            window_width = 200
-            window_height = 200
+            window_width = 200  # Default width
+            window_height = 200 # Default height
             
             # 使用安全的方式获取窗口尺寸
             # 首先检查属性是否存在，然后再调用
             # 这样即使parent_window是None或不支持这些方法，也不会出错
-            if hasattr(self.parent_window, 'width') and hasattr(self.parent_window, 'height'):
+            if self.parent_window:
                 try:
                     window_width = self.parent_window.width()
                     window_height = self.parent_window.height()
                 except (AttributeError, TypeError):
-                    self.logger.warning("无法获取窗口尺寸，使用默认值")
+                    self.logger.warning("无法获取父窗口尺寸，使用默认值 (200x200)")
             
             # 创建头部区域（上方圆形）
             self.zone_manager.create_circle_zone(
@@ -248,18 +249,17 @@ class InteractionHandler(ComponentBase):
                         'x': pos[0],
                         'y': pos[1],
                         'button': str(event.button()),
-                        'modifiers': str(event.modifiers()),
+                        'zone_id': zone.zone_id,
+                        'original_qt_event_type': 'press'
                     }
-                    zone.handle_interaction(interaction_type, data)
-                    
-                    # 发布交互事件
+                    # self.tracker.track_interaction(interaction_type, zone.zone_id, data) # Tracker listens to event
                     self._publish_interaction_event(interaction_type, zone.zone_id, data)
                     
                     # 如果支持拖拽，标记开始拖拽
-                    if (not is_right_click and 
-                        InteractionType.DRAG in zone.supported_interactions):
+                    if event.button() == Qt.MouseButton.LeftButton and InteractionType.DRAG in zone.supported_interactions:
                         self.is_dragging = True
                         self.drag_zone = zone.zone_id
+                        self.logger.debug(f"Dragging initiated in zone {zone.zone_id}")
                     
                     # 记录最近一次点击的时间，用于双击检测
                     self.last_click_time = current_time
@@ -278,31 +278,37 @@ class InteractionHandler(ComponentBase):
         Returns:
             bool: 是否已处理事件
         """
-        # 如果正在拖拽，结束拖拽
+        released_on_zone = False
+        was_dragging = self.is_dragging
         if self.is_dragging:
-            # 发送DROP交互
-            zones = self.zone_manager.get_zones_at_point(pos)
-            if zones:
-                for zone in zones:
-                    if InteractionType.DROP in zone.supported_interactions:
-                        data = {
-                            'x': pos[0],
-                            'y': pos[1],
-                            'drag_zone': getattr(self, 'drag_zone', None),
-                            'button': str(event.button()),
-                        }
-                        zone.handle_interaction(InteractionType.DROP, data)
-                        
-                        # 发布交互事件
-                        self._publish_interaction_event(InteractionType.DROP, zone.zone_id, data)
-            
+            self.logger.debug(f"Dragging finished. Was dragging in zone: {self.drag_zone}")
             self.is_dragging = False
-            if hasattr(self, 'drag_zone'):
-                delattr(self, 'drag_zone')
-            
-            return True
+
+        zones = self.zone_manager.get_zones_at_point(pos)
+        if zones:
+            for zone in zones:
+                interaction_type = InteractionType.CLICK 
+                if interaction_type in zone.supported_interactions:
+                    released_on_zone = True
+                    data = {
+                        'x': pos[0],
+                        'y': pos[1],
+                        'button': str(event.button()),
+                        'zone_id': zone.zone_id,
+                        'original_qt_event_type': 'release' 
+                    }
+                    # self.tracker.track_interaction(interaction_type, zone.zone_id, data) # Tracker listens
+                    self._publish_interaction_event(interaction_type, zone.zone_id, data)
         
-        return False
+        if was_dragging and not released_on_zone and not zones: 
+             self.logger.debug("Drag ended by releasing outside any zone. Publishing DROP event.")
+             self._publish_interaction_event(InteractionType.DROP, "no_zone_release", { 
+                'x': pos[0], 'y': pos[1], 'button': str(event.button()), 
+                'original_qt_event_type': 'release'
+            })
+
+        self.last_click_pos = None 
+        return True
     
     def _handle_mouse_move(self, pos: Point, event: QMouseEvent) -> bool:
         """处理鼠标移动事件
@@ -314,74 +320,74 @@ class InteractionHandler(ComponentBase):
         Returns:
             bool: 是否已处理事件
         """
-        # 如果正在拖拽
+        # self.logger.debug(f"Mouse move at {pos}") # DEBUG: 可选的高频日志
+
+        # 如果正在拖拽，则处理拖拽逻辑
         if self.is_dragging and self.last_click_pos:
-            # 计算拖拽偏移
-            delta_x = pos[0] - self.last_click_pos.x()
-            delta_y = pos[1] - self.last_click_pos.y()
+            # 触发拖拽事件
+            # 如果没有定义拖拽区域，则使用默认的"body"区域或特定的拖拽区域ID
+            drag_zone_id = self.drag_zone if self.drag_zone else "body"
             
-            # 更新最后点击位置
-            self.last_click_pos = QPoint(int(pos[0]), int(pos[1]))
-            
-            # 发送DRAG交互事件
-            if hasattr(self, 'drag_zone'):
-                zone = self.zone_manager.get_zone(self.drag_zone)
-                if zone:
-                    data = {
-                        'x': pos[0],
-                        'y': pos[1],
-                        'delta_x': delta_x,
-                        'delta_y': delta_y,
-                    }
-                    zone.handle_interaction(InteractionType.DRAG, data)
-                    
-                    # 发布交互事件
-                    self._publish_interaction_event(InteractionType.DRAG, zone.zone_id, data)
-            
+            data = {
+                'start_x': self.last_click_pos.x(),
+                'start_y': self.last_click_pos.y(),
+                'current_x': pos[0],
+                'current_y': pos[1],
+                'original_qt_event_type': 'move' # 添加原始事件类型
+            }
+            self._publish_interaction_event(InteractionType.DRAG, drag_zone_id, data)
+            # self.logger.debug(f"Dragging in zone {drag_zone_id} from {self.last_click_pos} to {pos}")
             return True
+
+        # 非拖拽状态下的鼠标移动，处理悬停逻辑
+        zones_at_point = self.zone_manager.get_zones_at_point(pos)
+        self.logger.debug(f"_handle_mouse_move: Zones at {pos}: {zones_at_point}") # 日志: 确认区域
+
+        current_zone_ids: Set[str] = {zone.zone_id for zone in zones_at_point}
         
-        # 处理悬停 (HOVER)
-        zones = self.zone_manager.get_zones_at_point(pos)
-        
-        # 停止所有之前的定时器
-        if self.hover_timer.isActive():
-            self.hover_timer.stop()
-        
-        # 如果有区域，激活悬停
-        if zones:
-            # 获取可支持HOVER的区域
-            hover_zones = [zone for zone in zones if InteractionType.HOVER in zone.supported_interactions]
+        # 检查是否进入新的悬停区域
+        newly_hovered_zones = current_zone_ids - (set() if self.current_hover_zone is None else {self.current_hover_zone})
+        # 检查是否离开之前的悬停区域
+        left_hover_zone = self.current_hover_zone is not None and self.current_hover_zone not in current_zone_ids
+
+        if newly_hovered_zones:
+            # 假设我们一次只处理一个主要的悬停区域（例如列表中的第一个）
+            # 或者可以迭代所有 newly_hovered_zones 如果需要支持多区域同时悬停事件
+            new_hover_target_zone_id = list(newly_hovered_zones)[0]
+            self.current_hover_zone = new_hover_target_zone_id
             
-            if hover_zones:
-                # 取第一个支持HOVER的区域
-                hover_zone = hover_zones[0]
-                
-                # 如果不是当前悬停区域，则改变悬停区域
-                if self.current_hover_zone != hover_zone.zone_id:
-                    # 停用当前区域
-                    if self.current_hover_zone:
-                        current_zone = self.zone_manager.get_zone(self.current_hover_zone)
-                        if current_zone:
-                            current_zone.deactivate()
-                    
-                    # 激活新区域
-                    hover_zone.activate()
-                    self.current_hover_zone = hover_zone.zone_id
-                    
-                    # 发送HOVER交互
-                    data = {'x': pos[0], 'y': pos[1]}
-                    hover_zone.handle_interaction(InteractionType.HOVER, data)
-                    
-                    # 发布交互事件
-                    self._publish_interaction_event(InteractionType.HOVER, hover_zone.zone_id, data)
-                
-                return True
+            # 发布 HOVER 事件
+            hover_data = {'x': pos[0], 'y': pos[1], 'original_qt_event_type': 'move'}
+            self._publish_interaction_event(InteractionType.HOVER, self.current_hover_zone, hover_data)
+            self.logger.info(f"_handle_mouse_move: Published HOVER for zone {self.current_hover_zone}") # 日志: 确认HOVER发布
+            
+            # 如果之前有悬停计时器在运行，停止它，因为我们进入了新区域
+            if self.hover_timer.isActive():
+                self.hover_timer.stop()
+            return True # 事件已处理
+
+        elif left_hover_zone:
+            self.logger.debug(f"_handle_mouse_move: Left hover zone {self.current_hover_zone}")
+            # 之前悬停的区域不再悬停，可以启动计时器来最终清除悬停状态，或者发布HOVER_OUT事件
+            # 目前的逻辑是：如果鼠标移出所有区域，由 hover_timer 超时处理（如果它启动了）
+            # 或者如果进入了另一个区域，上面的 newly_hovered_zones 会处理
+            # 此处可能需要一个明确的 HOVER_OUT 事件发布，如果业务逻辑需要
+            # self._publish_interaction_event(InteractionType.HOVER_OUT, self.current_hover_zone, {'x': pos[0], 'y': pos[1]})
+            self.current_hover_zone = None # 清除当前悬停区
+            # 可以考虑启动一个短计时器，如果在短时间内没有进入新区域，则认为悬停结束
+            # self.hover_timer.start(self.hover_timeout) # hover_timer用于更通用的"无活动"检测
+            return True # 事件已处理
         
-        # 如果没有区域，并且有当前悬停区域，启动定时器延迟停用
-        elif self.current_hover_zone:
-            self.hover_timer.start(self.hover_timeout)
-        
-        return False
+        # 如果鼠标在区域外移动，并且之前有悬停区域，现在离开了，也应清除 self.current_hover_zone
+        if not current_zone_ids and self.current_hover_zone is not None:
+            self.logger.debug(f"_handle_mouse_move: Mouse moved outside all zones, clearing previous hover zone {self.current_hover_zone}")
+            self.current_hover_zone = None
+            # 这里也可以考虑启动 hover_timer，如果希望在一段时间无交互后触发特定行为
+
+        # 如果鼠标在区域内移动，但区域未变，则不需要操作
+        # 如果鼠标在区域外移动，且之前也不在任何区域，也不需要操作
+
+        return False # 事件未被拖拽或新的悬停事件处理
     
     def _handle_mouse_double_click(self, pos: Point, event: QMouseEvent) -> bool:
         """处理鼠标双击事件
@@ -393,26 +399,20 @@ class InteractionHandler(ComponentBase):
         Returns:
             bool: 是否已处理事件
         """
-        # 获取双击位置的区域
         zones = self.zone_manager.get_zones_at_point(pos)
-        
-        # 如果双击到了区域
         if zones:
-            # 对每个区域处理双击
             for zone in zones:
                 if InteractionType.DOUBLE_CLICK in zone.supported_interactions:
-                    # 处理交互
                     data = {
                         'x': pos[0],
                         'y': pos[1],
                         'button': str(event.button()),
+                        'zone_id': zone.zone_id,
+                        'original_qt_event_type': 'doubleclick'
                     }
-                    zone.handle_interaction(InteractionType.DOUBLE_CLICK, data)
-                    
-                    # 发布交互事件
+                    # self.tracker.track_interaction(InteractionType.DOUBLE_CLICK, zone.zone_id, data) # Tracker listens
                     self._publish_interaction_event(InteractionType.DOUBLE_CLICK, zone.zone_id, data)
                     return True
-        
         return False
     
     def _on_hover_timeout(self) -> None:

@@ -21,6 +21,7 @@ from status.behavior.pet_state import PetState
 from status.behavior.pet_state_machine import PetStateMachine
 from status.interaction.interaction_zones import InteractionType
 from status.behavior.interaction_tracker import InteractionPattern
+from PySide6.QtCore import QTimer
 
 class InteractionStateAdapter(ComponentBase):
     """交互状态适配器
@@ -40,7 +41,7 @@ class InteractionStateAdapter(ComponentBase):
         super().__init__()
         
         # 组件基本状态
-        self.is_active = True
+        # self.is_active = True # This should be managed by activate/deactivate
         
         # 状态机实例
         self._pet_state_machine = pet_state_machine
@@ -60,16 +61,16 @@ class InteractionStateAdapter(ComponentBase):
             InteractionType.CLICK.name: PetState.CLICKED,
             InteractionType.DOUBLE_CLICK.name: PetState.CLICKED,
             InteractionType.DRAG.name: PetState.DRAGGED,
-            InteractionType.HOVER.name: PetState.PETTED,
+            InteractionType.HOVER.name: PetState.HOVER,
             
-            # 区域特定交互类型 (根据区域ID确定)
-            "head_CLICK": PetState.HEAD_CLICKED,
-            "body_CLICK": PetState.BODY_CLICKED,
-            "tail_CLICK": PetState.TAIL_CLICKED,
+            # 区域特定交互类型 (根据区域ID确定) - 暂时注释掉，因为对应的PetState枚举值已注释
+            # "head_CLICK": PetState.HEAD_CLICKED,
+            # "body_CLICK": PetState.BODY_CLICKED,
+            # "tail_CLICK": PetState.TAIL_CLICKED,
             
-            "head_HOVER": PetState.HEAD_PETTED,
-            "body_HOVER": PetState.BODY_PETTED,
-            "tail_HOVER": PetState.TAIL_PETTED,
+            # "head_HOVER": PetState.HEAD_PETTED,
+            # "body_HOVER": PetState.BODY_PETTED,
+            # "tail_HOVER": PetState.TAIL_PETTED,
         }
         
         # 交互频率到状态的映射
@@ -158,29 +159,59 @@ class InteractionStateAdapter(ComponentBase):
             return
             
         data = event.data
-        if 'interaction_type' not in data or 'zone_id' not in data:
+        # Ensure essential keys are present
+        interaction_type_name = data.get('interaction_type') # This is InteractionType.name (a string)
+        zone_id = data.get('zone_id')
+        original_qt_event_type = data.get('data', {}).get('original_qt_event_type') # Nested in 'data' field of event_data
+
+        if not interaction_type_name or zone_id is None: # zone_id can be things like "no_zone_release"
+            self.logger.warning(f"_on_user_interaction: Missing interaction_type ({interaction_type_name}) or zone_id ({zone_id}) in event data: {data}")
             return
-            
-        # 获取交互类型和区域ID
-        interaction_type = data['interaction_type']
-        zone_id = data['zone_id']
         
-        # 记录最后交互时间
-        self.last_interaction_time = time.time()
-        
-        # 获取对应的状态
-        pet_state = self._get_state_from_interaction(interaction_type, zone_id)
+        self.logger.debug(f"_on_user_interaction: Received interaction_type='{interaction_type_name}', zone_id='{zone_id}', qt_event='{original_qt_event_type}'") # 日志: 收到交互
+
+        # Handle immediate clearing of DRAGGED state on any release event
+        if original_qt_event_type == 'release' and self.current_interaction_state == PetState.DRAGGED:
+            self.logger.debug(f"Release event detected while DRAGGED. Clearing DRAGGED state immediately.")
+            self.clear_interaction_state()
+            # We might still want to process this release as a click if it landed on a zone,
+            # so we don't necessarily return here. The pet_state below might become CLICKED.
+            # If pet_state becomes None (e.g. for 'no_zone_release'), the state will be cleared.
+
+        # Get the PetState corresponding to this interaction
+        pet_state = self._get_state_from_interaction(interaction_type_name, zone_id)
         
         if pet_state is not None:
             # 更新当前交互状态
             self.current_interaction_state = pet_state
+            self.logger.debug(f"_on_user_interaction: Mapped to PetState: {pet_state.name}") # 日志: 状态映射结果
             
             # 更新状态机
             if self._pet_state_machine is not None:
                 self._pet_state_machine.set_interaction_state(pet_state)
                 self.logger.debug(f"设置交互状态: {pet_state.name}")
+
+                # 针对CLICKED状态使用短超时
+                if pet_state == PetState.CLICKED:
+                    self.last_interaction_time = time.time() # 记录交互时间
+                    QTimer.singleShot(500, self._clear_clicked_state_if_current) # 500ms后尝试清除
+                    self.logger.debug(f"PetState.CLICKED 设置了 500ms 短超时清除")
+                elif pet_state == PetState.PETTED: # 新增对 PETTED 状态的短超时
+                    self.last_interaction_time = time.time()
+                    QTimer.singleShot(1500, self._clear_petted_state_if_current) # 1500ms后尝试清除
+                    self.logger.debug(f"PetState.PETTED 设置了 1500ms 短超时清除")
+                elif pet_state == PetState.HOVER: # 新增对 HOVER 状态的短超时
+                    self.last_interaction_time = time.time()
+                    QTimer.singleShot(800, self._clear_hover_state_if_current) # 800ms后尝试清除
+                    self.logger.debug(f"PetState.HOVER 设置了 800ms 短超时清除")
+                else:
+                    # 其他交互状态，使用通用超时逻辑
+                    self.last_interaction_time = time.time()
             else:
                 self.logger.warning("未找到状态机实例，无法设置交互状态")
+        else:
+            # 如果没有有效状态映射，也更新交互时间以避免旧状态因不活动而意外超时
+            self.last_interaction_time = time.time()
     
     def _on_state_changed(self, event: Any) -> None:
         """处理状态变化事件
@@ -207,14 +238,17 @@ class InteractionStateAdapter(ComponentBase):
             Optional[PetState]: 对应的宠物状态，如果没有匹配项则返回None
         """
         # 首先尝试获取区域特定的交互状态
-        zone_specific_key = f"{zone_id}_{interaction_type}"
-        if zone_specific_key in self.interaction_to_state:
-            return self.interaction_to_state[zone_specific_key]
+        # zone_specific_key = f"{zone_id}_{interaction_type}" # 区域特定交互暂时不启用
+        # if zone_specific_key in self.interaction_to_state:
+        #     return self.interaction_to_state[zone_specific_key]
         
         # 如果没有区域特定的映射，尝试使用通用交互类型
         if interaction_type in self.interaction_to_state:
-            return self.interaction_to_state[interaction_type]
+            mapped_state = self.interaction_to_state[interaction_type]
+            self.logger.debug(f"_get_state_from_interaction: Mapped '{interaction_type}' (zone: {zone_id}) to {mapped_state.name}") # 日志: 确认映射
+            return mapped_state
         
+        self.logger.debug(f"_get_state_from_interaction: No mapping found for '{interaction_type}' (zone: {zone_id})") # 日志: 未找到映射
         return None
     
     def get_state_for_pattern(self, pattern: InteractionPattern) -> Optional[PetState]:
@@ -231,12 +265,33 @@ class InteractionStateAdapter(ComponentBase):
     def clear_interaction_state(self) -> None:
         """清除当前交互状态"""
         if self.current_interaction_state is not None:
+            cleared_state = self.current_interaction_state.name
             self.current_interaction_state = None
             
             # 更新状态机
             if self._pet_state_machine is not None:
                 self._pet_state_machine.set_interaction_state(None)
-                self.logger.debug("已清除交互状态")
+                self.logger.debug(f"已清除交互状态: {cleared_state}")
+
+    def _clear_clicked_state_if_current(self) -> None:
+        """如果当前状态仍是CLICKED，则清除它 (用于QTimer回调)"""
+        if self.current_interaction_state == PetState.CLICKED:
+            self.logger.debug(f"短超时触发: 清除 {PetState.CLICKED.name} 状态")
+            self.clear_interaction_state()
+        else:
+            self.logger.debug(f"短超时触发: 当前状态已变为 {self.current_interaction_state.name if self.current_interaction_state else 'None'}，不清除CLICKED")
+    
+    def _clear_petted_state_if_current(self) -> None:
+        """如果当前状态是PETTED，则清除"""
+        if self.current_interaction_state == PetState.PETTED:
+            self.logger.debug("PETTED状态超时，清除")
+            self.clear_interaction_state()
+            
+    def _clear_hover_state_if_current(self) -> None:
+        """如果当前状态是HOVER，则清除"""
+        if self.current_interaction_state == PetState.HOVER:
+            self.logger.debug("HOVER状态超时，清除")
+            self.clear_interaction_state()
     
     def set_interaction_timeout(self, timeout: float) -> None:
         """设置交互状态超时时间

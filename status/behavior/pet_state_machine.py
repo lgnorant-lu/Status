@@ -15,9 +15,10 @@ Changed history:
 """
 
 import logging
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union, Deque, Any
 from enum import Enum
 import time
+from collections import deque
 
 from status.behavior.pet_state import PetState
 from status.core.event_system import EventSystem, EventType, Event
@@ -41,7 +42,8 @@ class PetStateMachine:
                  cpu_heavy_threshold: float = 60.0, 
                  cpu_very_heavy_threshold: float = 80.0,
                  memory_warning_threshold: float = 70.0,
-                 memory_critical_threshold: float = 90.0):
+                 memory_critical_threshold: float = 90.0,
+                 max_history_size: int = 50):
         """初始化状态机
 
         Args:
@@ -51,6 +53,7 @@ class PetStateMachine:
             cpu_very_heavy_threshold (float): CPU极重负载阈值，高于此值进入VERY_HEAVY_LOAD状态。
             memory_warning_threshold (float): 内存警告阈值，高于此值进入MEMORY_WARNING状态。
             memory_critical_threshold (float): 内存临界阈值，高于此值进入MEMORY_CRITICAL状态。
+            max_history_size (int): 历史记录最大条目数，默认50。
         """
         # 初始化logger
         self.logger = logging.getLogger("Status.Behavior.PetStateMachine")
@@ -144,7 +147,7 @@ class PetStateMachine:
             PetState.SAD: 130,              # 难过状态
             PetState.ANGRY: 130,            # 生气状态
             PetState.PLAY: 130,             # 玩耍状态
-            PetState.SLEEP: 40              # 睡眠状态
+            # PetState.SLEEP: 40              # 睡眠状态 (已移出交互类别，待重新设计)
         }
         
         # 状态类别映射
@@ -193,9 +196,13 @@ class PetStateMachine:
             PetState.HAPPY: StateCategory.INTERACTION,
             PetState.SAD: StateCategory.INTERACTION,
             PetState.ANGRY: StateCategory.INTERACTION,
-            PetState.SLEEP: StateCategory.INTERACTION,
+            # PetState.SLEEP: StateCategory.INTERACTION, # 已移出交互类别，待重新设计
             PetState.PLAY: StateCategory.INTERACTION
         }
+        
+        # 添加状态历史记录
+        self.max_history_size = max_history_size
+        self.state_history: Deque[Dict[str, Any]] = deque(maxlen=max_history_size)
         
         logger.info(f"状态机初始化完成。当前系统状态: {self.active_states[StateCategory.SYSTEM].name}")
 
@@ -235,7 +242,7 @@ class PetStateMachine:
             
         # 根据优先级选择最终状态
         new_state = self._select_highest_priority_state(system_states)
-        
+
         # 检查状态是否真的改变
         state_changed = new_state != previous_state
         if state_changed:
@@ -448,19 +455,17 @@ class PetStateMachine:
         """重新计算当前活动状态
         
         根据各类别状态的优先级重新计算当前应该显示的状态
-        优先级：交互 > 系统 > 时间 > 默认
+        优先级：交互 > 特殊日期 > 系统 > 时间 > 默认
         """
         previous_state = self.active_states[StateCategory.SYSTEM]
         
         # 按优先级检查各类别状态
         if self.active_states[StateCategory.INTERACTION] is not None:
             self.active_states[StateCategory.SYSTEM] = self.active_states[StateCategory.INTERACTION]
-        elif self.active_states[StateCategory.SYSTEM] is not None:
-            self.active_states[StateCategory.SYSTEM] = self.active_states[StateCategory.SYSTEM]
-        elif self.active_states[StateCategory.TIME] is not None:
-            self.active_states[StateCategory.SYSTEM] = self.active_states[StateCategory.TIME]
         elif self.active_states[StateCategory.SPECIAL_DATE] is not None:
             self.active_states[StateCategory.SYSTEM] = self.active_states[StateCategory.SPECIAL_DATE]
+        elif self.active_states[StateCategory.TIME] is not None:
+            self.active_states[StateCategory.SYSTEM] = self.active_states[StateCategory.TIME]
         else:
             self.active_states[StateCategory.SYSTEM] = PetState.IDLE
             
@@ -497,14 +502,47 @@ class PetStateMachine:
             current_state: 当前状态
         """
         if self.event_system:
-            event_data = {
-                "previous_state": previous_state.value if previous_state else None,
-                "current_state": current_state.value if current_state else None,
-                "timestamp": time.time()
-            }
-            self.event_system.dispatch_event(
-                EventType.STATE_CHANGED,  # 使用状态变化事件类型
-                sender=self,
-                data=event_data
-            )
-            self.logger.debug(f"已发布状态变化事件: {previous_state} -> {current_state}") 
+            try:
+                # 准备事件数据
+                event_data = {
+                    "previous_state": previous_state.value if previous_state else None,
+                    "current_state": current_state.value if current_state else None,
+                    "previous_state_name": previous_state.name if previous_state else None,
+                    "current_state_name": current_state.name if current_state else None,
+                    "timestamp": time.time()
+                }
+                
+                # 记录到状态历史
+                history_entry = event_data.copy()
+                history_entry["datetime"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(history_entry["timestamp"]))
+                self.state_history.append(history_entry)
+                
+                # 发布状态变更事件
+                self.event_system.dispatch_event(
+                    EventType.STATE_CHANGED,  # 使用状态变化事件类型
+                    sender=self,
+                    data=event_data
+                )
+                self.logger.debug(f"已发布状态变化事件: {previous_state.name if previous_state else 'None'} -> {current_state.name if current_state else 'None'}")
+            except Exception as e:
+                self.logger.error(f"发布状态变化事件时出错: {e}")
+                # 不抛出异常，避免影响状态机核心逻辑
+
+    def get_state_history(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """获取状态变化历史
+        
+        Args:
+            limit: 返回的历史记录数量限制，默认为None表示返回全部
+            
+        Returns:
+            List[Dict[str, Any]]: 状态变化历史记录列表，按时间从新到旧排序
+        """
+        if limit is None or limit >= len(self.state_history):
+            return list(self.state_history)
+        else:
+            return list(self.state_history)[:limit]
+
+    def clear_state_history(self) -> None:
+        """清空状态变化历史记录"""
+        self.state_history.clear()
+        self.logger.debug("状态历史记录已清空") 

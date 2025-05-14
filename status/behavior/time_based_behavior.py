@@ -58,7 +58,8 @@ class SpecialDate:
     
     def __init__(self, name: str, month: int, day: int, description: str = "", 
                  is_lunar: bool = False, trigger_days_before: int = 0,
-                 lunar_leap_month: bool = False, date_type: Optional['SpecialDate.Type'] = None):
+                 lunar_leap_month: bool = False, date_type: Optional['SpecialDate.Type'] = None,
+                 type: str = ""):
         """初始化特殊日期
         
         Args:
@@ -70,6 +71,7 @@ class SpecialDate:
             trigger_days_before: 提前多少天触发提醒
             lunar_leap_month: 是否是农历闰月
             date_type: 日期类型，如果为None则根据is_lunar自动判断
+            type: 日期字符串类型(festival, solar_term等)，用于扩展兼容
         """
         self.name = name
         self.month = month
@@ -78,6 +80,7 @@ class SpecialDate:
         self.is_lunar = is_lunar
         self.trigger_days_before = trigger_days_before
         self.lunar_leap_month = lunar_leap_month
+        self.type = type  # 新增字符串类型字段
         
         # 如果未指定类型，则根据是否是农历自动判断
         if date_type is None:
@@ -91,18 +94,15 @@ class SpecialDate:
     def __str__(self) -> str:
         """字符串表示"""
         type_str = ""
-        if self.date_type == SpecialDate.Type.SOLAR_FESTIVAL:
-            type_str = "公历节日"
-        elif self.date_type == SpecialDate.Type.LUNAR_FESTIVAL:
-            type_str = "农历节日"
-        elif self.date_type == SpecialDate.Type.SOLAR_TERM:
+        if self.type == "festival":
+            type_str = "节日"
+        elif self.type == "solar_term":
             type_str = "节气"
         else:
             type_str = "自定义日期"
             
         date_type = "农历" if self.is_lunar else "公历"
-        leap_info = "(闰月)" if self.is_lunar and self.lunar_leap_month else ""
-        return f"{self.name}: {type_str} - {date_type}{self.month}月{self.day}日{leap_info} - {self.description}"
+        return f"{self.name}: {type_str} - {date_type}{self.month}月{self.day}日 - {self.description}"
     
     @staticmethod
     def create_solar_festival(name: str, month: int, day: int, 
@@ -125,8 +125,7 @@ class SpecialDate:
             day=day, 
             description=description, 
             is_lunar=False, 
-            trigger_days_before=trigger_days_before,
-            date_type=SpecialDate.Type.SOLAR_FESTIVAL
+            type="festival"
         )
     
     @staticmethod
@@ -152,9 +151,7 @@ class SpecialDate:
             day=day, 
             description=description, 
             is_lunar=True, 
-            trigger_days_before=trigger_days_before,
-            lunar_leap_month=lunar_leap_month,
-            date_type=SpecialDate.Type.LUNAR_FESTIVAL
+            type="festival"
         )
     
     @staticmethod
@@ -178,8 +175,7 @@ class SpecialDate:
             day=day, 
             description=description, 
             is_lunar=False, 
-            trigger_days_before=trigger_days_before,
-            date_type=SpecialDate.Type.SOLAR_TERM
+            type="solar_term"
         )
 
 

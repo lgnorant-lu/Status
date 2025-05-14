@@ -1,0 +1,58 @@
+{
+    "version": "1.0",
+    "timestamp": "2025-05-14T16:21:09.694475",
+    "modules": {
+        "sample_app": {
+            "config": {
+                "core": {
+                    "version": "1.0",
+                    "debug": false
+                },
+                "ui": {
+                    "theme": "default",
+                    "color_scheme": "light"
+                },
+                "data": {
+                    "storage_path": "./data",
+                    "max_cache_size": 1024
+                }
+            },
+            "user_data": {
+                "item_1": {
+                    "timestamp": "2025-05-14T16:27:48.377568",
+                    "value": 42
+                },
+                "item_2": {
+                    "timestamp": "2025-05-14T16:27:48.878931",
+                    "value": 22
+                },
+                "item_3": {
+                    "timestamp": "2025-05-14T16:27:49.379638",
+                    "value": 50
+                },
+                "item_4": {
+                    "timestamp": "2025-05-14T16:27:49.881180",
+                    "value": 59
+                },
+                "item_5": {
+                    "timestamp": "2025-05-14T16:27:50.382233",
+                    "value": 15
+                }
+            },
+            "timestamp": "2025-05-14T16:27:50.387238"
+        },
+        "test": {
+            "version": "1.0",
+            "data": {
+                "name": "测试状态",
+                "value": 42,
+                "items": [
+                    "a",
+                    "b",
+                    "c"
+                ]
+            }
+        }
+    },
+    "checksum": "e8b8fdc22c5d4cbb329649b39709b00e"
+}

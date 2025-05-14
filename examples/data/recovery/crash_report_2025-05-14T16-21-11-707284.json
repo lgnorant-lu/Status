@@ -1,0 +1,11 @@
+{
+    "timestamp": "2025-05-14T16-21-11-707284",
+    "recovery_mode": "normal",
+    "error": {
+        "type": "ValueError",
+        "message": "invalid literal for int() with base 10: 'not_a_number'",
+        "traceback": "Traceback (most recent call last):\n  File \"D:\\狗py\\pythonProject\\Sm_intes\\Status\\examples\\recovery_example.py\", line 297, in <module>\n    demonstrate_recovery_features()\n  File \"D:\\狗py\\pythonProject\\Sm_intes\\Status\\examples\\recovery_example.py\", line 293, in demonstrate_recovery_features\n    app.start()\n  File \"D:\\狗py\\pythonProject\\Sm_intes\\Status\\examples\\recovery_example.py\", line 181, in start\n    self._process_cycle(count)\n  File \"D:\\狗py\\pythonProject\\Sm_intes\\Status\\examples\\recovery_example.py\", line 223, in _process_cycle\n    int(\"not_a_number\")\nValueError: invalid literal for int() with base 10: 'not_a_number'\n",
+        "module": "unknown",
+        "time": "2025-05-14T16:21:11.707284"
+    }
+}

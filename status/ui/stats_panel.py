@@ -295,7 +295,22 @@ class StatsPanel(QWidget):
 
     def update_data(self, data: Dict[str, Any]):
         """用新数据更新面板显示。"""
-        logger.debug(f"StatsPanel 更新数据: {data}") # 修改日志级别以便查看数据
+        # 减少日志输出频率，仅在调试需要时才输出完整数据
+        logger.debug(f"StatsPanel 更新数据，键: {list(data.keys())}")
+        
+        # 检查数据是否有变化，避免不必要的更新
+        current_data = getattr(self, '_current_data', {})
+        
+        # 仅比较基本数据，不考虑详细信息以减少计算量
+        basic_changed = False
+        if ('cpu_usage' in data and data.get('cpu_usage') != current_data.get('cpu_usage', None)) or \
+           ('memory_usage' in data and data.get('memory_usage') != current_data.get('memory_usage', None)):
+            basic_changed = True
+        
+        # 更新缓存数据
+        if not hasattr(self, '_current_data'):
+            self._current_data = {}
+        self._current_data.update(data)
         
         # 基本信息更新
         cpu_usage = data.get('cpu_usage', None)
@@ -329,171 +344,196 @@ class StatsPanel(QWidget):
         else:
             self.memory_label.setText("Mem: --%")
         
-        # 如果展开状态，更新详细信息
+        # 仅在面板展开状态下才更新详细信息，节省资源
         if self.is_expanded:
-            # 更新CPU核心信息
-            cpu_cores = data.get('cpu_cores_usage', [])
-            if cpu_cores and self.cpu_cores_label is not None:
-                cores_text = "CPU 核心: "
-                for i, core in enumerate(cpu_cores):
-                    if i > 0:
-                        cores_text += " | "
-                    
-                    # 根据核心使用率设置不同颜色
-                    if core < 30:
-                        color_code = "80D8FF"  # 低负载 - 蓝色
-                    elif core < 70:
-                        color_code = "FFCC80"  # 中负载 - 橙色
-                    else:
-                        color_code = "FF8080"  # 高负载 - 红色
-                    
-                    cores_text += f"<span style='color: #{color_code}'>#{i}: {core:.1f}%</span>"
-                
-                self.cpu_cores_label.setText(cores_text)
-                self.cpu_cores_label.setTextFormat(Qt.TextFormat.RichText)
-            
-            # 更新内存详情
-            memory_details = data.get('memory_details', {})
-            if memory_details and self.memory_details_label is not None:
-                total_mb = memory_details.get('total_mb', 0)
-                used_mb = memory_details.get('used_mb', 0)
-                free_mb = memory_details.get('free_mb', 0)
-                percent = memory_details.get('percent', 0)
-                
-                # 根据内存使用率设置颜色
-                if percent < 50:
-                    color_code = "80FFD8"  # 低使用率 - 绿色
-                elif percent < 80:
-                    color_code = "FFCC80"  # 中使用率 - 橙色
-                else:
-                    color_code = "FF8080"  # 高使用率 - 红色
-                
-                memory_text = f"内存: <span style='color: #{color_code}'>{used_mb} MB</span> / {total_mb} MB"
-                memory_text += f"<br>({percent:.1f}% 使用, {free_mb} MB 空闲)"
-                
-                self.memory_details_label.setText(memory_text)
-                self.memory_details_label.setTextFormat(Qt.TextFormat.RichText)
-            
-            # 更新磁盘信息
-            disk_info = data.get('disk_usage_root', {})
-            if disk_info and self.disk_label is not None:
-                used_gb = disk_info.get('used_gb', 0)
-                total_gb = disk_info.get('total_gb', 0)
-                free_gb = disk_info.get('free_gb', 0)
-                percent = disk_info.get('percent', 0)
-                
-                # 根据使用率设置颜色
-                if percent < 50:
-                    color_code = "FFD080"  # 低使用率
-                elif percent < 80:
-                    color_code = "FFCC80"  # 中使用率
-                else:
-                    color_code = "FF8080"  # 高使用率
-                
-                disk_text = f"磁盘: <span style='color: #{color_code}'>{used_gb} GB</span> / {total_gb} GB"
-                disk_text += f"<br>({percent:.1f}% 使用, {free_gb} GB 空闲)"
-                
-                self.disk_label.setText(disk_text)
-                self.disk_label.setTextFormat(Qt.TextFormat.RichText)
-            
-            # 更新网络信息
-            network_info = data.get('network_info', {})
-            if network_info and self.network_label is not None:
-                sent_mb = network_info.get('sent_mb', 0)
-                recv_mb = network_info.get('recv_mb', 0)
-                
-                network_text = f"网络: <span style='color: #D0A0FF'>↑{sent_mb} MB</span> 发送"
-                network_text += f"<br><span style='color: #A0D0FF'>↓{recv_mb} MB</span> 接收"
-                
-                self.network_label.setText(network_text)
-                self.network_label.setTextFormat(Qt.TextFormat.RichText)
-                
-            # 新增: 更新磁盘IO信息
-            disk_io = data.get('disk_io_speed', {})
-            if disk_io and self.disk_io_label is not None:
-                read_kbps = disk_io.get('read_mbps', 0) * 1024  # convert MB/s to KB/s
-                write_kbps = disk_io.get('write_mbps', 0) * 1024  # convert MB/s to KB/s
-                
-                # 转换为合适的单位和文本格式
-                read_text = f"{read_kbps:.1f} KB/s" if read_kbps < 1024 else f"{read_kbps / 1024:.1f} MB/s"
-                write_text = f"{write_kbps:.1f} KB/s" if write_kbps < 1024 else f"{write_kbps / 1024:.1f} MB/s"
-                
-                disk_io_text = f"磁盘IO: <span style='color: #80D0A0'>↓{read_text}</span> 读取"
-                disk_io_text += f"<br><span style='color: #D0A080'>↑{write_text}</span> 写入"
-                
-                self.disk_io_label.setText(disk_io_text)
-                self.disk_io_label.setTextFormat(Qt.TextFormat.RichText)
-                
-            # 新增: 更新网络速度信息
-            network_speed = data.get('network_speed', {})
-            if network_speed and self.network_speed_label is not None:
-                upload_kbps = network_speed.get('upload_kbps', 0)
-                download_kbps = network_speed.get('download_kbps', 0)
-                
-                # 转换为合适的单位和文本格式
-                upload_text = f"{upload_kbps:.1f} KB/s" if upload_kbps < 1024 else f"{upload_kbps / 1024:.1f} MB/s"
-                download_text = f"{download_kbps:.1f} KB/s" if download_kbps < 1024 else f"{download_kbps / 1024:.1f} MB/s"
-                
-                network_speed_text = f"网络速度: <span style='color: #D0A0FF'>↑{upload_text}</span> 上传"
-                network_speed_text += f"<br><span style='color: #A0D0FF'>↓{download_text}</span> 下载"
-                
-                self.network_speed_label.setText(network_speed_text)
-                self.network_speed_label.setTextFormat(Qt.TextFormat.RichText)
-                
-            # 新增: 更新GPU信息
-            gpu_info = data.get('gpu_info', {})
-            if gpu_info and self.gpu_label is not None and not gpu_info.get('error'):
-                gpu_name = gpu_info.get('name', 'Unknown')
-                gpu_load = gpu_info.get('load', 0)
-                gpu_memory_total = gpu_info.get('memoryTotal', 0)
-                gpu_memory_used = gpu_info.get('memoryUsed', 0)
-                gpu_memory_percent = gpu_info.get('memoryUtil', 0)
-                gpu_temp = gpu_info.get('temperature', 0)
-                
-                # 根据GPU负载设置颜色
-                if gpu_load < 30:
-                    load_color = "80D8FF"  # 低负载
-                elif gpu_load < 70:
-                    load_color = "FFCC80"  # 中负载
-                else:
-                    load_color = "FF8080"  # 高负载
-                
-                # 根据GPU内存使用率设置颜色
-                if gpu_memory_percent < 30:
-                    memory_color = "80FFD8"  # 低使用率
-                elif gpu_memory_percent < 70:
-                    memory_color = "FFCC80"  # 中使用率
-                else:
-                    memory_color = "FF8080"  # 高使用率
-                
-                # 根据GPU温度设置颜色
-                if gpu_temp < 60:
-                    temp_color = "80FFD8"  # 低温
-                elif gpu_temp < 80:
-                    temp_color = "FFCC80"  # 中温
-                else:
-                    temp_color = "FF8080"  # 高温
-                
-                # 生成GPU信息文本
-                gpu_text = f"GPU: {gpu_name}<br>"
-                gpu_text += f"负载: <span style='color: #{load_color}'>{gpu_load:.1f}%</span>"
-                
-                if gpu_memory_total > 0:
-                    gpu_text += f"<br>显存: <span style='color: #{memory_color}'>{gpu_memory_used} MB</span> / {gpu_memory_total} MB ({gpu_memory_percent:.1f}%)"
-                
-                if gpu_temp > 0:
-                    gpu_text += f"<br>温度: <span style='color: #{temp_color}'>{gpu_temp}°C</span>"
-                
-                self.gpu_label.setText(gpu_text)
-                self.gpu_label.setTextFormat(Qt.TextFormat.RichText)
-                self.gpu_label.setVisible(True)
-            else:
-                # 如果没有GPU信息，隐藏该标签
-                if self.gpu_label is not None:
-                    self.gpu_label.setVisible(False)
+            self._update_detailed_info(data)
+
+    def _update_detailed_info(self, data: Dict[str, Any]):
+        """更新详细信息区域
         
-        # 调整大小，但要确保不频繁调整（可能导致闪烁）
-        if data.get('cpu_cores_usage') or data.get('memory_details') or data.get('disk_usage_root') or data.get('network_info'):
+        将详细信息更新逻辑独立出来，减少主方法的复杂度
+        
+        Args:
+            data: 统计数据字典
+        """
+        # 更新CPU核心信息
+        cpu_cores = data.get('cpu_cores_usage', [])
+        if cpu_cores and self.cpu_cores_label is not None:
+            cores_text = "CPU 核心: "
+            for i, core in enumerate(cpu_cores):
+                if i > 0:
+                    cores_text += " | "
+                
+                # 根据核心使用率设置不同颜色
+                if core < 30:
+                    color_code = "80D8FF"  # 低负载 - 蓝色
+                elif core < 70:
+                    color_code = "FFCC80"  # 中负载 - 橙色
+                else:
+                    color_code = "FF8080"  # 高负载 - 红色
+                
+                cores_text += f"<span style='color: #{color_code}'>#{i}: {core:.1f}%</span>"
+            
+            self.cpu_cores_label.setText(cores_text)
+            self.cpu_cores_label.setTextFormat(Qt.TextFormat.RichText)
+        
+        # 更新内存详情
+        memory_details = data.get('memory_details', {})
+        if memory_details and self.memory_details_label is not None:
+            total_mb = memory_details.get('total_mb', 0)
+            used_mb = memory_details.get('used_mb', 0)
+            free_mb = memory_details.get('free_mb', 0)
+            percent = memory_details.get('percent', 0)
+            
+            # 根据内存使用率设置颜色
+            if percent < 50:
+                color_code = "80FFD8"  # 低使用率 - 绿色
+            elif percent < 80:
+                color_code = "FFCC80"  # 中使用率 - 橙色
+            else:
+                color_code = "FF8080"  # 高使用率 - 红色
+            
+            memory_text = f"内存: <span style='color: #{color_code}'>{used_mb} MB</span> / {total_mb} MB"
+            memory_text += f"<br>({percent:.1f}% 使用, {free_mb} MB 空闲)"
+            
+            self.memory_details_label.setText(memory_text)
+            self.memory_details_label.setTextFormat(Qt.TextFormat.RichText)
+        
+        # 更新磁盘信息
+        disk_info = data.get('disk_usage_root', {})
+        if disk_info and self.disk_label is not None:
+            used_gb = disk_info.get('used_gb', 0)
+            total_gb = disk_info.get('total_gb', 0)
+            free_gb = disk_info.get('free_gb', 0)
+            percent = disk_info.get('percent', 0)
+            
+            # 根据使用率设置颜色
+            if percent < 50:
+                color_code = "FFD080"  # 低使用率
+            elif percent < 80:
+                color_code = "FFCC80"  # 中使用率
+            else:
+                color_code = "FF8080"  # 高使用率
+            
+            disk_text = f"磁盘: <span style='color: #{color_code}'>{used_gb} GB</span> / {total_gb} GB"
+            disk_text += f"<br>({percent:.1f}% 使用, {free_gb} GB 空闲)"
+            
+            self.disk_label.setText(disk_text)
+            self.disk_label.setTextFormat(Qt.TextFormat.RichText)
+        
+        # 更新网络信息
+        network_info = data.get('network_info', {})
+        if network_info and self.network_label is not None:
+            sent_mb = network_info.get('sent_mb', 0)
+            recv_mb = network_info.get('recv_mb', 0)
+            
+            network_text = f"网络: <span style='color: #D0A0FF'>↑{sent_mb} MB</span> 发送"
+            network_text += f"<br><span style='color: #A0D0FF'>↓{recv_mb} MB</span> 接收"
+            
+            self.network_label.setText(network_text)
+            self.network_label.setTextFormat(Qt.TextFormat.RichText)
+            
+        # 新增: 更新磁盘IO信息
+        disk_io = data.get('disk_io_speed', {})
+        if disk_io and self.disk_io_label is not None:
+            read_kbps = disk_io.get('read_mbps', 0) * 1024  # convert MB/s to KB/s
+            write_kbps = disk_io.get('write_mbps', 0) * 1024  # convert MB/s to KB/s
+            
+            # 转换为合适的单位和文本格式
+            read_text = f"{read_kbps:.1f} KB/s" if read_kbps < 1024 else f"{read_kbps / 1024:.1f} MB/s"
+            write_text = f"{write_kbps:.1f} KB/s" if write_kbps < 1024 else f"{write_kbps / 1024:.1f} MB/s"
+            
+            disk_io_text = f"磁盘IO: <span style='color: #80D0A0'>↓{read_text}</span> 读取"
+            disk_io_text += f"<br><span style='color: #D0A080'>↑{write_text}</span> 写入"
+            
+            self.disk_io_label.setText(disk_io_text)
+            self.disk_io_label.setTextFormat(Qt.TextFormat.RichText)
+            
+        # 新增: 更新网络速度信息
+        network_speed = data.get('network_speed', {})
+        if network_speed and self.network_speed_label is not None:
+            upload_kbps = network_speed.get('upload_kbps', 0)
+            download_kbps = network_speed.get('download_kbps', 0)
+            
+            # 转换为合适的单位和文本格式
+            upload_text = f"{upload_kbps:.1f} KB/s" if upload_kbps < 1024 else f"{upload_kbps / 1024:.1f} MB/s"
+            download_text = f"{download_kbps:.1f} KB/s" if download_kbps < 1024 else f"{download_kbps / 1024:.1f} MB/s"
+            
+            network_speed_text = f"网络速度: <span style='color: #D0A0FF'>↑{upload_text}</span> 上传"
+            network_speed_text += f"<br><span style='color: #A0D0FF'>↓{download_text}</span> 下载"
+            
+            self.network_speed_label.setText(network_speed_text)
+            self.network_speed_label.setTextFormat(Qt.TextFormat.RichText)
+            
+        # 新增: 更新GPU信息
+        gpu_info = data.get('gpu_info', {})
+        if gpu_info and self.gpu_label is not None and not gpu_info.get('error'):
+            gpu_name = gpu_info.get('name', 'Unknown')
+            gpu_load = gpu_info.get('load', 0)
+            gpu_memory_total = gpu_info.get('memoryTotal', 0)
+            gpu_memory_used = gpu_info.get('memoryUsed', 0)
+            gpu_memory_percent = gpu_info.get('memoryUtil', 0)
+            gpu_temp = gpu_info.get('temperature', 0)
+            
+            # 根据GPU负载设置颜色
+            if gpu_load < 30:
+                load_color = "80D8FF"  # 低负载
+            elif gpu_load < 70:
+                load_color = "FFCC80"  # 中负载
+            else:
+                load_color = "FF8080"  # 高负载
+            
+            # 根据GPU内存使用率设置颜色
+            if gpu_memory_percent < 30:
+                memory_color = "80FFD8"  # 低使用率
+            elif gpu_memory_percent < 70:
+                memory_color = "FFCC80"  # 中使用率
+            else:
+                memory_color = "FF8080"  # 高使用率
+            
+            # 根据GPU温度设置颜色
+            if gpu_temp < 60:
+                temp_color = "80FFD8"  # 低温
+            elif gpu_temp < 80:
+                temp_color = "FFCC80"  # 中温
+            else:
+                temp_color = "FF8080"  # 高温
+            
+            # 生成GPU信息文本
+            gpu_text = f"GPU: {gpu_name}<br>"
+            gpu_text += f"负载: <span style='color: #{load_color}'>{gpu_load:.1f}%</span>"
+            
+            if gpu_memory_total > 0:
+                gpu_text += f"<br>显存: <span style='color: #{memory_color}'>{gpu_memory_used} MB</span> / {gpu_memory_total} MB ({gpu_memory_percent:.1f}%)"
+            
+            if gpu_temp > 0:
+                gpu_text += f"<br>温度: <span style='color: #{temp_color}'>{gpu_temp}°C</span>"
+            
+            self.gpu_label.setText(gpu_text)
+            self.gpu_label.setTextFormat(Qt.TextFormat.RichText)
+            self.gpu_label.setVisible(True)
+        else:
+            # 如果没有GPU信息，隐藏该标签
+            if self.gpu_label is not None:
+                self.gpu_label.setVisible(False)
+        
+        # 只有在确实存在显著变化时才调整大小
+        need_resize = False
+        # 新增或移除了部分内容（例如CPU核心信息、内存详情等）
+        if ('cpu_cores_usage' in data and not hasattr(self, '_had_cpu_cores')) or \
+           ('memory_details' in data and not hasattr(self, '_had_memory_details')) or \
+           ('disk_usage_root' in data and not hasattr(self, '_had_disk_usage')) or \
+           ('network_info' in data and not hasattr(self, '_had_network_info')) or \
+           ('gpu_info' in data and not hasattr(self, '_had_gpu_info')):
+            need_resize = True
+            # 更新标记
+            self._had_cpu_cores = 'cpu_cores_usage' in data
+            self._had_memory_details = 'memory_details' in data
+            self._had_disk_usage = 'disk_usage_root' in data
+            self._had_network_info = 'network_info' in data
+            self._had_gpu_info = 'gpu_info' in data
+        
+        if need_resize:
             self.adjustSize()
 
     def update_time_data(self, data: Dict[str, Any]):
@@ -779,7 +819,23 @@ class StatsPanel(QWidget):
             parent_size: 父窗口大小
         """
         panel_size = self.sizeHint()
-        screen_geometry = QApplication.primaryScreen().availableGeometry()
+        
+        # 获取当前显示器的几何信息
+        # 修复多显示器支持：使用QApplication.screenAt方法获取鼠标所在的屏幕
+        cursor_pos = QApplication.primaryScreen().geometry().center()  # 默认使用主屏幕
+        parent_center = QPoint(parent_pos.x() + parent_size.width() // 2, 
+                               parent_pos.y() + parent_size.height() // 2)
+        
+        # 获取包含父窗口中心的屏幕
+        screen = QApplication.screenAt(parent_center)
+        if not screen:
+            # 如果找不到包含父窗口中心的屏幕，使用主屏幕
+            screen = QApplication.primaryScreen()
+        
+        # 获取对应屏幕的可用几何信息
+        screen_geometry = screen.availableGeometry()
+        
+        # 计算新位置
         new_pos = QPoint()
         
         # 根据设置的面板位置计算新位置
@@ -840,9 +896,15 @@ class StatsPanel(QWidget):
         if new_pos.y() < screen_geometry.top():
             new_pos.setY(screen_geometry.top())
         
-        # 移动面板
-        self.move(new_pos)
-        logger.info(f"StatsPanel.update_position: Moved to {new_pos}. Panel Geometry: {self.geometry()}, Visible: {self.isVisible()}")
+        # 避免频繁移动导致的闪烁，仅在位置变化较大时才更新
+        current_pos = self.pos()
+        if (abs(current_pos.x() - new_pos.x()) > 2 or 
+            abs(current_pos.y() - new_pos.y()) > 2):
+            # 移动面板
+            self.move(new_pos)
+            logger.debug(f"StatsPanel.update_position: 移动到 {new_pos}")
+        else:
+            logger.debug("StatsPanel.update_position: 位置变化很小，保持不变")
     
     def closeEvent(self, event):
         """处理窗口关闭事件，注销事件处理器。"""
@@ -859,7 +921,7 @@ class StatsPanel(QWidget):
                 logger.info("StatsPanel 事件处理器已成功注销。")
             except Exception as e:
                 logger.error(f"注销 StatsPanel 事件处理器时出错: {e}")
-        super().closeEvent(event)
+        super().closeEvent(event) 
         
     def sizeHint(self):
         """提供面板大小的建议值。"""

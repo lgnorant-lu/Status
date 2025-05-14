@@ -8,12 +8,15 @@ Description:                通用类型定义模块
 
 Changed history:            
                             2025/05/12: 初始创建;
+                            2025/05/14: 添加AnimationSequence类型定义用于EnhancedTimeAnimationManager
 ----
 """
 
 from typing import Dict, List, Any, Optional, Union, Tuple, Callable, TypeVar, Generic, Protocol, Set
 from pathlib import Path
 import os
+
+from status.animation.animation import Animation
 
 # 通用类型别名
 PathLike = Union[str, os.PathLike, Path]
@@ -86,4 +89,7 @@ class SingletonType(type):
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
             cls._instances[cls] = super(SingletonType, cls).__call__(*args, **kwargs)
-        return cls._instances[cls] 
+        return cls._instances[cls]
+
+# 动画序列类型定义
+AnimationSequence = List[Animation] 

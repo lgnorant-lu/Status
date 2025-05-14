@@ -18,6 +18,7 @@ from status.core.component_base import ComponentBase
 from status.core.events import EventManager, SystemStatsUpdatedEvent, Event, EventType
 from status.behavior.pet_state_machine import PetStateMachine
 from status.behavior.pet_state import PetState
+from status.core.event_system import EventSystem
 
 class SystemStateAdapter(ComponentBase):
     """系统状态适配器，监听系统统计数据事件并更新宠物状态机"""
@@ -30,9 +31,12 @@ class SystemStateAdapter(ComponentBase):
         """
         super().__init__()
         self.logger = logging.getLogger("Status.Behavior.SystemStateAdapter")
-        self.event_manager = EventManager.get_instance()
         
-        self.pet_state_machine = pet_state_machine
+        # 事件系统
+        self.event_system = EventSystem.get_instance()
+
+        # 系统状态机 (可选)
+        self._pet_state_machine = pet_state_machine
         
         # 上次更新的资源使用率，用于记录日志
         self._last_cpu_usage = 0.0
@@ -47,10 +51,41 @@ class SystemStateAdapter(ComponentBase):
         Returns:
             bool: 初始化是否成功
         """
-        # 注册事件监听器，监听系统统计数据更新事件
-        self.event_manager.register_handler(EventType.SYSTEM_STATS_UPDATED, self._on_system_stats_updated)
+        # 注册事件监听器
+        if self.event_system:
+            self.event_system.register_handler(EventType.SYSTEM_STATS_UPDATED, self._on_system_stats_updated)
+            # self.event_system.register_handler(EventType.DESKTOP_OBJECT_DETECTED, self._on_desktop_object_detected)
+        else:
+            self.logger.error("事件系统未初始化，无法注册处理器")
+            return False
+        
+        # 尝试立即获取状态机
+        if self._pet_state_machine is None:
+            self.logger.debug("SystemStateAdapter 初始化时未直接提供状态机，将尝试从事件获取")
+            # 可以考虑在这里也注册 STATE_MACHINE_INITIALIZED 事件来获取状态机
+            # self.event_system.register_handler(EventType.STATE_MACHINE_INITIALIZED, self._on_state_machine_initialized)
+
+
+        # 初始化时更新一次系统状态
+        # 这取决于 SystemMonitor 是否已经开始发送数据
+        # 或者可以等待第一个 SYSTEM_STATS_UPDATED 事件
+        # self.update_system_state_based_on_stats(initial_stats) # 需要一种获取初始数据的方式
         
         self.logger.info("系统状态适配器初始化完成")
+        return True
+
+    def _shutdown(self) -> bool:
+        # 注销事件监听器
+        if self.event_system:
+            self.event_system.unregister_handler(EventType.SYSTEM_STATS_UPDATED, self._on_system_stats_updated)
+            # self.event_system.unregister_handler(EventType.DESKTOP_OBJECT_DETECTED, self._on_desktop_object_detected)
+        
+        # 清理状态等
+        if self._pet_state_machine:
+            # self._pet_state_machine.set_system_state(None, "SystemStateAdapter shutdown") # MIGHT NOT EXIST
+            pass # Placeholder if set_system_state does not exist or needs different handling
+
+        self.logger.info("系统状态适配器关闭完成")
         return True
     
     def _update(self, dt: float) -> None:
@@ -120,7 +155,7 @@ class SystemStateAdapter(ComponentBase):
             
         # 更新宠物状态机
         # 将所有系统资源指标传递给状态机
-        state_changed = self.pet_state_machine.update(
+        state_changed = self._pet_state_machine.update(
             cpu_usage=cpu_usage, 
             memory_usage=memory_usage,
             gpu_usage=gpu_usage,
@@ -130,7 +165,7 @@ class SystemStateAdapter(ComponentBase):
         
         # 如果状态发生变化，记录日志
         if state_changed:
-            current_state = self.pet_state_machine.get_state()
+            current_state = self._pet_state_machine.get_state()
             self.logger.info(f"宠物状态更新为: {current_state.name} (CPU: {cpu_usage:.1f}%, Memory: {memory_usage:.1f}%)")
     
     def set_thresholds(self, cpu_threshold: Optional[float] = None, memory_threshold: Optional[float] = None) -> None:
@@ -141,9 +176,9 @@ class SystemStateAdapter(ComponentBase):
             memory_threshold: 内存使用率阈值，None表示不修改
         """
         if cpu_threshold is not None:
-            self.pet_state_machine.cpu_threshold = cpu_threshold
+            self._pet_state_machine.cpu_threshold = cpu_threshold
             self.logger.info(f"CPU使用率阈值已设置为: {cpu_threshold}%")
             
         if memory_threshold is not None:
-            self.pet_state_machine.memory_threshold = memory_threshold
+            self._pet_state_machine.memory_threshold = memory_threshold
             self.logger.info(f"内存使用率阈值已设置为: {memory_threshold}%") 

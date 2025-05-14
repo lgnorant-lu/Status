@@ -1,0 +1,25 @@
+{
+    "version": "1.0",
+    "timestamp": "2025-05-14T16:21:09.694475",
+    "modules": {
+        "sample_app": {
+            "config": {
+                "core": {
+                    "version": "1.0",
+                    "debug": false
+                },
+                "ui": {
+                    "theme": "default",
+                    "color_scheme": "light"
+                },
+                "data": {
+                    "storage_path": "./data",
+                    "max_cache_size": 1024
+                }
+            },
+            "user_data": {},
+            "timestamp": "2025-05-14T16:21:09.694475"
+        }
+    },
+    "checksum": "909c44682dd4dec79ebc0817954d3aba"
+}

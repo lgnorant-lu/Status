@@ -86,21 +86,22 @@ class PetState(Enum):
     CLICKED = 156          # 被点击状态
     DRAGGED = 157          # 被拖拽状态
     PETTED = 158           # 被抚摸状态
+    HOVER = 159            # 鼠标悬停状态
     
-    # 交互相关状态
-    SLEEPING = 159         # 睡眠中
-    THINKING = 160         # 思考中
-    WALKING = 161          # 行走中
-    WORKING = 162          # 工作中
+    # 交互相关状态 (待后续行为系统细化或重新分类)
+    # SLEEPING = 159         # 睡眠中
+    # THINKING = 160         # 思考中
+    # WALKING = 161          # 行走中
+    # WORKING = 162          # 工作中
     
-    # 身体区域交互状态
-    HEAD_CLICKED = 163     # 头部点击
-    BODY_CLICKED = 164     # 身体点击
-    TAIL_CLICKED = 165     # 尾部点击
+    # 身体区域交互状态 (待后续细化交互实现)
+    # HEAD_CLICKED = 163     # 头部点击
+    # BODY_CLICKED = 164     # 身体点击
+    # TAIL_CLICKED = 165     # 尾部点击
     
-    HEAD_PETTED = 166       # 头部抚摸
-    BODY_PETTED = 167       # 身体抚摸
-    TAIL_PETTED = 168       # 尾部抚摸
+    # HEAD_PETTED = 166       # 头部抚摸
+    # BODY_PETTED = 167       # 身体抚摸
+    # TAIL_PETTED = 168       # 尾部抚摸
     
     # 未来可以添加更多状态，例如：
     # INTERACTING = 4  # 交互状态
@@ -111,14 +112,14 @@ class PetState(Enum):
     # SLEEPING = auto()    # 睡眠中
     # VERY_BUSY = auto()   # 非常忙碌 
 
-    @classmethod
-    def is_interaction_state(cls, state_id: int) -> bool:
-        """判断是否为交互状态
+    # @classmethod
+    # def is_interaction_state(cls, state_id: int) -> bool:
+    #     """判断是否为交互状态
         
-        Args:
-            state_id: 状态ID
+    #     Args:
+    #         state_id: 状态ID
             
-        Returns:
-            bool: 如果是交互状态则返回True
-        """
-        return state_id >= 151 and state_id < 160 
+    #     Returns:
+    #         bool: 如果是交互状态则返回True
+    #     """
+    #     return state_id >= 151 and state_id < 160 

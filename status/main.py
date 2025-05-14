@@ -26,7 +26,7 @@ import os
 import random
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QMenu, QColorDialog
-from PySide6.QtGui import QIcon, QPixmap, QColor, QPainter, QPen, QBrush, QAction, QImage, QMouseEvent
+from PySide6.QtGui import QIcon, QPixmap, QColor, QPainter, QPen, QBrush, QAction, QImage, QMouseEvent, QFont, QPainterPath, QCursor, QRadialGradient
 from PySide6.QtCore import Qt, QTimer, QRect, QPoint, QSize, Signal, QObject
 
 # 设置日志格式
@@ -44,6 +44,7 @@ from status.ui.system_tray import SystemTrayManager
 from status.ui.stats_panel import StatsPanel
 
 from status.animation.animation import Animation
+from status.core.event_system import Event, EventType
 
 from status.behavior.pet_state import PetState
 from status.behavior.pet_state_machine import PetStateMachine
@@ -93,6 +94,14 @@ class StatusPet:
         self.current_animation: Optional[Animation] = None # 当前播放的动画
         self.memory_warning_animation: Optional[Animation] = None # 内存警告动画
         
+        # 新增交互动画属性
+        self.clicked_animation: Optional[Animation] = None
+        self.dragged_animation: Optional[Animation] = None
+        self.petted_animation: Optional[Animation] = None
+        
+        # 状态到动画的映射
+        self.state_to_animation_map: Dict[PetState, Optional[Animation]] = {}
+        
         # 时间动画管理器
         self.time_animation_manager = None  # 时间相关动画管理器
         
@@ -113,7 +122,7 @@ class StatusPet:
         # 更新相关
         self._last_update_time = time.perf_counter()
         self._update_timer = QTimer()
-        self._update_timer.setInterval(1000)  # 修改此处，原为16ms
+        self._update_timer.setInterval(1000)  # 修改此处，原为33ms (约30fps)
         self._update_timer.timeout.connect(self.update)
     
     def create_main_window(self):
@@ -479,66 +488,127 @@ class StatusPet:
             logger.error(f"Failed to create memory warning placeholder image: {str(e)}")
             return None
 
+    def _create_error_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
+        """创建一个代表'错误'状态的占位符图像"""
+        try:
+            image = QImage(width, height, QImage.Format.Format_ARGB32)
+            image.fill(QColor(0,0,0,0)) # Transparent
+            painter = QPainter(image)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            
+            # Background for error (e.g., dark red)
+            painter.setBrush(QBrush(QColor(139, 0, 0, 200))) # Dark Red
+            painter.drawRect(0, 0, width, height)
+            
+            # Error text
+            painter.setPen(QPen(QColor(255, 255, 255))) # White text
+            painter.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+            text_rect = QRect(0, 0, width, height)
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, "ERROR")
+            
+            painter.end()
+            logger.debug("Created error placeholder image")
+            return image
+        except Exception as e:
+            logger.error(f"Failed to create error placeholder image: {e}")
+            return None
+
     def create_character_sprite(self):
         """创建角色精灵/动画"""
         try:
             # 创建待机动画
-            self.idle_animation = Animation()
             idle_image = self._create_placeholder_image()
             if idle_image:
-                self.idle_animation.add_frame(idle_image)
+                self.idle_animation = Animation(name="idle", frames=[idle_image], fps=1)
                 self.idle_animation.set_loop(True)
-                
+            
             # 创建忙碌动画
-            self.busy_animation = Animation()
             busy_image = self._create_busy_placeholder_image()
             if busy_image:
-                self.busy_animation.add_frame(busy_image)
+                self.busy_animation = Animation(name="busy", frames=[busy_image], fps=1)
                 self.busy_animation.set_loop(True)
                 
             # 创建内存警告动画
-            self.memory_warning_animation = Animation()
             memory_warning_image = self._create_memory_warning_placeholder_image()
             if memory_warning_image:
-                self.memory_warning_animation.add_frame(memory_warning_image)
+                self.memory_warning_animation = Animation(name="memory_warning", frames=[memory_warning_image], fps=1)
                 self.memory_warning_animation.set_loop(True)
             
             # 创建早晨动画
-            self.morning_animation = Animation()
             morning_image = self._create_morning_placeholder_image()
             if morning_image:
-                self.morning_animation.add_frame(morning_image)
+                self.morning_animation = Animation(name="morning", frames=[morning_image], fps=1)
                 self.morning_animation.set_loop(True)
                 
             # 创建中午动画
-            self.noon_animation = Animation()
             noon_image = self._create_noon_placeholder_image()
             if noon_image:
-                self.noon_animation.add_frame(noon_image)
+                self.noon_animation = Animation(name="noon", frames=[noon_image], fps=1)
                 self.noon_animation.set_loop(True)
                 
             # 创建下午动画（新增）
-            self.afternoon_animation = Animation()
-            # 目前复用中午图像，可以在未来创建专用的下午图像
             afternoon_image = self._create_noon_placeholder_image(color_adjust=True)
             if afternoon_image:
-                self.afternoon_animation.add_frame(afternoon_image)
+                self.afternoon_animation = Animation(name="afternoon", frames=[afternoon_image], fps=1)
                 self.afternoon_animation.set_loop(True)
                 
             # 创建晚上动画（新增）
-            self.evening_animation = Animation()
-            # 创建较暗的傍晚效果
             evening_image = self._create_night_placeholder_image(make_darker=False)
             if evening_image:
-                self.evening_animation.add_frame(evening_image)
+                self.evening_animation = Animation(name="evening", frames=[evening_image], fps=1)
                 self.evening_animation.set_loop(True)
                 
             # 创建深夜动画
-            self.night_animation = Animation()
             night_image = self._create_night_placeholder_image()
             if night_image:
-                self.night_animation.add_frame(night_image)
+                self.night_animation = Animation(name="night", frames=[night_image], fps=1)
                 self.night_animation.set_loop(True)
+
+            # 创建错误动画
+            error_img_frames = []
+            error_img = self._create_error_placeholder_image() # Use new dedicated method
+            if error_img:
+                error_img_frames.append(error_img)
+            self.error_animation = Animation(name="error", frames=error_img_frames, fps=1)
+            if self.error_animation:
+                self.error_animation.set_loop(False)
+
+            # 新增交互动画
+            clicked_frames = []
+            clicked_img = self._create_clicked_placeholder_image()
+            if clicked_img:
+                clicked_frames.append(clicked_img)
+            self.clicked_animation = Animation(name="clicked", frames=clicked_frames, fps=2)
+            if self.clicked_animation:
+                self.clicked_animation.set_loop(False)
+
+            dragged_frames = []
+            dragged_img = self._create_dragged_placeholder_image()
+            if dragged_img:
+                dragged_frames.append(dragged_img)
+            self.dragged_animation = Animation(name="dragged", frames=dragged_frames, fps=2)
+            if self.dragged_animation:
+                self.dragged_animation.set_loop(False) # Drag should be non-looping
+
+            petted_frames = []
+            petted_img = self._create_petted_placeholder_image()
+            if petted_img:
+                petted_frames.append(petted_img)
+            self.petted_animation = Animation(name="petted", frames=petted_frames, fps=2)
+            if self.petted_animation:
+                self.petted_animation.set_loop(False)
+
+            # 创建悬停动画
+            hover_frames = []
+            hover_img = self._create_hover_placeholder_image()
+            if hover_img:
+                hover_frames.append(hover_img)
+            self.hover_animation = Animation(name="hover", frames=hover_frames, fps=2)
+            if self.hover_animation:
+                self.hover_animation.set_loop(False)
+
+            # 初始化状态到动画的映射表
+            self._initialize_state_to_animation_map()
                 
             # 设置初始动画为待机
             self.current_animation = self.idle_animation
@@ -548,6 +618,165 @@ class StatusPet:
             logger.info("Character animations created successfully")
         except Exception as e:
             logger.error(f"Failed to create character animations: {e}")
+
+    def _initialize_state_to_animation_map(self):
+        """初始化状态到对应动画的映射表"""
+        self.state_to_animation_map = {
+            # 系统状态
+            PetState.IDLE: self.idle_animation,
+            PetState.LIGHT_LOAD: self.idle_animation, # 示例：轻载也用idle
+            PetState.MODERATE_LOAD: self.busy_animation,
+            PetState.HEAVY_LOAD: self.busy_animation,
+            PetState.VERY_HEAVY_LOAD: self.busy_animation, # 也可以是更忙碌的动画
+            PetState.CPU_CRITICAL: self.busy_animation, # 也可以是特定危急动画
+            PetState.MEMORY_WARNING: self.memory_warning_animation,
+            PetState.MEMORY_CRITICAL: self.memory_warning_animation, # 可以是更严重的警告动画
+            # 其他系统资源状态可以映射到busy或idle，或专门动画
+            PetState.GPU_BUSY: self.busy_animation,
+            PetState.GPU_VERY_BUSY: self.busy_animation,
+            PetState.DISK_BUSY: self.busy_animation,
+            PetState.DISK_VERY_BUSY: self.busy_animation,
+            PetState.NETWORK_BUSY: self.busy_animation,
+            PetState.NETWORK_VERY_BUSY: self.busy_animation,
+            PetState.SYSTEM_IDLE: self.idle_animation,
+
+            # 时间状态
+            PetState.MORNING: self.morning_animation,
+            PetState.NOON: self.noon_animation,
+            PetState.AFTERNOON: self.afternoon_animation,
+            PetState.EVENING: self.evening_animation,
+            PetState.NIGHT: self.night_animation,
+
+            # 特殊日期状态 (可以映射到时间动画或专门的节日动画)
+            PetState.BIRTHDAY: self.morning_animation, # 示例
+            PetState.NEW_YEAR: self.noon_animation,    # 示例
+            PetState.VALENTINE: self.evening_animation, # 示例
+
+            # 交互状态
+            PetState.CLICKED: self.clicked_animation,
+            PetState.DRAGGED: self.dragged_animation,
+            PetState.PETTED: self.petted_animation,
+            PetState.HOVER: self.hover_animation,  # 新增HOVER状态映射
+            PetState.HAPPY: self.petted_animation, # 示例：开心时用petted动画
+            PetState.SAD: self.idle_animation,   # 示例：悲伤时用idle
+            PetState.ANGRY: self.busy_animation, # 示例：生气时用busy
+            PetState.PLAY: self.idle_animation,  # 示例：玩耍用idle，未来应有专门play动画
+            
+            # 以下状态已在 PetState 中注释掉，因此在此处也注释掉
+            # PetState.HEAD_CLICKED: self.clicked_animation, 
+            # PetState.BODY_CLICKED: self.clicked_animation,
+            # PetState.TAIL_CLICKED: self.clicked_animation,
+            # PetState.HEAD_PETTED: self.petted_animation,
+            # PetState.BODY_PETTED: self.petted_animation,
+            # PetState.TAIL_PETTED: self.petted_animation,
+        }
+        logger.debug("State to animation map initialized.")
+
+    def _create_clicked_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
+        """创建一个代表'被点击'状态的占位符图像"""
+        try:
+            image = QImage(width, height, QImage.Format.Format_ARGB32)
+            image.fill(QColor(0,0,0,0)) # Transparent
+            painter = QPainter(image)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setBrush(QBrush(QColor(100, 200, 255, 200))) # Light blueish
+            painter.drawEllipse(width // 4, height // 4, width // 2, height // 2) # A circle
+            painter.setPen(QPen(Qt.GlobalColor.black))
+            painter.setFont(QFont("Arial", 10))
+            painter.drawText(QRect(0,0,width,height), Qt.AlignmentFlag.AlignCenter, "Clicked!")
+            painter.end()
+            logger.debug("Created clicked placeholder image")
+            return image
+        except Exception as e:
+            logger.error(f"Failed to create clicked placeholder: {e}")
+            return None
+
+    def _create_dragged_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
+        """创建一个代表'被拖拽'状态的占位符图像"""
+        try:
+            image = QImage(width, height, QImage.Format.Format_ARGB32)
+            image.fill(QColor(0,0,0,0)) # Transparent
+            painter = QPainter(image)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setBrush(QBrush(QColor(255, 180, 100, 200))) # Orangey
+            # Draw a stretched ellipse
+            painter.drawEllipse(width // 8, height // 4, width * 3 // 4, height // 2)
+            painter.setPen(QPen(Qt.GlobalColor.black))
+            painter.setFont(QFont("Arial", 10))
+            painter.drawText(QRect(0,0,width,height), Qt.AlignmentFlag.AlignCenter, "Dragged!")
+            painter.end()
+            logger.debug("Created dragged placeholder image")
+            return image
+        except Exception as e:
+            logger.error(f"Failed to create dragged placeholder: {e}")
+            return None
+
+    def _create_petted_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
+        """创建一个代表'被抚摸'状态的占位符图像"""
+        try:
+            image = QImage(width, height, QImage.Format.Format_ARGB32)
+            image.fill(QColor(0,0,0,0)) # Transparent
+            painter = QPainter(image)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setBrush(QBrush(QColor(255, 100, 200, 200))) # Pinkish
+            # Draw a heart shape (simplified)
+            path = QPainterPath()
+            path.moveTo(width / 2, height / 4)
+            path.cubicTo(width / 10, height / 5, width / 3, height * 3 / 4, width / 2, height * 3 / 4)
+            path.cubicTo(width * 2 / 3, height * 3 / 4, width * 9 / 10, height / 5, width / 2, height / 4)
+            painter.drawPath(path)
+            painter.setPen(QPen(Qt.GlobalColor.black))
+            painter.setFont(QFont("Arial", 10))
+            painter.drawText(QRect(0,0,width,height), Qt.AlignmentFlag.AlignCenter, "Petted!")
+            painter.end()
+            logger.debug("Created petted placeholder image")
+            return image
+        except Exception as e:
+            logger.error(f"Failed to create petted placeholder: {e}")
+            return None
+            
+    def _create_hover_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
+        """创建一个代表'鼠标悬停'状态的占位符图像"""
+        try:
+            image = QImage(width, height, QImage.Format.Format_ARGB32)
+            image.fill(QColor(0,0,0,0)) # Transparent
+            painter = QPainter(image)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            
+            # 创建发光效果 - 淡黄色光晕
+            gradient = QRadialGradient(width / 2, height / 2, width / 2)
+            gradient.setColorAt(0, QColor(255, 255, 200, 180))  # 中心较亮
+            gradient.setColorAt(0.7, QColor(255, 255, 150, 100))  # 中间渐变
+            gradient.setColorAt(1, QColor(255, 255, 100, 0))    # 边缘透明
+            
+            painter.setBrush(QBrush(gradient))
+            painter.setPen(Qt.PenStyle.NoPen)  # 无边框
+            painter.drawEllipse(2, 2, width - 4, height - 4)  # 略小于整个图像
+            
+            # 添加交互提示
+            painter.setPen(QPen(QColor(80, 80, 80, 200)))
+            painter.setFont(QFont("Arial", 10))
+            painter.drawText(QRect(0, 0, width, height), Qt.AlignmentFlag.AlignCenter, "Hover!")
+            
+            # 添加一些动态感的元素 - 小星星
+            painter.setPen(QPen(QColor(255, 255, 0, 200), 1))
+            star_points = [
+                QPoint(width // 4, height // 4),
+                QPoint(3 * width // 4, height // 4),
+                QPoint(width // 2, 3 * height // 4),
+                QPoint(width // 5, 2 * height // 3),
+                QPoint(4 * width // 5, 2 * height // 3)
+            ]
+            for point in star_points:
+                painter.drawLine(point.x() - 3, point.y(), point.x() + 3, point.y())
+                painter.drawLine(point.x(), point.y() - 3, point.x(), point.y() + 3)
+            
+            painter.end()
+            logger.debug("Created hover placeholder image")
+            return image
+        except Exception as e:
+            logger.error(f"Failed to create hover placeholder: {e}")
+            return None
 
     def _create_morning_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
         """创建一个代表'早晨'状态的占位符图像"""
@@ -804,147 +1033,89 @@ class StatusPet:
             return None
 
     def update(self):
-        """主更新循环"""
-        # 导入所需的时间枚举
-        from status.behavior.time_based_behavior import TimePeriod
-        
-        logger.debug("---- UPDATE METHOD CALLED ----") # 添加 DEBUG 日志
-        # 如果窗口不可见，无需进行全部更新
-        if self.main_window and not self.main_window.isVisible():
-            # 只需最小程度的更新以保持应用响应
-            self._last_update_time = time.perf_counter()
-            return
-
+        """应用主更新循环，由QTimer调用"""
         current_time = time.perf_counter()
         dt = current_time - self._last_update_time
-        # 防止 dt 过大或过小导致的问题
-        dt = max(0.001, min(dt, 0.1))
         self._last_update_time = current_time
 
-        # 1. 获取系统状态 (通过发布事件)
-        publish_stats(include_details=True) # 始终发送详细系统信息
+        # 1. 状态机驱动的更新 (如果未来有需要，例如连续状态更新)
+        # if self.state_machine:
+        #     self.state_machine.tick(dt)
 
-        # 获取当前状态，用于检测状态变化
-        # 只有在状态机存在时才获取状态
-        previous_state = self.state_machine.get_state() if self.state_machine else PetState.IDLE 
-        current_state = self.state_machine.get_state() if self.state_machine else PetState.IDLE
-        
-        # 检测状态是否变化
-        state_changed = previous_state != current_state
+        # 2. 处理动画播放
+        if self.current_animation:
+            self.current_animation.update(dt) # Animation.update 控制帧切换
+            
+            # 如果是一次性交互动画播放完毕，则切换到背景状态对应的动画
+            if not self.current_animation.is_looping and \
+               not self.current_animation.is_playing and \
+               (self.current_animation == self.clicked_animation or self.current_animation == self.petted_animation):
+                logger.debug(f"一次性动画 {self.current_animation.name} 在update中检测到播放完毕。切换到背景动画。")
+                
+                current_actual_state = PetState.IDLE # 默认回到IDLE
+                if self.state_machine: # 检查state_machine是否存在
+                    current_actual_state = self.state_machine.get_state() 
+                else:
+                    logger.warning("Update: State machine not available, defaulting to IDLE for background animation.")
+                
+                background_animation = self.state_to_animation_map.get(current_actual_state, self.idle_animation)
+                
+                if background_animation and background_animation != self.current_animation:
+                    logger.info(f"一次性动画结束，切换到背景动画: {background_animation.name} (基于状态: {current_actual_state.name})")
+                    # self.current_animation.stop() # 旧动画已经is_playing=False了，不需要stop
+                    self.current_animation = background_animation
+                    self.current_animation.reset()
+                    self.current_animation.play()
+                elif not self.current_animation.is_playing: 
+                    # 如果没有找到特定的背景动画，或者目标就是当前（已停止的）动画，则确保idle动画播放
+                    logger.debug(f"未找到特定背景动画或目标是当前已停止动画 {self.current_animation.name}。确保idle动画播放。")
+                    if self.idle_animation and self.current_animation != self.idle_animation:
+                        self.current_animation = self.idle_animation
+                        self.current_animation.reset()
+                        self.current_animation.play()
+                    elif self.idle_animation and not self.idle_animation.is_playing: # 如果当前就是idle但没播放
+                        self.idle_animation.reset()
+                        self.idle_animation.play()
 
-        # 3. 根据状态更新动画
-        if state_changed:
-            new_animation = None
-            # 检查是否是时间相关状态
-            if current_state in [PetState.MORNING, PetState.NOON, PetState.AFTERNOON, PetState.EVENING, PetState.NIGHT]:
-                # 尝试从时间动画管理器获取对应的动画
-                if hasattr(self, 'time_animation_manager') and self.time_animation_manager:
-                    # 将PetState映射回TimePeriod
-                    time_period = None
-                    if current_state == PetState.MORNING:
-                        time_period = TimePeriod.MORNING
-                    elif current_state == PetState.NOON:
-                        time_period = TimePeriod.NOON
-                    elif current_state == PetState.AFTERNOON:
-                        time_period = TimePeriod.AFTERNOON
-                    elif current_state == PetState.EVENING:
-                        time_period = TimePeriod.EVENING
-                    elif current_state == PetState.NIGHT:
-                        time_period = TimePeriod.NIGHT
-                    
-                    if time_period:
-                        time_animation = self.time_animation_manager.get_animation_for_time_period(time_period)
-                        if time_animation:
-                            new_animation = time_animation
-                            logger.info(f"时间状态 {current_state.name} 使用时间动画: {time_period.name}")
-            
-            # 如果没有从时间动画管理器获取到动画，使用直接引用的动画
-            if new_animation is None:    
-                if current_state == PetState.IDLE or current_state == PetState.SYSTEM_IDLE:
-                    new_animation = self.idle_animation
-                elif current_state in [PetState.BUSY, PetState.VERY_BUSY, PetState.CPU_CRITICAL, 
-                                    PetState.DISK_BUSY, PetState.NETWORK_BUSY, PetState.GPU_BUSY]:
-                    new_animation = self.busy_animation
-                elif current_state in [PetState.MEMORY_WARNING, PetState.MEMORY_CRITICAL]:
-                    new_animation = self.memory_warning_animation
-                # 用户交互状态
-                elif current_state in [PetState.CLICKED, PetState.HEAD_CLICKED, PetState.BODY_CLICKED, 
-                                    PetState.TAIL_CLICKED, PetState.PETTED, PetState.HEAD_PETTED, 
-                                    PetState.BODY_PETTED, PetState.TAIL_PETTED, PetState.DRAGGED,
-                                    PetState.HAPPY, PetState.ANGRY]:
-                    # 对于MVP阶段，我们可以使用idle动画表示交互，后续可以添加专门的交互动画
-                    new_animation = self.idle_animation  # 可以根据需要替换为专门的交互动画
-                # 时间相关状态
-                elif current_state == PetState.MORNING:
-                    new_animation = self.morning_animation if hasattr(self, 'morning_animation') else self.idle_animation
-                elif current_state == PetState.NOON:
-                    new_animation = self.noon_animation if hasattr(self, 'noon_animation') else self.idle_animation
-                elif current_state == PetState.AFTERNOON:
-                    # 下午可以复用中午动画，或者创建专门的下午动画
-                    new_animation = self.noon_animation if hasattr(self, 'noon_animation') else self.idle_animation
-                elif current_state == PetState.EVENING:
-                    # 傍晚可以复用中午或夜晚动画，或者创建专门的傍晚动画
-                    new_animation = self.noon_animation if hasattr(self, 'noon_animation') else self.idle_animation
-                elif current_state == PetState.NIGHT:
-                    new_animation = self.night_animation if hasattr(self, 'night_animation') else self.idle_animation
-                # 特殊日期状态
-                elif current_state in [PetState.BIRTHDAY, PetState.NEW_YEAR, PetState.VALENTINE]:
-                    # 尝试从时间动画管理器获取特殊日期动画
-                    if hasattr(self, 'time_animation_manager') and self.time_animation_manager:
-                        date_name = None
-                        if current_state == PetState.BIRTHDAY:
-                            date_name = "Birth of Status-Ming!"
-                        elif current_state == PetState.NEW_YEAR:
-                            date_name = "新年"
-                        elif current_state == PetState.VALENTINE:
-                            date_name = "情人节"
-                        
-                        if date_name:
-                            special_animation = self.time_animation_manager.get_animation_for_special_date(date_name)
-                            if special_animation:
-                                new_animation = special_animation
-                                logger.info(f"特殊日期状态 {current_state.name} 使用特殊日期动画: {date_name}")
-                            else:
-                                logger.warning(f"找不到特殊日期 {date_name} 的动画，使用默认动画")
-                                # 使用不同时间段对应的默认动画
-                                current_period = self.time_behavior_system.get_current_period() if hasattr(self, 'time_behavior_system') and self.time_behavior_system else None
-                                if current_period == TimePeriod.MORNING and hasattr(self, 'morning_animation'):
-                                    new_animation = self.morning_animation
-                                elif current_period == TimePeriod.NOON and hasattr(self, 'noon_animation'):
-                                    new_animation = self.noon_animation
-                                elif current_period == TimePeriod.AFTERNOON and hasattr(self, 'afternoon_animation'):
-                                    new_animation = self.afternoon_animation
-                                elif current_period == TimePeriod.EVENING and hasattr(self, 'evening_animation'):
-                                    new_animation = self.evening_animation
-                                elif current_period == TimePeriod.NIGHT and hasattr(self, 'night_animation'):
-                                    new_animation = self.night_animation
-                                else:
-                                    new_animation = self.idle_animation
-                    
-                    # 如果找不到特殊日期动画，使用默认动画
-                    if new_animation is None:
-                        new_animation = self.idle_animation
-            # 可以添加更多状态的动画切换
-            
-            if new_animation and self.current_animation != new_animation:
-                previous_state_name = previous_state.name if previous_state else "Unknown"
-                logger.debug(f"状态变化: {previous_state_name} -> {current_state.name}. 切换动画 -> {new_animation}") 
-                if self.current_animation and self.current_animation.is_playing:
-                    self.current_animation.stop()
-                self.current_animation = new_animation
+            # 3. 更新主窗口图像
+            if self.main_window and self.current_animation: # 再次检查 self.current_animation 是否有效
+                current_frame_image = self.current_animation.current_frame() # 使用正确的方法名
+                if current_frame_image and not current_frame_image.isNull():
+                    self.main_window.set_image(current_frame_image)
+        else:
+            # 如果没有当前动画（理论上不应该在初始化后发生，至少有idle），尝试设置idle
+            if self.main_window and self.idle_animation:
+                logger.warning("No current animation, defaulting to idle animation.")
+                self.current_animation = self.idle_animation
+                self.current_animation.reset()
                 self.current_animation.play()
+                # 确保在设置后立即显示第一帧
+                current_frame_image = self.current_animation.current_frame()
+                if current_frame_image and not current_frame_image.isNull():
+                    self.main_window.set_image(current_frame_image)
 
-        # 4. 更新动画 - 只需调用 update() 让动画自己处理帧切换和循环
-        if self.current_animation and self.current_animation.is_playing:
-            self.current_animation.update(dt)
+        # 4. 更新统计面板 (如果可见且有数据)
+        if self.stats_panel and self.main_window and self.stats_panel.isVisible():
+            # 发布最新的系统统计数据
+            publish_stats(include_details=True)  
+            
+            # 更新统计面板位置，使用存储的位置比较来检测移动
+            pet_pos = self.main_window.pos()
+            pet_size = self.main_window.size()
+            
+            # 存储主窗口位置，用于检测窗口是否移动
+            if not hasattr(self, '_last_window_pos') or not hasattr(self, '_last_window_size'):
+                self._last_window_pos = pet_pos
+                self._last_window_size = pet_size
+                self.stats_panel.update_position(pet_pos, pet_size)
+                logger.debug(f"初始化统计面板位置: {pet_pos}，大小: {pet_size}")
+            elif self._last_window_pos != pet_pos or self._last_window_size != pet_size:
+                self._last_window_pos = pet_pos
+                self._last_window_size = pet_size
+                self.stats_panel.update_position(pet_pos, pet_size)
+                logger.debug(f"已更新统计面板位置，主窗口移动到: {pet_pos}，大小: {pet_size}")
 
-        # 5. 更新窗口显示的图像
-        if self.main_window and self.current_animation and self.current_animation.is_playing:
-            current_frame = self.current_animation.get_current_frame() # 获取 QImage
-            if current_frame:
-                 self.main_window.set_image(current_frame)
-        
-        # 更新托盘可见性状态
+        # 更新托盘可见性状态 (这个逻辑似乎不属于高频update，可以移到实际切换可见性的地方)
         if self.system_tray and self.main_window:
             self.system_tray.set_window_visibility(self.main_window.isVisible())
     
@@ -975,6 +1146,13 @@ class StatusPet:
         # 创建状态机
         self.state_machine = PetStateMachine()
         
+        # 注册状态变化事件监听
+        if self.state_machine and self.state_machine.event_system:
+            self.state_machine.event_system.register_handler(EventType.STATE_CHANGED, self._handle_state_change)
+            logger.info("已注册状态变化事件监听器")
+        else:
+            logger.warning("状态机或其事件系统未初始化，无法注册状态变化监听器")
+
         # 创建系统状态适配器
         self.system_state_adapter = SystemStateAdapter(self.state_machine)
         # 初始化系统状态适配器
@@ -1075,8 +1253,58 @@ class StatusPet:
             self.system_tray.set_window_visibility(self.main_window.isVisible())
             
         # 启动更新定时器 (之前未启动)
-        logger.info("启动更新定时器，间隔: 1000ms (1fps)") # 修改日志消息
+        logger.info("启动更新定时器，间隔: 1000ms (约10fps)") # 修改日志消息
         self._update_timer.start()
+    
+    def _handle_state_change(self, event: Event):
+        """处理状态机状态变化事件，切换动画"""
+        if not hasattr(event, 'data') or not isinstance(event.data, dict):
+            logger.warning("_handle_state_change: 事件数据无效")
+            return
+
+        current_state_value = event.data.get('current_state')
+        if current_state_value is None:
+            logger.warning("_handle_state_change: 事件数据中缺少 current_state")
+            return
+        
+        try:
+            current_pet_state = PetState(current_state_value)
+        except ValueError:
+            logger.warning(f"_handle_state_change: 无效的状态值 {current_state_value}")
+            return
+
+        logger.debug(f"状态变化处理: 新状态 {current_pet_state.name}")
+
+        # 检查当前动画是否是一次性交互动画且已播放完毕
+        # 这个检查主要用于避免在一次性动画刚播完时，如果状态没变，又被这个事件处理器重新触发播放
+        if self.current_animation and \
+           not self.current_animation.is_looping and \
+           not self.current_animation.is_playing and \
+           (self.current_animation == self.clicked_animation or self.current_animation == self.petted_animation):
+            
+            target_animation_for_new_state = self.state_to_animation_map.get(current_pet_state)
+            if target_animation_for_new_state == self.current_animation:
+                 logger.debug(f"新状态 {current_pet_state.name} 的目标动画与刚播放完毕的一次性动画相同，不重新触发。交由update逻辑处理后续。")
+                 return 
+
+        target_animation = self.state_to_animation_map.get(current_pet_state)
+
+        if target_animation and target_animation != self.current_animation:
+            logger.info(f"切换动画: 从 {self.current_animation.name if self.current_animation else 'None'} 到 {target_animation.name}")
+            if self.current_animation:
+                self.current_animation.stop() # 停止并重置旧动画
+            
+            self.current_animation = target_animation
+            self.current_animation.reset() # 确保从第一帧开始
+            self.current_animation.play()
+        elif not target_animation:
+            logger.warning(f"状态 {current_pet_state.name} 没有配置对应的动画，将使用idle动画。")
+            if self.current_animation != self.idle_animation and self.idle_animation:
+                if self.current_animation:
+                    self.current_animation.stop()
+                self.current_animation = self.idle_animation
+                self.current_animation.reset()
+                self.current_animation.play()
     
     def connect_interaction_handler(self):
         """将窗口的鼠标事件连接到交互处理器"""
@@ -1084,17 +1312,14 @@ class StatusPet:
             logger.warning("主窗口或交互处理器未初始化，无法连接事件")
             return
 
-        # 添加对interaction_handler方法的显式检查
         if not hasattr(self.interaction_handler, 'handle_mouse_event'):
             logger.warning("交互处理器没有handle_mouse_event方法，无法连接事件")
             return
             
         try:
-            # 使用类型断言
             handler = self.interaction_handler
-            assert isinstance(handler, InteractionHandler), "交互处理器类型错误"
+            # assert isinstance(handler, InteractionHandler), "交互处理器类型错误" # InteractionHandler可能未导入
             
-            # 获取信号引用
             self.main_window.clicked.connect(
                 lambda pos: handler.handle_mouse_event(
                     self._create_mouse_event(pos, Qt.MouseButton.LeftButton), 'press'))
@@ -1110,10 +1335,15 @@ class StatusPet:
             self.main_window.dropped.connect(
                 lambda pos: handler.handle_mouse_event(
                     self._create_mouse_event(pos, Qt.MouseButton.LeftButton), 'release'))
+                    
+            # 连接鼠标移动事件，用于hover交互
+            self.main_window.mouse_moved.connect(
+                lambda pos: handler.handle_mouse_event(
+                    self._create_mouse_event(pos, Qt.MouseButton.NoButton), 'move'))
             
-            logger.info("已连接窗口鼠标事件到交互处理器")
-        except (AttributeError, TypeError, AssertionError) as e:
-            logger.error(f"连接鼠标事件失败: {e}")
+            logger.info("已连接窗口鼠标事件到交互处理器，包括hover交互")
+        except Exception as e: # 更通用的异常捕获
+            logger.error(f"连接鼠标事件失败: {e}", exc_info=True)
             return
 
     def _create_mouse_event(self, pos, button_type):
@@ -1127,12 +1357,18 @@ class StatusPet:
             QMouseEvent: 创建的鼠标事件
         """
         from PySide6.QtCore import QPointF, Qt, QEvent
-        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtGui import QMouseEvent, QCursor
         
-        # 创建简单的QMouseEvent用于传递给交互处理器
+        # 获取全局光标位置
+        global_pos = QCursor.pos()
+        local_pos = QPointF(pos)
+        
+        # 使用非弃用的构造函数创建QMouseEvent
         return QMouseEvent(
             QEvent.Type.MouseButtonPress,  # 事件类型，实际由handle_mouse_event的event_type参数决定
-            QPointF(pos),                  # 位置
+            local_pos,                     # 本地位置
+            local_pos,                     # 场景位置（使用相同的本地位置）
+            global_pos,                    # 全局位置
             button_type,                   # 按钮类型
             button_type,                   # 按钮状态
             Qt.KeyboardModifier.NoModifier # 键盘修饰符

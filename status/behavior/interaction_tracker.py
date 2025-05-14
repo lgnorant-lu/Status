@@ -373,31 +373,56 @@ class InteractionTracker(ComponentBase):
             self.logger.error(f"保存交互数据失败: {e}", exc_info=True)
             return False
     
-    def load_interaction_data(self) -> bool:
-        """加载交互数据
-        
-        Returns:
-            bool: 是否成功加载
-        """
+    def load_interaction_data(self) -> None:
+        """从文件加载交互数据"""
         if not os.path.exists(self.storage_path):
-            self.logger.info(f"交互数据文件不存在: {self.storage_path}")
-            return False
-            
+            self.logger.info(f"交互历史文件不存在: {self.storage_path}, 将使用空历史记录。")
+            self.interaction_history = {} 
+            self.interaction_counts = {}
+            return
+
         try:
-            with open(self.storage_path, 'r', encoding='utf-8') as f:
+            with open(self.storage_path, "r", encoding="utf-8") as f:
+                if os.fstat(f.fileno()).st_size == 0: # Check if file is empty
+                    self.logger.warning(f"交互历史文件为空: {self.storage_path}. 将使用空历史记录。")
+                    self.interaction_history = {}
+                    self.interaction_counts = {}
+                    return
                 data = json.load(f)
-                
+            
+            # 直接加载历史和计数，不进行复杂的类型转换，因为track_interaction会处理类型
+            # persist_interaction_data 保存的是已经是字符串键的字典
             self.interaction_history = data.get("interaction_history", {})
             self.interaction_counts = data.get("interaction_counts", {})
             
-            # 应用衰减，处理旧数据
-            self._apply_decay()
-            
+            # 确保内部结构是预期的 (例如, history 的 value 是 dict, counts 的 value 是 dict)
+            # (可以在这里添加更严格的类型和结构校验)
+            if not isinstance(self.interaction_history, dict) or \
+               not all(isinstance(zones, dict) for zones in self.interaction_history.values()):
+                self.logger.warning("加载的 interaction_history 结构不正确，重置为空。")
+                self.interaction_history = {}
+
+            if not isinstance(self.interaction_counts, dict) or \
+               not all(isinstance(zones, dict) for zones in self.interaction_counts.values()):
+                self.logger.warning("加载的 interaction_counts 结构不正确，重置为空。")
+                self.interaction_counts = {}
+
             self.logger.info(f"已加载交互数据: {self.storage_path}")
-            return True
+            # Consider applying decay after loading if timestamps are absolute
+            # self._apply_decay() # _apply_decay expects timestamps and updates counts
+
+        except json.JSONDecodeError as e:
+            self.logger.warning(f"加载交互数据失败 ({self.storage_path}): JSON解码错误 - {e}. 将使用空历史记录。")
+            self.interaction_history = {}
+            self.interaction_counts = {}
+        except FileNotFoundError:
+            self.logger.warning(f"交互历史文件未找到: {self.storage_path}. 将使用空历史记录。")
+            self.interaction_history = {}
+            self.interaction_counts = {}
         except Exception as e:
-            self.logger.error(f"加载交互数据失败: {e}", exc_info=True)
-            return False
+            self.logger.error(f"加载交互数据时发生未知错误 ({self.storage_path}): {e}", exc_info=True)
+            self.interaction_history = {}
+            self.interaction_counts = {} # 保险起见
     
     def clear_interaction_data(self, interaction_type: Optional[Union[str, Any]] = None,
                           zone_id: Optional[str] = None) -> None:

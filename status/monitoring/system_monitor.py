@@ -6,7 +6,7 @@ Date created:               2025/05/14
 Description:                系统监控模块，获取CPU、内存等系统信息
 ----------------------------------------------------------------
 
-Changed history:            
+Changed history:
                             2025/04/07: 初始创建;
                             2025/04/08: 添加详细系统信息;
                             2025/05/14: 添加时间数据功能;
@@ -24,9 +24,12 @@ from typing import Dict, Any, Optional, List, Tuple
 
 # 导入事件系统相关
 from status.core.events import EventManager, SystemStatsUpdatedEvent, EventType, get_app_instance
+from status.core.event_system import EventSystem
 
 # 直接导入时间相关模块，避免依赖于应用实例
 from status.behavior.time_based_behavior import TimePeriod, SpecialDate, LunarHelper
+# from status.core.config import get_config # Commented out
+# from status.utils.icon_utils import get_icon_path # Commented out
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,9 @@ logger = logging.getLogger(__name__)
 _last_net_io: Optional[Dict[str, int]] = None
 _last_disk_io: Optional[Dict[str, int]] = None
 _last_check_time: float = 0.0
+
+# 全局配置实例
+# CONFIG = get_config() # Commented out
 
 def get_cpu_usage() -> float:
     """获取当前的CPU平均使用率
@@ -555,13 +561,13 @@ def publish_stats(include_details: bool = False):
     # 获取基本指标
     cpu_usage = get_cpu_usage()
     memory_usage = get_memory_usage()
-    
+
     # 构建基本数据
     stats_data: Dict[str, Any] = {
         "cpu_usage": cpu_usage,
         "memory_usage": memory_usage,
     }
-    
+
     # 如果需要详细指标
     if include_details:
         # 获取CPU核心使用率
@@ -723,7 +729,16 @@ def publish_stats(include_details: bool = False):
     event_manager = EventManager.get_instance()
     event_manager.dispatch(event)
     
-    detailed_str = "详细" if include_details else "基本"
-    logger.info(f"系统{detailed_str}统计信息已发布: CPU {cpu_usage:.1f}%, Mem {memory_usage:.1f}%")
+    logger.debug(f"Publishing system stats: CPU {cpu_usage:.1f}%, Mem {memory_usage:.1f}%")
+    
+    # 获取事件系统实例
+    event_system = EventSystem.get_instance()
+    
+    # 创建事件对象
+    event = SystemStatsUpdatedEvent(stats_data=stats_data)
+    
+    # 发布事件
+    event_system.dispatch(event)
+    logger.info(f"System stats event published: CPU {cpu_usage:.1f}%, Mem {memory_usage:.1f}%") # 日志: 确认事件发布
 
 # 可以在这里添加其他系统监控函数

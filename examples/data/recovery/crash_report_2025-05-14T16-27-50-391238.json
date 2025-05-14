@@ -1,0 +1,11 @@
+{
+    "timestamp": "2025-05-14T16-27-50-391238",
+    "recovery_mode": "normal",
+    "error": {
+        "type": "IndexError",
+        "message": "list index out of range",
+        "traceback": "Traceback (most recent call last):\n  File \"D:\\狗py\\pythonProject\\Sm_intes\\Status\\examples\\recovery_example.py\", line 328, in <module>\n    demonstrate_recovery_features()\n  File \"D:\\狗py\\pythonProject\\Sm_intes\\Status\\examples\\recovery_example.py\", line 324, in demonstrate_recovery_features\n    app.start()\n  File \"D:\\狗py\\pythonProject\\Sm_intes\\Status\\examples\\recovery_example.py\", line 199, in start\n    self._process_cycle(count)\n  File \"D:\\狗py\\pythonProject\\Sm_intes\\Status\\examples\\recovery_example.py\", line 246, in _process_cycle\n    item = empty_list[10]\n           ~~~~~~~~~~^^^^\nIndexError: list index out of range\n",
+        "module": "unknown",
+        "time": "2025-05-14T16:27:50.391238"
+    }
+}

@@ -1,0 +1,8 @@
+[
+    {
+        "timestamp": "2025-05-14T16-27-50-391238",
+        "report_file": "crash_report_2025-05-14T16-27-50-391238.json",
+        "error_type": "IndexError",
+        "error_message": "list index out of range"
+    }
+]

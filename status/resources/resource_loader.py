@@ -17,9 +17,11 @@ import re
 import json
 import logging
 import importlib.util
+import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union, Set, Tuple, TypeVar, Callable, cast, Type, Protocol, overload, runtime_checkable, TYPE_CHECKING
 from functools import lru_cache
+from collections import OrderedDict
 
 # 全局标志
 HAS_GUI = False
@@ -74,6 +76,117 @@ class ResourceManager(Protocol):
     def reload(self) -> bool: ...
     def initialize(self) -> bool: ...
 
+class LRUCache:
+    """LRU缓存实现，用于ResourceLoader缓存管理
+    
+    使用OrderedDict实现LRU缓存，支持自动清理最近最少使用的缓存项
+    """
+    
+    def __init__(self, capacity: int = 100):
+        """初始化LRU缓存
+        
+        Args:
+            capacity: 缓存容量, 默认为100
+        """
+        self.capacity = capacity
+        self.cache = OrderedDict()
+        self.access_times = {}  # 记录每个键的最后访问时间
+        
+    def get(self, key):
+        """获取缓存项
+        
+        Args:
+            key: 缓存项的键
+            
+        Returns:
+            缓存项的值，如果不存在则返回None
+        """
+        if key not in self.cache:
+            return None
+        
+        # 移动到末尾（最近使用）
+        value = self.cache.pop(key)
+        self.cache[key] = value
+        
+        # 更新访问时间
+        self.access_times[key] = time.time()
+        
+        return value
+    
+    def put(self, key, value):
+        """添加缓存项
+        
+        Args:
+            key: 缓存项的键
+            value: 缓存项的值
+        """
+        # 如果已存在，先移除
+        if key in self.cache:
+            self.cache.pop(key)
+        
+        # 如果已达到容量上限，移除最早使用的项
+        if len(self.cache) >= self.capacity:
+            oldest_key, _ = self.cache.popitem(last=False)
+            if oldest_key in self.access_times:
+                del self.access_times[oldest_key]
+        
+        # 添加新项
+        self.cache[key] = value
+        self.access_times[key] = time.time()
+    
+    def remove(self, key):
+        """移除缓存项
+        
+        Args:
+            key: 缓存项的键
+            
+        Returns:
+            bool: 是否成功移除
+        """
+        if key in self.cache:
+            self.cache.pop(key)
+            if key in self.access_times:
+                del self.access_times[key]
+            return True
+        return False
+    
+    def clear(self):
+        """清空缓存"""
+        self.cache.clear()
+        self.access_times.clear()
+    
+    def clean_old_entries(self, max_age_seconds: int = 3600):
+        """清理过期的缓存项
+        
+        Args:
+            max_age_seconds: 最大缓存时间(秒)，默认为3600秒(1小时)
+            
+        Returns:
+            int: 清理的项数
+        """
+        now = time.time()
+        keys_to_remove = []
+        
+        # 找出需要清理的键
+        for key, access_time in self.access_times.items():
+            if now - access_time > max_age_seconds:
+                keys_to_remove.append(key)
+        
+        # 清理缓存
+        for key in keys_to_remove:
+            self.remove(key)
+            
+        return len(keys_to_remove)
+    
+    def __len__(self):
+        """获取缓存项数量"""
+        return len(self.cache)
+    
+    def __contains__(self, key):
+        """检查键是否在缓存中"""
+        return key in self.cache
+
+
 class ResourceLoader:
     """资源加载类，提供统一的资源加载接口"""
     
@@ -83,22 +196,24 @@ class ResourceLoader:
         self._manager: Optional[ResourceManager] = None # 资源管理器实例，如 ResourcePackManager
         self.base_path: Optional[str] = None # 资源的基础路径
         
-        # 缓存
-        self._image_cache: Dict[str, Any] = {}       # 图像缓存
-        self._sound_cache: Dict[str, Any] = {}         # 音效缓存
-        self._font_cache: Dict[Tuple[str, int], Any] = {}  # 字体缓存
-        self._json_cache: Dict[str, Dict[str, Any]] = {}    # JSON数据缓存
-        self._text_cache: Dict[str, str] = {}          # 文本缓存
+        # 使用LRUCache替换原来的字典缓存
+        self._image_cache = LRUCache(100)       # 图像缓存
+        self._sound_cache = LRUCache(50)         # 音效缓存
+        self._font_cache = LRUCache(20)  # 字体缓存
+        self._json_cache = LRUCache(50)    # JSON数据缓存
+        self._text_cache = LRUCache(50)          # 文本缓存
         
         # 缓存控制
-        self._max_image_cache: int = 100  # 最大图像缓存数量
-        self._max_sound_cache: int = 50   # 最大音效缓存数量
-        self._max_font_cache: int = 20    # 最大字体缓存数量
-        self._max_json_cache: int = 50    # 最大JSON缓存数量
-        self._max_text_cache: int = 50    # 最大文本缓存数量
+        self._cache_enabled = True  # 是否启用缓存
+        self._cache_max_age = 3600  # 缓存项的最大生命周期（秒）
         
         # 加载默认资源包管理器
         self._load_default_manager()
+        
+        # 上次缓存清理时间
+        self._last_cache_clean_time = time.time()
+        # 缓存清理间隔（秒）
+        self._cache_clean_interval = 600  # 10分钟
     
     def _get_resource_type(self, path: str) -> Optional[ResourceType]:
         """根据文件路径推断资源类型。"""
@@ -202,6 +317,57 @@ class ResourceLoader:
         self._font_cache.clear()
         self._json_cache.clear()
         self._text_cache.clear()
+        self.logger.info("所有资源缓存已清空")
+
+    def _check_clean_cache(self) -> None:
+        """检查是否需要清理缓存，并在必要时执行清理"""
+        now = time.time()
+        # 如果距离上次清理时间超过设定的间隔，清理缓存
+        if now - self._last_cache_clean_time > self._cache_clean_interval:
+            self._clean_old_cache_entries()
+            self._last_cache_clean_time = now
+
+    def _clean_old_cache_entries(self) -> None:
+        """清理过期的缓存项"""
+        # 清理各个缓存
+        image_count = self._image_cache.clean_old_entries(self._cache_max_age)
+        sound_count = self._sound_cache.clean_old_entries(self._cache_max_age)
+        font_count = self._font_cache.clean_old_entries(self._cache_max_age)
+        json_count = self._json_cache.clean_old_entries(self._cache_max_age)
+        text_count = self._text_cache.clean_old_entries(self._cache_max_age)
+        
+        total_count = image_count + sound_count + font_count + json_count + text_count
+        if total_count > 0:
+            self.logger.info(f"自动清理了 {total_count} 个过期缓存项 (图像: {image_count}, 音效: {sound_count}, 字体: {font_count}, JSON: {json_count}, 文本: {text_count})")
+
+    def set_cache_params(self, enabled: bool = True, max_age: int = 3600, 
+                        clean_interval: int = 600) -> None:
+        """设置缓存参数
+        
+        Args:
+            enabled: 是否启用缓存
+            max_age: 缓存项的最大生命周期（秒）
+            clean_interval: 缓存清理间隔（秒）
+        """
+        self._cache_enabled = enabled
+        self._cache_max_age = max_age
+        self._cache_clean_interval = clean_interval
+        self.logger.debug(f"更新缓存参数: 启用={enabled}, 最大生命周期={max_age}秒, 清理间隔={clean_interval}秒")
+
+    def get_cache_stats(self) -> Dict[str, int]:
+        """获取缓存统计信息
+        
+        Returns:
+            Dict[str, int]: 包含各类缓存数量的字典
+        """
+        return {
+            'image_cache': len(self._image_cache),
+            'sound_cache': len(self._sound_cache),
+            'font_cache': len(self._font_cache),
+            'json_cache': len(self._json_cache),
+            'text_cache': len(self._text_cache),
+            'total': len(self._image_cache) + len(self._sound_cache) + len(self._font_cache) + len(self._json_cache) + len(self._text_cache)
+        }
 
     def reload(self) -> bool:
         """重新加载资源管理器并清空缓存
@@ -354,9 +520,14 @@ class ResourceLoader:
             self.logger.error("QImage未导入，无法加载图像")
             return None
         
+        # 检查是否需要清理缓存
+        self._check_clean_cache()
+        
         # 如果启用缓存且已在缓存中，直接返回
-        if use_cache and image_path in self._image_cache:
-            return self._image_cache[image_path]
+        if use_cache and self._cache_enabled:
+            cached_image = self._image_cache.get(image_path)
+            if cached_image is not None:
+                return cached_image
         
         # 获取资源实际路径
         real_path = self.get_resource_path(image_path)
@@ -374,10 +545,14 @@ class ResourceLoader:
                 success = qimage.loadFromData(content)
                 
                 if success:
+                    # 确保图像有正确的格式（保持透明度）
+                    if qimage.hasAlphaChannel():
+                        # 确保保留Alpha通道
+                        qimage = qimage.convertToFormat(QImage.Format.Format_ARGB32)
+                    
                     # 加载成功
-                    # 通常不需要 convert_alpha，QImage 会保留透明度
-                    if use_cache:
-                        self._image_cache[image_path] = qimage
+                    if use_cache and self._cache_enabled:
+                        self._image_cache.put(image_path, qimage)
                     return qimage
                 else:
                     # 加载失败
@@ -395,9 +570,14 @@ class ResourceLoader:
             if qimage.isNull():
                 self.logger.error(f"QImage加载图像失败: {image_path}")
                 return None
+            
+            # 确保图像有正确的格式（保持透明度）
+            if qimage.hasAlphaChannel():
+                # 确保保留Alpha通道
+                qimage = qimage.convertToFormat(QImage.Format.Format_ARGB32)
                 
-            if use_cache:
-                self._image_cache[image_path] = qimage
+            if use_cache and self._cache_enabled:
+                self._image_cache.put(image_path, qimage)
                 
             return qimage
             
@@ -436,11 +616,13 @@ class ResourceLoader:
             return None
             
         # 缓存键
-        cache_key = (font_path, size)
+        cache_key = f"{font_path}_{size}"
         
         # 如果启用缓存且已在缓存中，直接返回
-        if use_cache and cache_key in self._font_cache:
-            return self._font_cache[cache_key]
+        if use_cache and self._cache_enabled:
+            cached_font = self._font_cache.get(cache_key)
+            if cached_font is not None:
+                return cached_font
         
         # 获取资源实际路径
         real_path = self.get_resource_path(font_path)
@@ -471,8 +653,8 @@ class ResourceLoader:
                 font = QFont(families[0])
                 font.setPointSize(size)
                 
-                if use_cache:
-                    self._font_cache[cache_key] = font
+                if use_cache and self._cache_enabled:
+                    self._font_cache.put(cache_key, font)
                     
                 return font
             
@@ -499,11 +681,11 @@ class ResourceLoader:
             font = QFont(families[0])
             font.setPointSize(size)
             
-            if use_cache:
-                self._font_cache[cache_key] = font
-            
+            if use_cache and self._cache_enabled:
+                self._font_cache.put(cache_key, font)
+        
             return font
-            
+        
         except Exception as e:
             self.logger.error(f"加载字体失败: {font_path}, 错误: {e}")
             return None
@@ -519,10 +701,17 @@ class ResourceLoader:
         Returns:
             Optional[Dict[str, Any]]: 加载的JSON数据，或None（如果加载失败）
         """
-        # 如果启用缓存且已在缓存中，直接返回
+        # 检查是否需要清理缓存
+        self._check_clean_cache()
+        
+        # 缓存键
         cache_key = f"{json_path}_{encoding}" # 缓存键应考虑编码
-        if use_cache and cache_key in self._json_cache:
-            return self._json_cache[cache_key]
+        
+        # 如果启用缓存且已在缓存中，直接返回
+        if use_cache and self._cache_enabled:
+            cached_json = self._json_cache.get(cache_key)
+            if cached_json is not None:
+                return cached_json
         
         # 获取资源内容
         content = self.get_resource_content(json_path)
@@ -534,8 +723,8 @@ class ResourceLoader:
         try:
             json_data = json.loads(content.decode(encoding))
             
-            if use_cache:
-                self._json_cache[cache_key] = json_data
+            if use_cache and self._cache_enabled:
+                self._json_cache.put(cache_key, json_data)
             
             return json_data
             
@@ -557,13 +746,18 @@ class ResourceLoader:
         Returns:
             Optional[str]: 加载的文本内容，或None（如果加载失败）
         """
+        # 检查是否需要清理缓存
+        self._check_clean_cache()
+        
         # 缓存键（包含编码信息）
         cache_key = f"{text_path}_{encoding}"
         
         # 如果启用缓存且已在缓存中，直接返回
-        if use_cache and cache_key in self._text_cache:
-            return self._text_cache[cache_key]
-            
+        if use_cache and self._cache_enabled:
+            cached_text = self._text_cache.get(cache_key)
+            if cached_text is not None:
+                return cached_text
+        
         # 获取资源内容
         content = self.get_resource_content(text_path)
         if not content:
@@ -574,11 +768,11 @@ class ResourceLoader:
         try:
             text = content.decode(encoding)
             
-            if use_cache:
-                self._text_cache[cache_key] = text
-            
+            if use_cache and self._cache_enabled:
+                self._text_cache.put(cache_key, text)
+        
             return text
-            
+        
         except UnicodeDecodeError as e:
             self.logger.error(f"文本解码失败: {text_path}, 编码: {encoding}, 错误: {e}")
             return None

@@ -174,7 +174,7 @@ class SystemStatsUpdatedEvent(Event):
     
     def __init__(self, stats_data: Dict[str, Any], sender: Optional[object] = None):
         """初始化系统状态更新事件
-        
+
         Args:
             stats_data: 系统状态数据字典
             sender: 事件发送者

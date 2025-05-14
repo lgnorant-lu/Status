@@ -28,6 +28,9 @@ from PySide6.QtGui import (
 )
 from PySide6.QtCore import QPoint, QSize, QRect, QTimer, Signal, Slot, QObject, QTime, QElapsedTimer
 
+from status.core.events import WindowPositionChangedEvent
+from status.core.event_system import EventSystem, EventType
+
 logger = logging.getLogger(__name__)
 
 # 拖拽平滑系数参数
@@ -55,6 +58,7 @@ class MainPetWindow(QMainWindow):
     double_clicked = Signal(QPoint)  # 双击信号，参数为点击位置
     dragged = Signal(QPoint)         # 拖拽信号，参数为拖拽位置
     dropped = Signal(QPoint)         # 放下信号，参数为放下位置
+    mouse_moved = Signal(QPoint)     # 鼠标移动信号，参数为鼠标位置
     size_changed = Signal(QSize)     # 大小改变信号，参数为新大小
     position_changed = Signal(QPoint)  # 位置改变信号，参数为新位置
     
@@ -228,9 +232,14 @@ class MainPetWindow(QMainWindow):
         Args:
             event: 鼠标事件
         """
-        if self.is_dragging:
-            current_mouse_pos = event.position().toPoint()
+        current_mouse_pos = event.position().toPoint()
+        
+        # 发出鼠标移动信号，用于hover交互
+        # 注意：仅在非拖动状态下才发送mouse_moved信号，避免拖动和hover冲突
+        if not self.is_dragging:
+            self.mouse_moved.emit(current_mouse_pos)
             
+        if self.is_dragging:
             # 检查是否超过拖动阈值
             if not self.drag_activated:
                 delta_move = (current_mouse_pos - self.drag_start_pos)
@@ -506,15 +515,17 @@ class MainPetWindow(QMainWindow):
         # 发送位置改变信号
         self.position_changed.emit(event.pos())
         
-        # 发送窗口位置变更事件
-        from status.core.events import EventManager, WindowPositionChangedEvent
-        event_manager = EventManager.get_instance()
-        position_event = WindowPositionChangedEvent(
-            position=event.pos(),
+        # 获取事件系统实例
+        event_system = EventSystem.get_instance()
+        
+        # 发送窗口位置变化事件
+        event_data = WindowPositionChangedEvent(
+            position=self.pos(),
             size=self.size(),
             sender=self
         )
-        event_manager.dispatch(position_event)
+        event_system.dispatch_event(EventType.WINDOW_POSITION_CHANGED, data=event_data)
+        logger.debug(f"发送窗口位置变化事件: pos={self.pos()}")
         
         super().moveEvent(event)
 
