@@ -548,7 +548,7 @@ class TimeBasedBehaviorSystem(ComponentBase):
         """添加公历节日"""
         solar_festivals = [
             # 诞辰
-            SpecialDate.create_solar_festival("Birth of Status-Ming", 5, 19, "Status-Ming 诞辰", trigger_days_before=1),
+            SpecialDate.create_solar_festival("Birth of Status-Ming!", 5, 19, "Status-Ming 诞辰", trigger_days_before=1),
 
             # 法定节假日
             SpecialDate.create_solar_festival("元旦", 1, 1, "新的一年开始了", trigger_days_before=1),

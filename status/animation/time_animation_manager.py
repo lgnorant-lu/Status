@@ -271,18 +271,31 @@ class TimeAnimationManager(QObject):
         # 尝试转换为英文名称匹配（简单映射示例）
         name_map = {
             "新年": "new_year",
+            "元旦": "new_year",
             "春节": "spring_festival",
             "元宵节": "lantern_festival",
             "端午节": "dragon_boat",
             "中秋节": "mid_autumn",
             "国庆节": "national_day",
-            "圣诞节": "christmas"
+            "圣诞节": "christmas",
+            "情人节": "valentine",
+            "Birth of Status-Ming!": "birthday",
         }
         
         if date_name in name_map and name_map[date_name] in self.special_date_animations:
             return self.special_date_animations[name_map[date_name]]
         
-        return None
+        # 创建占位符动画，如果没有找到对应的动画
+        self.logger.debug(f"为特殊日期 {date_name} 创建占位符动画")
+        placeholder_name = date_name.lower().replace(" ", "_")
+        placeholder_animation = self._create_placeholder_animation(f"special_{placeholder_name}")
+        
+        # 临时添加到动画字典中，避免重复创建
+        if placeholder_animation:
+            key = name_map.get(date_name, date_name)
+            self.special_date_animations[key] = placeholder_animation
+            
+        return placeholder_animation
     
     def get_transition_animation(self, from_period: TimePeriod, to_period: TimePeriod) -> Optional[Animation]:
         """获取两个时间段之间的过渡动画

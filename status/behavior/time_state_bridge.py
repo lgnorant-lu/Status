@@ -57,7 +57,10 @@ class TimeStateBridge(ComponentBase):
         # 特殊日期名称到宠物状态的映射
         self.special_date_to_state = {
             "新年": PetState.NEW_YEAR,
+            "元旦": PetState.NEW_YEAR,
             "情人节": PetState.VALENTINE,
+            "春节": PetState.NEW_YEAR,
+            "Birth of Status-Ming!": PetState.BIRTHDAY,
             # 可以添加更多特殊日期到状态的映射
         }
         

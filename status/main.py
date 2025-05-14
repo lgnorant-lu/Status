@@ -54,7 +54,7 @@ from status.monitoring.system_monitor import publish_stats
 from status.interaction.interaction_handler import InteractionHandler
 from status.behavior.interaction_tracker import InteractionTracker
 
-from status.behavior.time_based_behavior import TimeBasedBehaviorSystem
+from status.behavior.time_based_behavior import TimeBasedBehaviorSystem, TimePeriod
 from status.behavior.time_state_bridge import TimeStateBridge
 
 # 全局实例，允许其他模块访问
@@ -861,12 +861,12 @@ class StatusPet:
             # 如果没有从时间动画管理器获取到动画，使用直接引用的动画
             if new_animation is None:    
                 if current_state == PetState.IDLE or current_state == PetState.SYSTEM_IDLE:
-                new_animation = self.idle_animation
+                    new_animation = self.idle_animation
                 elif current_state in [PetState.BUSY, PetState.VERY_BUSY, PetState.CPU_CRITICAL, 
                                     PetState.DISK_BUSY, PetState.NETWORK_BUSY, PetState.GPU_BUSY]:
-                new_animation = self.busy_animation
+                    new_animation = self.busy_animation
                 elif current_state in [PetState.MEMORY_WARNING, PetState.MEMORY_CRITICAL]:
-                new_animation = self.memory_warning_animation
+                    new_animation = self.memory_warning_animation
                 # 用户交互状态
                 elif current_state in [PetState.CLICKED, PetState.HEAD_CLICKED, PetState.BODY_CLICKED, 
                                     PetState.TAIL_CLICKED, PetState.PETTED, PetState.HEAD_PETTED, 
@@ -893,7 +893,7 @@ class StatusPet:
                     if hasattr(self, 'time_animation_manager') and self.time_animation_manager:
                         date_name = None
                         if current_state == PetState.BIRTHDAY:
-                            date_name = "生日"
+                            date_name = "Birth of Status-Ming!"
                         elif current_state == PetState.NEW_YEAR:
                             date_name = "新年"
                         elif current_state == PetState.VALENTINE:
@@ -904,6 +904,22 @@ class StatusPet:
                             if special_animation:
                                 new_animation = special_animation
                                 logger.info(f"特殊日期状态 {current_state.name} 使用特殊日期动画: {date_name}")
+                            else:
+                                logger.warning(f"找不到特殊日期 {date_name} 的动画，使用默认动画")
+                                # 使用不同时间段对应的默认动画
+                                current_period = self.time_behavior_system.get_current_period() if hasattr(self, 'time_behavior_system') and self.time_behavior_system else None
+                                if current_period == TimePeriod.MORNING and hasattr(self, 'morning_animation'):
+                                    new_animation = self.morning_animation
+                                elif current_period == TimePeriod.NOON and hasattr(self, 'noon_animation'):
+                                    new_animation = self.noon_animation
+                                elif current_period == TimePeriod.AFTERNOON and hasattr(self, 'afternoon_animation'):
+                                    new_animation = self.afternoon_animation
+                                elif current_period == TimePeriod.EVENING and hasattr(self, 'evening_animation'):
+                                    new_animation = self.evening_animation
+                                elif current_period == TimePeriod.NIGHT and hasattr(self, 'night_animation'):
+                                    new_animation = self.night_animation
+                                else:
+                                    new_animation = self.idle_animation
                     
                     # 如果找不到特殊日期动画，使用默认动画
                     if new_animation is None:
@@ -997,6 +1013,19 @@ class StatusPet:
         
         if hasattr(self, 'night_animation') and self.night_animation:
             self.time_animation_manager.time_period_animations[TimePeriod.NIGHT] = self.night_animation
+            
+        # 添加特殊日期动画 - 可以使用现有的动画作为临时替代
+        # 生日使用morning动画作为临时动画
+        if hasattr(self, 'morning_animation') and self.morning_animation:
+            self.time_animation_manager.special_date_animations["birthday"] = self.morning_animation
+        
+        # 新年使用noon动画作为临时动画（比较明亮）
+        if hasattr(self, 'noon_animation') and self.noon_animation:
+            self.time_animation_manager.special_date_animations["new_year"] = self.noon_animation
+            
+        # 情人节使用evening动画作为临时动画
+        if hasattr(self, 'evening_animation') and self.evening_animation:
+            self.time_animation_manager.special_date_animations["valentine"] = self.evening_animation
         
         logger.info("时间动画管理器已初始化")
         
@@ -1112,15 +1141,15 @@ class StatusPet:
     def run(self):
         """运行应用"""
         try:
-        # 初始化
-        self.initialize()
+            # 初始化
+            self.initialize()
         
             # 在启动应用前检查时间行为系统是否正常
             if hasattr(self, 'time_behavior_system') and self.time_behavior_system:
                 logger.info("时间行为系统集成测试通过，准备进入事件循环")
             
-        # 进入事件循环
-        return self.app.exec()
+            # 进入事件循环
+            return self.app.exec()
         except Exception as e:
             logger.error(f"应用程序运行时发生错误: {e}", exc_info=True)
             return 1
