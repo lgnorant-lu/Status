@@ -1,13 +1,14 @@
 """
 ---------------------------------------------------------------
-File name:                  error_placeholder.py
+File name:                  system_error_placeholder.py
 Author:                     Ignorant-lu
 Date created:               2025/05/15
-Description:                "错误"状态的占位符动画实现
+Description:                "系统错误"状态的占位符动画实现 (原error_placeholder.py)
 ----------------------------------------------------------------
 
 Changed history:            
-                            2025/05/15: 初始创建;
+                            2025/05/15: 初始创建 (作为error_placeholder.py);
+                            2025/05/15: 重命名为 system_error_placeholder.py 以匹配工厂约定;
 ----
 """
 import logging
@@ -21,7 +22,7 @@ from status.behavior.pet_state import PetState # Assuming SYSTEM_ERROR is a PetS
 logger = logging.getLogger(__name__)
 
 def _create_error_image(width=64, height=64) -> Optional[QImage]:
-    """创建一个代表'错误'状态的占位符图像"""
+    """创建一个代表'系统错误'状态的占位符图像"""
     try:
         image = QImage(width, height, QImage.Format.Format_ARGB32)
         image.fill(QColor(0,0,0,0)) # Transparent
@@ -43,10 +44,10 @@ def _create_error_image(width=64, height=64) -> Optional[QImage]:
         return None
 
 def create_animation() -> Animation:
-    """创建\"错误\"状态的占位符动画
+    """创建\"系统错误\"状态的占位符动画
     
     Returns:
-        Animation: \"错误\"状态的占位符动画对象
+        Animation: \"系统错误\"状态的占位符动画对象
     """
     frames = []
     img = _create_error_image()
@@ -56,11 +57,11 @@ def create_animation() -> Animation:
     # Assuming SYSTEM_ERROR is the correct PetState enum for this
     animation = Animation(name=PetState.SYSTEM_ERROR.name.lower(), frames=frames, fps=1)
     animation.metadata["placeholder"] = True
-    animation.metadata["description"] = "错误状态占位符动画"
+    animation.metadata["description"] = "系统错误状态占位符动画"
     animation.set_loop(False) # Error animation probably shouldn't loop
 
     if not frames:
-        logger.warning("未能为ERROR状态创建任何帧，动画将为空。")
+        logger.warning("未能为SYSTEM_ERROR状态创建任何帧，动画将为空。")
 
-    logger.debug("创建了错误状态的占位符动画")
+    logger.debug("创建了系统错误状态的占位符动画")
     return animation 

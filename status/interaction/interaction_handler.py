@@ -78,6 +78,18 @@ class InteractionHandler(ComponentBase):
         Returns:
             bool: 初始化是否成功
         """
+        # 激活交互跟踪器 (InteractionTracker)
+        if self.tracker:
+            if not self.tracker.activate(): # 检查激活是否成功
+                self.logger.error("InteractionTracker 激活失败。")
+                # 根据需要决定是否要因此导致 InteractionHandler 初始化失败
+                # return False 
+            else:
+                self.logger.info("InteractionTracker 已激活。")
+        else:
+            self.logger.error("InteractionTracker 实例未创建，无法激活。")
+            # return False
+
         # 注册事件监听
         self.event_system.register_handler(EventType.USER_INTERACTION, self._on_interaction_event)
         

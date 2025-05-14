@@ -454,4 +454,12 @@
   - 为未来资源扩展(本地缓存、云端资源下载)预留架构空间
   - 更新设计文档、线程文档和项目结构文档
 
+- [2025-05-15] [Fix] 解决main.py运行时错误及相关组件初始化问题 - 详见 [Logs/runtime_errors/2025-05-15_main_runtime_error_fixes.md]
+- [2025-05-15] [核心模块] 重构 `main.py` 中的动画创建逻辑，迁移至 `PlaceholderFactory` 和各状态占位符模块 - 详见 [Logs/main/2025-05-15_main_animation_logic_refactor.md]
+- [2025-05-15] [资源管理] 核心占位符动画L4质量提升 - 详见 [Logs/pet_assets/2025-05-15_core_animations_L4_enhancement.md]
+- [2025-05-15] [资源管理] 为特殊日期/节气创建L4占位符动画 - 详见 [Logs/pet_assets/2025-05-15_special_date_animations.md]
+- [2025-05-15] [资源管理] 实现可插拔的宠物状态占位符系统 - 详见 [Logs/pet_assets/2025-05-15_placeholder_system_implementation.md]
+- [2025-05-15] [行为系统] 完善桌宠行为丰富功能 - 详见 [Logs/behavior/2025-05-15.md]
+- [2025-05-15] [监控][功能] 增强系统监控功能 - 详见 [Logs/Status-Ming/2025-05-15_enhanced_monitoring.md]
+
 

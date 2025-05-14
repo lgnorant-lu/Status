@@ -64,25 +64,31 @@
 ├── status/                     # 项目核心应用代码 [核心模块] [进行中]
 │   ├── __init__.py             # 包初始化文件
 │   ├── behavior/               # 桌宠（猫咪占位符）行为逻辑，响应系统参数，基于PySide6事件。 [进行中]
-│   │   └── ... [待补全]
-│   ├── core/                   # 核心基础模块 (事件、配置等) [进行中]
+│   │   ├── __init__.py
+│   │   └── time_based_behavior.py # 时间驱动行为及农历助手 [进行中]
+│   ├── components/             # 可复用的应用组件 (例如 SystemStateAdapter, InteractionHandler) [进行中]
+│   │   ├── __init__.py
+│   │   ├── system_state_adapter.py # 系统状态适配器 [进行中]
+│   │   ├── interaction_handler.py  # 用户交互处理器 [进行中]
+│   │   ├── interaction_tracker.py  # 用户交互追踪器 [进行中]
+│   │   └── time_based_behavior_system.py # 时间行为系统组件 [进行中]
+│   ├── core/                   # 核心基础模块 (事件、配置、组件基类等) [进行中]
 │   │   ├── __init__.py         # 包初始化文件
+│   │   ├── component_base.py   # 应用组件基类，定义了组件生命周期和激活机制 [已完成]
 │   │   ├── event_system.py     # 旧版事件系统 [已完成]
 │   │   ├── types.py            # 核心类型定义 [已完成]
 │   │   ├── logging/            # 增强日志系统 [已完成]
 │   │   │   ├── __init__.py     # 包初始化文件
 │   │   │   └── log_manager.py  # 日志管理器实现 [已完成]
-│   │   ├── recovery/           # 错误恢复机制 [已完成]
-│   │   │   ├── __init__.py     # 包初始化文件
-│   │   │   ├── state_manager.py    # 状态管理器实现 [已完成]
-│   │   │   ├── recovery_manager.py # 恢复管理器实现 [已完成]
-│   │   │   └── exception_handler.py # 异常处理器实现 [已完成]
-│   │   └── ... [待补全]
+│   │   └── recovery/           # 错误恢复机制 [已完成]
+│   │       ├── __init__.py     # 包初始化文件
+│   │       ├── state_manager.py    # 状态管理器实现 [已完成]
+│   │       ├── recovery_manager.py # 恢复管理器实现 [已完成]
+│   │       └── exception_handler.py # 异常处理器实现 [已完成]
 │   ├── events/                 # 增强事件系统 [核心模块] [已完成]
 │   │   ├── __init__.py         # 包初始化文件
 │   │   ├── event_manager.py    # 事件管理器实现，包含优先级、过滤和节流功能 [已完成]
-│   │   ├── event_types.py      # 事件类型定义 [已完成]
-│   │   └── ... [待补全]
+│   │   └── event_types.py      # 事件类型定义 [已完成]
 │   ├── interaction/            # 基于PySide6的用户交互处理 (鼠标、键盘、系统托盘等)。 [进行中]
 │   │   ├── __init__.py
 │   │   ├── base_interaction_handler.py # 交互处理基类 [待补全]
@@ -95,6 +101,69 @@
 │   │   ├── interaction_event.py      # 交互事件定义 [待补全]
 │   │   ├── interaction_manager.py    # 交互总管理器 (Linter错误待处理) [进行中]
 │   │   └── mouse_interaction.py      # 鼠标交互处理 [待补全]
+│   ├── main.py                 # 应用主入口, 依赖PlaceholderFactory加载动画, 负责组件初始化和主循环 [核心模块] [进行中]
+│   ├── monitoring/             # 系统监控模块 [计划中]
+│   │   └── ... [待补全]
+│   ├── pet_assets/             # 宠物资源管理模块 [已完成]
+│   │   ├── __init__.py         # 包初始化文件 [已完成]
+│   │   ├── placeholder_factory.py # 占位符工厂，负责动态加载状态占位符 [已完成]
+│   │   └── placeholders/       # 各状态的占位符实现目录 [已完成]
+│   │       ├── __init__.py     # 包初始化文件 [已完成]
+│   │       ├── happy_placeholder.py # "开心"状态占位符实现 [已完成]
+│   │       ├── idle_placeholder.py # "空闲"状态占位符实现 (L4 质量) [已完成]
+│   │       ├── busy_placeholder.py # "忙碌"状态占位符实现 (L4 质量) [已完成]
+│   │       ├── memory_warning_placeholder.py # "内存警告"状态占位符实现 [已完成]
+│   │       ├── system_error_placeholder.py # "系统错误"状态占位符实现 (原 error_placeholder.py) [已完成]
+│   │       ├── clicked_placeholder.py # "点击"状态占位符实现 (L4 质量) [已完成]
+│   │       ├── dragged_placeholder.py # "拖拽"状态占位符实现 [已完成]
+│   │       ├── petted_placeholder.py # "抚摸"状态占位符实现 [已完成]
+│   │       ├── hover_placeholder.py # "悬停"状态占位符实现 [已完成]
+│   │       ├── morning_placeholder.py # "早晨"状态占位符实现 (L4 质量) [已完成]
+│   │       ├── noon_placeholder.py # "中午"状态占位符实现 [已完成]
+│   │       ├── afternoon_placeholder.py # "下午"状态占位符实现 [已完成]
+│   │       ├── evening_placeholder.py # "傍晚"状态占位符实现 [已完成]
+│   │       ├── night_placeholder.py # "夜晚"状态占位符实现 (L4 质量) [已完成]
+│   │       ├── spring_festival_placeholder.py # "春节"L4占位符实现 [已完成]
+│   │       ├── lichun_placeholder.py # "立春"L4占位符实现 [已完成]
+│   │       ├── moderate_load_placeholder.py # "中等负载"状态占位符实现 [已完成]
+│   │       ├── low_battery_placeholder.py # "低电量"状态占位符实现 [已完成]
+│   │       ├── charging_placeholder.py # "充电中"状态占位符实现 [已完成]
+│   │       ├── fully_charged_placeholder.py # "已充满"状态占位符实现 [已完成]
+│   │       ├── system_update_placeholder.py # "系统更新"状态占位符实现 [已完成]
+│   │       └── sleep_placeholder.py # "睡眠"状态占位符实现 [已完成]
+│   ├── plugin/                 # 插件系统模块 [核心模块] [已完成]
+│   │   ├── __init__.py         # 包初始化文件
+│   │   ├── plugin_base.py      # 插件基类定义 [已完成]
+│   │   ├── plugin_manager.py   # 插件管理器实现 [已完成]
+│   │   └── plugin_registry.py  # 插件注册表实现 [已完成]
+│   ├── renderer/               # 基于PySide6的渲染逻辑 (猫咪占位符动画、未来UI元素等)。 [进行中]
+│   │   └── ... [待补全]
+│   ├── resources/              # 运行时资源管理 [进行中]
+│   │   └── ... [待补全]
+│   ├── scenes/                 # 场景管理 [进行中]
+│   │   └── ... [待补全]
+│   ├── ui/                     # 基于PySide6的用户界面元素和逻辑 (如设置面板、信息面板、系统托盘)。 [进行中]
+│   │   ├── __init__.py
+│   │   ├── system_tray.py      # 系统托盘图标及菜单逻辑 [进行中]
+│   │   └── ... [待补全]
+│   └── utils/                  # 通用工具函数 [进行中]
+│       └── ... [待补全]
+├── tests/                      # 测试代码 [测试模块] [进行中]
+│   ├── __init__.py             # 包初始化文件
+│   ├── conftest.py             # Pytest配置文件和fixtures [配置模块]
+│   ├── events/                 # 事件系统测试 [已完成]
+│   │   ├── __init__.py         # 包初始化文件
+│   │   └── test_event_manager.py  # 事件管理器测试 [已完成]
+│   ├── mocks.py                # Mock对象定义 [待补全]
+│   ├── pet_assets/             # 宠物资源管理模块测试 [已完成]
+│   │   ├── __init__.py         # 包初始化文件 [已完成]
+│   │   ├── test_placeholder_factory.py # 占位符工厂测试 [已完成]
+│   │   └── placeholders/       # 各状态占位符实现测试 [已完成]
+│   │       ├── __init__.py     # 包初始化文件 [已完成]
+│   │       ├── test_happy_placeholder.py # "开心"状态占位符测试 (L2/L3) [已完成]
+│   │       ├── test_idle_placeholder.py # "空闲"状态占位符测试 (旧版L2/L3) [已完成]
+│   │       ├── test_busy_placeholder.py # "忙碌"状态占位符测试 (旧版L2/L3) [已完成]
+│   │       ├── test_memory_warning_placeholder.py # "内存警告"状态占位符测试 (L2/L3) [已完成]
 │   ├── main.py                 # 应用主入口, 依赖PlaceholderFactory加载动画 [核心模块] [进行中]
 │   ├── monitoring/             # 系统监控模块 [计划中]
 │   │   └── ... [待补全]
@@ -225,20 +294,22 @@
 ### 1. `status/` - 核心应用代码
 - **描述**: 包含桌宠应用 (`Status-Ming`) 的主要逻辑代码，包括核心引擎、渲染、交互、行为、资源管理、UI等，UI层基于PySide6。
 - **子模块**:
-    - `behavior/`: 管理和实现桌宠（猫咪占位符）的各种行为状态和逻辑，响应系统参数。`[进行中]`
-    - `core/`: 提供项目范围内的核心基础服务，如事件总线、配置管理、日志封装等。`[进行中]`
-      - `logging/`: 实现增强的日志系统，支持多日志级别、多输出目标和文件轮转功能。`[已完成]`
-      - `recovery/`: 提供错误恢复机制，包括状态持久化、崩溃检测和异常处理功能。`[已完成]`
-    - `events/`: 实现增强的事件系统，包括优先级、过滤、节流和异步处理功能。`[已完成]`
+    - `behavior/`: 管理和实现桌宠（猫咪占位符）的各种行为状态和逻辑，响应系统参数。包含时间驱动行为及农历日期处理 (`time_based_behavior.py`)。`[进行中]`
+    - `components/`: 包含可复用的应用组件，如系统状态适配器 (`SystemStateAdapter`)、用户交互处理器 (`InteractionHandler`)、交互追踪器 (`InteractionTracker`) 和时间行为系统 (`TimeBasedBehaviorSystem`)。这些组件通常继承自 `ComponentBase`。`[进行中]`
+    - `core/`: 提供项目范围内的核心基础服务，如旧版事件系统 (`event_system.py`)、核心类型定义 (`types.py`)、增强日志系统 (`logging/`)、错误恢复机制 (`recovery/`) 以及应用组件基类 (`component_base.py`)。`[进行中]`
+        - `component_base.py`: 定义了应用组件的基础接口和生命周期管理（例如 `activate`, `deactivate`, `_initialize`, `_setup_events`, `_connect_signals`）。组件的激活现在由应用主逻辑（如 `StatusPet.initialize`）显式控制。 `[已完成]`
+        - `logging/`: 实现增强的日志系统，支持多日志级别、多输出目标和文件轮转功能。`[已完成]`
+        - `recovery/`: 提供错误恢复机制，包括状态持久化、崩溃检测和异常处理功能。`[已完成]`
+    - `events/`: 实现增强的事件系统 (`event_manager.py`, `event_types.py`)，包括优先级、过滤、节流和异步处理功能。`[已完成]`
     - `interaction/`: 处理所有用户输入和系统交互（基于PySide6），如鼠标点击/移动、键盘输入、系统命令等。`[进行中]`
-    - `main.py`: 应用程序的主入口点，负责初始化和启动整个应用。现在依赖 `PlaceholderFactory` 来加载所有状态动画，移除了内部的动画直接创建逻辑。`[核心模块] [进行中]`
+    - `main.py`: 应用程序的主入口点 (`StatusPet` 类)，负责应用的整体初始化（包括有序激活各个组件）、主事件循环驱动、状态管理和动画更新。依赖 `PlaceholderFactory` 来加载所有状态动画。`[核心模块] [进行中]`
     - `monitoring/`: (新规划) 负责监控系统性能、应用状态等。`[计划中]`
-    - `pet_assets/`: 宠物资源管理模块，负责动态加载状态占位符。其子目录 `placeholders/` 存放了各个具体状态（如 idle, busy, morning, clicked 等）的动画实现模块。`[已完成]`
-    - `plugin/`: 实现基于生命周期管理的插件系统，支持动态加载、启用和卸载插件。`[已完成]`
+    - `pet_assets/`: 宠物资源管理模块，负责动态加载状态占位符。其子目录 `placeholders/` 存放了各个具体状态（如 idle, busy, morning, clicked, moderate_load, low_battery, charging, fully_charged, system_update, sleep 等）的动画实现模块。`[已完成]`
+    - `plugin/`: 实现基于生命周期管理的插件系统 (`plugin_base.py`, `plugin_manager.py`, `plugin_registry.py`)，支持动态加载、启用和卸载插件。`[已完成]`
     - `renderer/`: 处理所有视觉元素的渲染（基于PySide6），包括桌宠精灵（猫咪占位符）、动画、未来UI组件等。`[进行中]`
     - `resources/`: 负责运行时资源的加载、管理和缓存。`[进行中]`
     - `scenes/`: 管理不同的应用场景或状态（如果项目需要）。`[进行中]`
-    - `ui/`: 包含基于PySide6的用户界面的构建块和特定于UI的逻辑。`[进行中]`
+    - `ui/`: 包含基于PySide6的用户界面的构建块和特定于UI的逻辑，例如系统托盘图标和菜单 (`system_tray.py`)。`[进行中]`
     - `utils/`: 提供项目内各模块可复用的通用工具函数和类。`[进行中]`
 
 ### 2. `tests/` - 测试代码

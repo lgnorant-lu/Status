@@ -250,7 +250,7 @@ class StatusPet:
                 # 更新面板位置并显示
                 if self.main_window:
                     self.stats_panel.update_position(self.main_window.pos(), self.main_window.size())
-                self.stats_panel.show()
+                    self.stats_panel.show()
                 # 发布一次最新的统计数据以填充面板
                 publish_stats(include_details=True) 
             else:
@@ -258,7 +258,7 @@ class StatusPet:
                 self.stats_panel.hide()
         else:
             logger.warning("统计面板未初始化，无法切换显示状态。")
-            
+
     def exit_app(self):
         """退出应用"""
         logger.info("用户请求退出应用程序")
@@ -294,15 +294,25 @@ class StatusPet:
         """创建角色精灵和各种状态的动画"""
         logger.info("使用PlaceholderFactory创建角色精灵和各种状态的动画...")
 
+        # 在方法开始时定义 fallback_image
+        fallback_image = QImage(64, 64, QImage.Format.Format_ARGB32)
+        fallback_image.fill(QColor(0,0,0,0)) # 使用 QColor(0,0,0,0) 表示透明
+        _painter = QPainter(fallback_image)
+        _painter.setPen(QPen(Qt.GlobalColor.red)) # Qt.GlobalColor.red 是可以的
+        _painter.drawText(QRect(0,0,64,64), Qt.AlignmentFlag.AlignCenter, "Anim ERR")
+        _painter.end()
+
         if not self.placeholder_factory:
             logger.error("PlaceholderFactory未初始化。无法创建角色精灵。")
+            if self.main_window: # 如果工厂失败，也尝试设置回退图像
+                self.main_window.set_image(fallback_image)
             return
 
         # 使用 PlaceholderFactory 获取各种状态的动画
         self.idle_animation = self.placeholder_factory.get_animation(PetState.IDLE)
         self.busy_animation = self.placeholder_factory.get_animation(PetState.BUSY)
         self.memory_warning_animation = self.placeholder_factory.get_animation(PetState.MEMORY_WARNING)
-        self.error_animation = self.placeholder_factory.get_animation(PetState.SYSTEM_ERROR)
+        self.error_animation = self.placeholder_factory.get_animation(PetState.SYSTEM_ERROR) # 已更正为 SYSTEM_ERROR
 
         # 获取交互动画
         self.clicked_animation = self.placeholder_factory.get_animation(PetState.CLICKED)
@@ -321,7 +331,7 @@ class StatusPet:
             "idle": self.idle_animation,
             "busy": self.busy_animation,
             "memory_warning": self.memory_warning_animation,
-            "error": self.error_animation,
+            "error": self.error_animation, # Corresponds to SYSTEM_ERROR
             "clicked": self.clicked_animation,
             "dragged": self.dragged_animation,
             "petted": self.petted_animation,
@@ -344,22 +354,27 @@ class StatusPet:
         if not all_loaded:
             logger.error("一个或多个动画加载失败。应用程序可能无法按预期运行。")
 
+        # 确定初始图像
+        initial_image_to_set = fallback_image # 默认为 fallback
+
         if self.idle_animation:
             self.current_animation = self.idle_animation
             logger.info(f"默认当前动画设置为: {self.current_animation.name}")
-            if self.main_window and self.current_animation.current_frame():
-                 self.main_window.set_image(self.current_animation.current_frame())
+            current_idle_frame = self.current_animation.current_frame()
+            if current_idle_frame:
+                initial_image_to_set = current_idle_frame
+            else:
+                logger.error("Idle动画已加载但无法获取当前帧，将使用fallback图像。")
+                self.current_animation = Animation(name="fallback_idle_no_frame", frames=[fallback_image], fps=1)
         else:
-            logger.error("Idle动画加载失败。宠物将不会有动画。")
-            fallback_image = QImage(64, 64, QImage.Format.Format_ARGB32)
-            fallback_image.fill(Qt.GlobalColor.transparent)
-            painter = QPainter(fallback_image)
-            painter.setPen(QPen(Qt.GlobalColor.red))
-            painter.drawText(QRect(0,0,64,64), Qt.AlignmentFlag.AlignCenter, "Anim ERR")
-            painter.end()
-            self.current_animation = Animation(name="fallback_idle", frames=[fallback_image], fps=1)
-            if self.main_window:
-                self.main_window.set_image(fallback_image)
+            logger.error("Idle动画加载失败。宠物将不会有动画，将使用fallback图像。")
+            self.current_animation = Animation(name="fallback_idle_failed_load", frames=[fallback_image], fps=1)
+        
+        # 统一设置图像
+        if self.main_window:
+            self.main_window.set_image(initial_image_to_set)
+        else:
+            logger.warning("Main window 不存在，无法设置初始图像。")
 
         logger.info("角色精灵和动画创建/加载过程完成。")
 
@@ -477,17 +492,40 @@ class StatusPet:
                 current_frame_image = self.current_animation.current_frame() # 使用正确的方法名
                 if current_frame_image and not current_frame_image.isNull():
                     self.main_window.set_image(current_frame_image)
-        else:
-            # 如果没有当前动画（理论上不应该在初始化后发生，至少有idle），尝试设置idle
-            if self.main_window and self.idle_animation:
-                logger.warning("当前无动画，默认回到idle动画。")
-                self.current_animation = self.idle_animation
-                self.current_animation.reset()
-                self.current_animation.play()
-                # 确保在设置后立即显示第一帧
-                current_frame_image = self.current_animation.current_frame()
-                if current_frame_image and not current_frame_image.isNull():
-                    self.main_window.set_image(current_frame_image)
+                # else:
+                    # logger.warning(f"当前动画 {self.current_animation.name} 的当前帧图像无效。") # 暂时注释掉，新的逻辑会覆盖
+
+            # 如果没有当前动画或当前帧无效，尝试设置idle
+            needs_fallback = False
+            fallback_reason = ""
+
+            if not self.current_animation:
+                needs_fallback = True
+                fallback_reason = "self.current_animation is None"
+            elif self.current_animation.current_frame() is None:
+                needs_fallback = True
+                fallback_reason = f"Animation '{self.current_animation.name}' current_frame() is None"
+            elif self.current_animation.current_frame().isNull():
+                needs_fallback = True
+                fallback_reason = f"Animation '{self.current_animation.name}' current_frame().isNull() is True"
+
+            if needs_fallback:
+                if self.main_window and self.idle_animation:
+                    # 只有当真实需要切换到idle时才记录这个warning，避免日志刷屏
+                    if self.current_animation != self.idle_animation or not self.idle_animation.is_playing:
+                        logger.warning(f"动画回退 ({fallback_reason})，切换到idle动画。")
+                    self.current_animation = self.idle_animation
+                    if not self.current_animation.is_playing: # 确保idle动画在播放
+                        self.current_animation.reset()
+                        self.current_animation.play()
+                    
+                    current_frame_image = self.current_animation.current_frame()
+                    if current_frame_image and not current_frame_image.isNull():
+                        self.main_window.set_image(current_frame_image)
+                    else:
+                        logger.error("CRITICAL: 回退到Idle动画后，其第一帧也无效！无法显示宠物。") 
+                else:
+                    logger.error(f"CRITICAL: 动画回退 ({fallback_reason})，且无法回退到idle动画 (main_window or idle_animation is None)。无法显示宠物。")
 
         # 4. 更新统计面板 (如果可见且有数据)
         if self.stats_panel and self.main_window and self.stats_panel.isVisible():
@@ -554,17 +592,17 @@ class StatusPet:
             logger.info("已注册状态变化事件监听器")
         else:
             logger.warning("状态机或其事件系统未初始化，无法注册状态变化监听器")
-
+        
         # 创建系统状态适配器
         self.system_state_adapter = SystemStateAdapter(self.state_machine)
         # 初始化系统状态适配器
-        self.system_state_adapter._initialize()
+        self.system_state_adapter.activate()
         logger.info("系统状态适配器已初始化")
         
         # 创建交互状态适配器
         self.interaction_state_adapter = InteractionStateAdapter(self.state_machine)
         # 初始化交互状态适配器
-        self.interaction_state_adapter._initialize()
+        self.interaction_state_adapter.activate()
         logger.info("交互状态适配器已初始化")
         
         # 创建时间行为系统（每分钟检查一次时间变化）
@@ -633,13 +671,13 @@ class StatusPet:
             time_system=self.time_behavior_system
         )
         # 初始化时间状态桥接器
-        self.time_state_bridge._initialize()
+        self.time_state_bridge.activate()
         logger.info("时间状态桥接器已初始化")
         
         # 创建交互处理器
         self.interaction_handler = InteractionHandler(parent_window=self.main_window)
         # 初始化交互处理器
-        self.interaction_handler._initialize()
+        self.interaction_handler.activate()
         logger.info("交互处理器已初始化")
         
         # 连接窗口事件到交互处理器
@@ -745,7 +783,7 @@ class StatusPet:
             self.main_window.dropped.connect(
                 lambda pos: handler.handle_mouse_event(
                     self._create_mouse_event(pos, Qt.MouseButton.LeftButton), 'release'))
-                    
+            
             # 连接鼠标移动事件，用于hover交互
             self.main_window.mouse_moved.connect(
                 lambda pos: handler.handle_mouse_event(

@@ -36,9 +36,6 @@ class ComponentBase(ABC):
         
         # 依赖组件列表
         self.dependencies: List[ComponentBase] = []
-        
-        # 启动组件
-        self.activate()
     
     def activate(self) -> bool:
         """激活组件

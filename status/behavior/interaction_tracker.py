@@ -90,10 +90,10 @@ class InteractionTracker(ComponentBase):
         # 模式判断周期（小时）
         self.pattern_period = 1.0
         
-        # 初始化
-        self._initialize()
+        # 初始化 (移除，交由 activate 处理)
+        # self._initialize()
         
-        self.logger.info("交互跟踪器初始化完成")
+        self.logger.info("交互跟踪器对象已创建，等待激活") # 修改日志
     
     def _initialize(self) -> bool:
         """初始化组件

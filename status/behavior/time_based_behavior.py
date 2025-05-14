@@ -253,23 +253,25 @@ class LunarHelper:
             leap_month: 是否闰月
             
         Returns:
-            Optional[datetime.date]: 公历日期，如果农历库不可用则返回None
+            Optional[datetime.date]: 公历日期，如果农历库不可用或转换失败则返回None
         """
         if not LUNAR_AVAILABLE:
             return None
         
         try:
             # 注意: lunar-python库的API处理闰月存在限制
-            # 这里通过创建对应月份的Lunar对象，然后获取其公历日期
+            # Lunar 构造器在遇到无效农历日期时可能抛出 ValueError
+            # 例如，农历小年的腊月三十是不存在的
             lunar = Lunar(year, month, day, 0, 0, 0)
-            
-            # 获取对应的公历日期
             solar = lunar.getSolar()
-            
-            # 返回datetime.date对象
             return datetime.date(solar.getYear(), solar.getMonth(), solar.getDay())
+        except ValueError as ve:
+            # 特别处理无效农历日期导致的ValueError
+            logging.getLogger("Status.Behavior.LunarHelper").warning(f"农历日期 {year}-{month}-{day} (闰月:{leap_month}) 无效或转换失败: {ve}")
+            return None
         except Exception as e:
-            logging.getLogger("Status.Behavior.LunarHelper").error(f"农历转公历失败: {e}")
+            # 捕获其他可能的意外错误
+            logging.getLogger("Status.Behavior.LunarHelper").error(f"农历转公历时发生未知错误 ({year}-{month}-{day}, 闰月:{leap_month}): {e}", exc_info=True)
             return None
     
     @staticmethod
@@ -412,21 +414,26 @@ class TimeBasedBehaviorSystem(ComponentBase):
         self.logger.info("时间行为系统初始化完成")
     
     def _initialize(self) -> bool:
-        """初始化组件
-        
-        Returns:
-            bool: 初始化是否成功
-        """
-        try:
-            # 获取事件系统实例
+        """初始化组件"""
+        # 获取事件系统实例 (如果尚未设置)
+        if self.event_system is None:
             self.event_system = EventSystem.get_instance()
-            
+
+        # 总是重新创建和启动timer，确保其状态正确
+        if hasattr(self, 'timer') and self.timer and self.timer.isActive():
+            self.timer.stop() # 先停止旧的，如果存在且活动
+            self.logger.debug("已停止既有的 TimeBasedBehaviorSystem 定时器")
+
+        self.timer = QTimer() 
+        self.timer.timeout.connect(self._check_time_change)
+        self.timer.start(self.check_interval * 1000)  # 转换为毫秒
+        self.logger.info(f"时间行为系统定时器已启动/重置，检查间隔: {self.check_interval}秒")
+        
+        # 初始化时，立即检查一次时间变化和特殊日期
+        try:
             # 检测当前时间段
             self.current_period = self.get_current_period()
             self.logger.info(f"初始时间段: {self.current_period.name}")
-            
-            # 启动定时器，定期检查时间变化
-            self.timer.start(self.check_interval * 1000)  # 转换为毫秒
             
             # 发布初始化完成事件
             self._publish_time_event(self.current_period)

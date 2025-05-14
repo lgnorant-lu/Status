@@ -252,69 +252,38 @@
       - 添加了标准化的系统事件类型定义
       - 编写了全面的单元测试，覆盖各类事件处理场景
 
-*   **Task 2.3.3: 重构 main.py 动画创建逻辑**
+*   **Task 2.3.3: 占位符资源系统重构**
     *   **Status**: [已完成]
-    *   **Description**: 将 `main.py` 中的动画创建逻辑迁移到 `PlaceholderFactory` 和各状态占位符模块，降低 `main.py` 复杂度，提升模块化。涉及移除旧的 `_create_*_placeholder_image` 方法，更新 `create_character_sprite` 以使用工厂，并确保文档（`Structure.md`, `Log.md`, 详细日志）同步更新。
+    *   **Description**: 
+        - 将 `main.py` 中的动画创建逻辑重构到 `PlaceholderFactory` 和各个独立的占位符模块中。
+        - 为核心状态 (Idle, Busy, Clicked, Morning, Night) 动画提升至 L4 质量标准并更新测试。
+        - 为特殊日期/节气 (春节, 立春) 创建 L4 质量的占位符动画和测试。
+    *   **Log**: 
+        - [Logs/main/2025-05-15_main_animation_logic_refactor.md]
+        - [Logs/pet_assets/2025-05-15_core_animations_L4_enhancement.md]
+        - [Logs/pet_assets/2025-05-15_special_date_animations.md]
 
-*   **Task 2.3.4: 更新架构文档**
+*   **Task 2.3.4: 修复 `main.py` 运行时错误**
     *   **Status**: [已完成]
-    *   **Description**:
-      - [已完成] 更新架构设计文档及示意图
-      - [已完成] 创建插件开发指南文档
-      - [已完成] 开发示例插件作为参考
-      - [已完成] 确保所有代码与文档保持一致性
-    *   **Implementation Details**:
-      - 更新Design.md架构设计文档
-      - 修订Structure.md项目结构
-      - 为新增模块添加API文档
-      - 完成时间：2025/05/26
-    *   **Progress**:
-      - **[2025-05-26]** 在Design.md中添加了关于插件系统和事件系统的详细描述
-      - **[2025-05-26]** 创建了插件开发指南(docs/developer/plugin_development_guide.md)
-      - **[2025-05-26]** 更新了Structure.md，反映新增的插件系统和事件系统模块
-      - **[2025-05-26]** 在Design.md中添加了事件系统迁移与兼容层的说明
-      - **[2025-05-26]** 所有文档更新均已完成，确保与代码保持一致
+    *   **Description**: 解决 `main.py` 启动和运行期间出现的多个错误，包括托盘图标路径、模块导入、`UnboundLocalError`、组件初始化顺序以及 `LunarHelper` 中的未处理异常。
+    *   **Log**: [Logs/runtime_errors/2025-05-15_main_runtime_error_fixes.md]
 
-*   **Task 2.3.5 (TDD): 实现可插拔的宠物状态占位符系统**
+### Sub-phase 2.4: 核心动画增强与稳定 [进行中]
+
+*   **Task 2.4.1: 特殊日期L4动画**
     *   **Status**: [已完成]
-    *   **Description**:
-      - [已完成] 设计和实现单状态单文件的占位符管理架构
-      - [已完成] 开发`PlaceholderFactory`用于动态加载各状态占位符
-      - [已完成] 创建第一个`PetState`状态(HAPPY)的占位符动画文件
-      - [已完成] 使用程序化生成的方式创建高精度(L3/L4)占位符动画
-      - [已完成] 集成占位符系统到`StatusPet`主流程
-      - [已完成] 编写全面的单元测试和集成测试
-    *   **Implementation Details**:
-      - 详细设计见: `docs/placeholder_implementation_plan.md`
-      - 实现了状态与占位符文件的命名约定(`{state.name.lower()}_placeholder.py`)
-      - 使用`importlib`动态导入对应状态的占位符模块
-      - 使用Qt绘图API创建精美的HAPPY状态占位符动画(3帧渐变)
-      - 所有占位符模块提供统一的`create_animation()`接口
-      - 在`StatusPet`中集成占位符工厂，支持初始化和动态加载
-      - 所有测试用例通过，验证功能完整性
-    *   **Progress**:
-      - **[2025-05-15]** 实现了`pet_assets`基础模块结构
-      - **[2025-05-15]** 开发了`PlaceholderFactory`工厂类
-      - **[2025-05-15]** 实现了"开心"状态的占位符动画
-      - **[2025-05-15]** 编写了全面的单元测试和集成测试
-      - **[2025-05-15]** 集成到主应用程序，支持动态加载状态占位符
+    *   **Description**: 为特殊日期（春节、立春）创建L4质量的占位符动画和单元测试。
 
-*   **Task 2.3.6: 为核心占位符动画编写单元测试**
+*   **Task 2.4.2: 核心动画L4化**
     *   **Status**: [已完成]
-    *   **Description**: 为 `idle_placeholder.py`, `busy_placeholder.py`, `clicked_placeholder.py`, `morning_placeholder.py`, 和 `night_placeholder.py` 模块的 `create_animation()` 函数编写单元测试。测试将验证返回类型、帧内容、元数据和循环性。
-    *   **Date**: 2025-05-15
+    *   **Description**: 将核心占位符动画 (Idle, Busy, Clicked, Morning, Night) 提升至L4质量标准，并更新相关单元测试。
 
-### Sub-phase 2.4: 动画内容与质量提升 [进行中]
-
-*   **Task 2.4.1: 阶段一：创建特殊日期/节气L4动画**
+*   **Task 2.4.3: 修复main运行时错误及相关问题**
     *   **Status**: [已完成]
-    *   **Description**: 为选定的特殊日期（如春节）和节气（如立春）创建高质量（L4级别）的程序化占位符动画。这些动画将通过 `PlaceholderFactory` 和 `EnhancedTimeAnimationManager`（或相关时间行为逻辑）集成。包括创建新的动画模块、对应的单元测试，并更新相关文档。
-    *   **Date**: 2025-05-15
+    *   **Description**: 解决了 `main.py` 初始化过程中的多个 `AttributeError`，通过调整组件激活顺序和修复 `ComponentBase` 实现。同时修复了动画回退到idle的问题。消除了 `PlaceholderFactory` 加载缺失占位符（LOW_BATTERY, CHARGING, FULLY_CHARGED, SYSTEM_UPDATE, SLEEP）的警告，并创建了对应的基础占位符文件。改进了 `LunarHelper` 中对无效农历日期转换的处理，使其更稳定。
+    *   **Log**: `Logs/main_runtime_fixes/2025-05-15_runtime_error_fixes.md` (待创建)
 
-*   **Task 2.4.2: 阶段二：提升核心占位符动画至L4质量**
-    *   **Status**: [计划中]
-    *   **Description**: 将现有的核心占位符动画 (idle, busy, clicked, morning, night) 提升至L4质量标准，包括增加动画细节、帧数、可能的交互反馈增强，并更新相应的单元测试。
-    *   **Date**: 2025-05-15
+### Sub-phase 2.5: 文档与图表完善 [计划中]
 
 ## 四、当前开发环境准备状态
 
@@ -392,3 +361,26 @@
 - [计划中] 实现节日动态背景
 - [计划中] 添加节日专属动画和音效
 - [计划中] 支持季节性主题更换
+
+## 四、Phase 3: 测试与文档完善 [计划中]
+
+## 五、会话日志
+
+### 2025-05-15 (当前会话)
+- **主要活动**: 
+    - 继续提升核心占位符动画 (Night) 至L4质量，并调试通过相关测试。
+    - 更新 `Structure.md`, `Design.md`, `Thread.md`, `Log.md` 以反映L4核心动画的完成。
+    - 提交L4核心动画的变更: `[Refactor]: 核心占位符动画(Idle, Busy, Clicked, Morning, Night)提升至L4质量并更新测试`。
+    - 切换任务，开始修复 `main.py` 中的运行时错误。
+    - **错误修复**: 
+        - 修正了系统托盘图标的路径问题 (`status/ui/system_tray.py`)。
+        - 解决了 `PlaceholderFactory` 中 `MODERATE_LOAD` 和 `SYSTEM_ERROR` 的模块导入问题 (创建新文件，重命名文件)。
+        - 修复了 `StatusPet.create_character_sprite` 中的 `UnboundLocalError: fallback_image`。
+        - 通过调整组件初始化顺序 (移除 `ComponentBase.__init__` 中的 `activate()` 调用，由 `StatusPet.initialize()` 显式管理) 解决了多个组件的 `AttributeError`。
+        - 创建了缺失的基础状态占位符文件 (`LOW_BATTERY`, `CHARGING`, `FULLY_CHARGED`, `SYSTEM_UPDATE`, `SLEEP`)。
+        - 增强了 `LunarHelper.lunar_to_solar` 的错误处理能力。
+    - 上述运行时错误已解决，应用稳定性得到提升。
+- **后续**: 准备进行本次错误修复的文档更新和代码提交。
+
+### 2025-05-14 (上一会话)
+// ... existing code ...

@@ -1,0 +1,59 @@
+"""
+---------------------------------------------------------------
+File name:                  system_update_placeholder.py
+Author:                     Ignorant-lu
+Date created:               2025/05/15
+Description:                "系统更新"状态的占位符动画实现
+----------------------------------------------------------------
+
+Changed history:            
+                            2025/05/15: 初始创建;
+----
+"""
+import logging
+from PySide6.QtGui import QImage, QPainter, QColor, QBrush, QPen, QFont
+from PySide6.QtCore import Qt, QRectF
+
+from status.animation.animation import Animation
+from status.behavior.pet_state import PetState
+
+logger = logging.getLogger(__name__)
+
+def _create_system_update_frame(width: int = 64, height: int = 64) -> QImage:
+    image = QImage(width, height, QImage.Format.Format_ARGB32)
+    image.fill(QColor(0,0,0,0)) # Transparent background
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    # Simple system_update indicator (e.g., a blue rectangle with gears)
+    painter.setBrush(QBrush(QColor(50, 100, 220, 180))) # Bluish
+    painter.drawRect(QRectF(width * 0.2, height * 0.3, width * 0.6, height * 0.4))
+    
+    font = QFont("Arial", 9)
+    font.setBold(True)
+    painter.setFont(font)
+    painter.setPen(QPen(QColor(255,255,255))) # White text
+    painter.drawText(QRectF(0,0,width,height), Qt.AlignmentFlag.AlignCenter, "SYS_UPD")
+
+    # Simple gear symbols (could be improved)
+    # painter.setPen(QPen(QColor(200, 200, 200), 1))
+    # painter.drawEllipse(QRectF(width * 0.35, height * 0.4, 10, 10))
+    # painter.drawEllipse(QRectF(width * 0.55, height * 0.5, 10, 10))
+
+    painter.end()
+    return image
+
+def create_animation() -> Animation:
+    """创建\"系统更新\"状态的基础占位符动画
+    
+    Returns:
+        Animation: \"系统更新\"状态的动画对象
+    """
+    frames = [_create_system_update_frame()]
+    animation = Animation(name=PetState.SYSTEM_UPDATE.name.lower(), frames=frames, fps=1)
+    animation.metadata["placeholder"] = True
+    animation.metadata["L2_quality"] = True
+    animation.metadata["description"] = "系统更新 L2 占位符动画"
+    animation.set_loop(True)
+    logger.debug(f"创建了{PetState.SYSTEM_UPDATE.name.upper()}状态的占位符动画，共 {len(frames)} 帧。")
+    return animation 

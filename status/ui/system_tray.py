@@ -44,9 +44,14 @@ class SystemTrayManager(QObject):
         self.app = app
         self.tray_icon = QSystemTrayIcon(parent=None) # 父对象设为 None 避免随父窗口关闭
         
-        icon_path = get_resource_path("temp_icon.png")
+        # 直接构建到 assets/placeholders/app_icon.png 的路径
+        # __file__ 是 status/ui/system_tray.py
+        base_dir = os.path.dirname(__file__)
+        icon_path = os.path.abspath(os.path.join(base_dir, '..', '..', 'assets', 'placeholders', 'app_icon.png'))
+        
         if os.path.exists(icon_path):
             self.tray_icon.setIcon(QIcon(icon_path))
+            logger.info(f"成功加载托盘图标: {icon_path}")
         else:
             logger.warning(f"托盘图标文件未找到: {icon_path}，将创建默认图标")
             # 创建一个简单的默认图标
