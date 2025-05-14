@@ -47,6 +47,8 @@
   - 实现了统一的`create_animation()`接口，确保所有占位符组件遵循一致的标准
   - 集成到`StatusPet`主流程，支持初始化和动态加载状态占位符
   - 编写了全面的单元测试和集成测试，所有测试用例通过
+- [2025-05-15] [资源管理] 为特殊日期/节气创建L4占位符动画 - 详见 [Logs/pet_assets/2025-05-15_special_date_animations.md]
+- [2025-05-15] [资源管理] 核心占位符动画L4质量提升 - 详见 [Logs/pet_assets/2025-05-15_core_animations_L4_enhancement.md]
 
 ## 交互系统
 - [2025-04-03] [交互系统] 交互管理器实现 - 详见 [Logs/2025-04-03_interaction_manager.md]
@@ -180,7 +182,7 @@
 
 ### Project Cleanup: Phase 1
 - 执行了第一阶段的项目清理，移除了旧主题的 `assets` 中的部分资源 (`assets/sprites/idle/README.md`, `assets/sprites/idle/generate_idle_frames.py`, `assets/Plan.md`) 和 `status/core/` 下的冗余模块 (`asset_manager.py`, `resource_loader.py`, `cache.py`, `scene_manager.py`)。
-- **更新 (2025-05-12):** 清理范围已扩展，包括根目录下的多个文件和目录、`assets` 内的空子目录、`status/` 内的多个模块（如config, monitor, examples, launcher等）、`status/ui/` 内的部分文件和目录，以及 `tests/` 目录内的大量文件和子目录。同时，对 `status/interaction/interaction_manager.py` 进行了解耦编辑（移除CommandManager引用，但附带linter错误）。
+- **更新 (2025-05-12):** 清理范围已扩展，包括根目录下的多个文件和目录、`assets` 内的空子目录、`status` 内的多个模块（如config, monitor, examples, launcher等）、`status/ui/` 内的部分文件和目录，以及 `tests/` 目录内的大量文件和子目录。同时，对 `status/interaction/interaction_manager.py` 进行了解耦编辑（移除CommandManager引用，但附带linter错误）。
 - **注意**: 部分二进制资源文件（如旧主题的 .png）和非空目录的删除仍需手动完成。
 - **完整详情参见**: [Logs/2025-04-17_project_cleanup_phase1.md]
 
@@ -261,6 +263,7 @@
   - 所有测试均已通过。
 
 - [2025-05-15] [资源管理] 为特殊日期/节气创建L4占位符动画 - 详见 [Logs/pet_assets/2025-05-15_special_date_animations.md]
+- [2025-05-15] [资源管理] 核心占位符动画L4质量提升 - 详见 [Logs/pet_assets/2025-05-15_core_animations_L4_enhancement.md]
 
 ## 2025-05-14
 
