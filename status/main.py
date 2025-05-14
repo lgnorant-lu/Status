@@ -14,6 +14,7 @@ Changed history:
                             2025/05/13: 增加系统状态监控功能;
                             2025/05/13: 实现基础交互功能;
                             2025/05/14: 添加时间行为系统;
+                            2025/05/15: 添加占位符工厂;
 ----
 """
 
@@ -57,6 +58,8 @@ from status.behavior.interaction_tracker import InteractionTracker
 
 from status.behavior.time_based_behavior import TimeBasedBehaviorSystem, TimePeriod
 from status.behavior.time_state_bridge import TimeStateBridge
+
+from status.pet_assets.placeholder_factory import PlaceholderFactory
 
 # 全局实例，允许其他模块访问
 instance = None
@@ -102,6 +105,9 @@ class StatusPet:
         # 状态到动画的映射
         self.state_to_animation_map: Dict[PetState, Optional[Animation]] = {}
         
+        # 占位符工厂 - 用于动态加载状态占位符
+        self.placeholder_factory = None
+        
         # 时间动画管理器
         self.time_animation_manager = None  # 时间相关动画管理器
         
@@ -133,12 +139,12 @@ class StatusPet:
         # 设置窗口标题
         self.main_window.setWindowTitle("Status Pet")
         
-        # 创建并设置一个占位符图像
-        placeholder_image = self._create_placeholder_image()
-        if placeholder_image:
-            self.main_window.set_image(placeholder_image)
+        # 移除对 self._create_placeholder_image() 的调用
+        # 初始图像将由 create_character_sprite 设置
+        # if placeholder_image:
+        #     self.main_window.set_image(placeholder_image)
         
-        logger.info(f"MainPetWindow created. Initial size: {self.main_window.size()}")
+        logger.info(f"MainPetWindow创建完成。初始大小: {self.main_window.size()}")
 
         return self.main_window
     
@@ -237,49 +243,22 @@ class StatusPet:
             logger.error(f"切换窗口交互状态时出错: {e}", exc_info=True)
     
     def _handle_toggle_stats_panel(self, show: bool):
-        """处理显示/隐藏统计面板的请求。"""
-        if not self.stats_panel or not self.main_window:
-            logger.warning("StatsPanel 或主窗口不存在，无法切换统计面板可见性。")
-            return
-
-        if show:
-            # 不再需要手动计算位置，面板会自动跟随主窗口
-            # 只需要在主窗口当前位置显示面板
-            if self.main_window.isVisible():
-                # 获取当前主窗口位置和大小
-                pet_pos = self.main_window.pos()
-                pet_size = self.main_window.size()
-                
-                logger.info(f"展示统计面板 - 主窗口当前位置: {pet_pos}, 大小: {pet_size}")
-                
-                # 主动调用更新位置方法
-                self.stats_panel.parent_window_pos = pet_pos
-                self.stats_panel.parent_window_size = pet_size
-                self.stats_panel.update_position(pet_pos, pet_size)
-                
-                # 显示面板，使用show_panel方法
-                panel_pos = QPoint(pet_pos.x() + pet_size.width() + 10, pet_pos.y())
-                self.stats_panel.show_panel(panel_pos)
-                
-                # 确保面板可见
-                if not self.stats_panel.isVisible():
-                    logger.warning("StatsPanel.isVisible() 仍然是 False，尝试直接调用 show()")
-                    self.stats_panel.show()
-                    self.stats_panel.raise_()
-                    self.stats_panel.activateWindow()
-                
-                logger.info(f"显示统计面板于 {pet_pos}，面板实际位置: {self.stats_panel.pos()}")
-                logger.info(f"统计面板可见状态: {self.stats_panel.isVisible()}, 几何属性: {self.stats_panel.geometry()}")
+        """处理切换统计面板的显示状态"""
+        if self.stats_panel:
+            if show:
+                logger.debug("显示统计面板")
+                # 更新面板位置并显示
+                if self.main_window:
+                    self.stats_panel.update_position(self.main_window.pos(), self.main_window.size())
+                self.stats_panel.show()
+                # 发布一次最新的统计数据以填充面板
+                publish_stats(include_details=True) 
             else:
-                logger.warning("主窗口不可见，无法显示统计面板。")
+                logger.debug("隐藏统计面板")
+                self.stats_panel.hide()
         else:
-            self.stats_panel.hide_panel()
-            logger.info("隐藏统计面板")
+            logger.warning("统计面板未初始化，无法切换显示状态。")
             
-        # 确保托盘菜单项的文本状态同步 (这一步已由 SystemTrayManager 内部处理)
-        # if self.system_tray and hasattr(self.system_tray, 'toggle_stats_action'):
-        #     self.system_tray.toggle_stats_action.setChecked(show)
-
     def exit_app(self):
         """退出应用"""
         logger.info("用户请求退出应用程序")
@@ -310,314 +289,79 @@ class StatusPet:
             logger.debug("交互处理器已关闭")
         
         self.app.quit()
-    
-    def _create_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
-        """创建一个占位符图像
-        
-        Args:
-            width: 图像宽度
-            height: 图像高度
-            
-        Returns:
-            QImage: 创建的图像，如果失败则为None
-        """
-        try:
-            logger.info("Creating placeholder image for pet")
-
-            # 创建一个QImage
-            image = QImage(width, height, QImage.Format.Format_ARGB32)
-            image.fill(QColor(0, 0, 0, 0))  # 透明背景
-            
-            # 添加绘制代码，使图像可见
-            painter = QPainter(image)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            
-            # 绘制猫咪轮廓
-            painter.setPen(QPen(QColor(70, 70, 70), 2))
-            painter.setBrush(QBrush(QColor(200, 200, 200, 220)))
-            
-            # 绘制头部（圆形）
-            painter.drawEllipse(10, 10, 44, 44)
-            
-            # 绘制耳朵
-            painter.setBrush(QBrush(QColor(180, 180, 180, 220)))
-            # 左耳
-            painter.drawPolygon([
-                QPoint(15, 15),
-                QPoint(25, 5),
-                QPoint(30, 15)
-            ])
-            # 右耳
-            painter.drawPolygon([
-                QPoint(49, 15),
-                QPoint(39, 5),
-                QPoint(34, 15)
-            ])
-            
-            # 绘制眼睛
-            painter.setPen(QPen(QColor(30, 30, 30), 1))
-            painter.setBrush(QBrush(QColor(30, 30, 30)))
-            # 左眼
-            painter.drawEllipse(20, 25, 8, 8)
-            # 右眼
-            painter.drawEllipse(36, 25, 8, 8)
-            
-            # 绘制鼻子
-            painter.setBrush(QBrush(QColor(255, 150, 150)))
-            painter.drawEllipse(29, 35, 6, 4)
-
-            # 绘制嘴
-            painter.setPen(QPen(QColor(70, 70, 70), 1))
-            painter.drawLine(32, 39, 32, 42)
-            painter.drawLine(32, 42, 28, 45)
-            painter.drawLine(32, 42, 36, 45)
-            
-            painter.end()
-            
-            logger.info(f"Created placeholder image: {width}x{height}")
-            return image
-        except Exception as e:
-            logger.error(f"Failed to create placeholder image: {str(e)}")
-            return None
-    
-    def _create_busy_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
-        """创建一个代表'忙碌'状态的占位符图像
-        
-        Args:
-            width: 图像宽度
-            height: 图像高度
-            
-        Returns:
-            QImage: 创建的图像，如果失败则为None
-        """
-        try:
-            logger.debug("Creating busy placeholder image for pet") # Use debug level
-
-            # 创建一个QImage
-            image = QImage(width, height, QImage.Format.Format_ARGB32)
-            image.fill(QColor(0, 0, 0, 0))  # 透明背景
-            
-            # 添加绘制代码，使图像可见
-            painter = QPainter(image)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            
-            # 绘制猫咪轮廓 (与idle相同)
-            painter.setPen(QPen(QColor(70, 70, 70), 2))
-            painter.setBrush(QBrush(QColor(200, 200, 200, 220)))
-            painter.drawEllipse(10, 10, 44, 44) # Head
-            painter.setBrush(QBrush(QColor(180, 180, 180, 220)))
-            painter.drawPolygon([QPoint(15, 15), QPoint(25, 5), QPoint(30, 15)]) # Left Ear
-            painter.drawPolygon([QPoint(49, 15), QPoint(39, 5), QPoint(34, 15)]) # Right Ear
-            
-            # --- 修改眼睛 ---
-            painter.setPen(QPen(QColor(30, 30, 30), 1))
-            painter.setBrush(QBrush(QColor(30, 30, 30)))
-            # 左眼 (更窄)
-            painter.drawEllipse(20, 28, 8, 4) # y=28, height=4
-            # 右眼 (更窄)
-            painter.drawEllipse(36, 28, 8, 4) # y=28, height=4
-            # --- 结束修改 ---
-            
-            # 绘制鼻子 (与idle相同)
-            painter.setBrush(QBrush(QColor(255, 150, 150)))
-            painter.drawEllipse(29, 35, 6, 4)
-
-            # 绘制嘴 (与idle相同)
-            painter.setPen(QPen(QColor(70, 70, 70), 1))
-            painter.drawLine(32, 39, 32, 42)
-            painter.drawLine(32, 42, 28, 45)
-            painter.drawLine(32, 42, 36, 45)
-            
-            painter.end()
-            
-            logger.debug(f"Created busy placeholder image: {width}x{height}") # Use debug level
-            return image
-        except Exception as e:
-            logger.error(f"Failed to create busy placeholder image: {str(e)}")
-            return None
-    
-    def _create_memory_warning_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
-        """创建一个代表'内存警告'状态的占位符图像"""
-        try:
-            logger.debug("Creating memory warning placeholder image for pet")
-
-            image = QImage(width, height, QImage.Format.Format_ARGB32)
-            image.fill(QColor(0, 0, 0, 0))  # 透明背景
-            
-            painter = QPainter(image)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            
-            # --- 修改主体颜色为橙红色 --- 
-            painter.setPen(QPen(QColor(150, 50, 0), 2)) # 深橙色边框
-            painter.setBrush(QBrush(QColor(255, 100, 0, 220))) # 橙红色填充
-            # --- 结束修改 --- 
-            
-            painter.drawEllipse(10, 10, 44, 44) # Head
-            
-            # 耳朵颜色也调整
-            painter.setBrush(QBrush(QColor(220, 80, 0, 220)))
-            painter.drawPolygon([QPoint(15, 15), QPoint(25, 5), QPoint(30, 15)]) # Left Ear
-            painter.drawPolygon([QPoint(49, 15), QPoint(39, 5), QPoint(34, 15)]) # Right Ear
-            
-            # 眼睛 (可以夸张一点，比如用X表示或者瞪大的眼睛)
-            painter.setPen(QPen(QColor(50, 0, 0), 1))
-            painter.setBrush(QBrush(QColor(50, 0, 0)))
-            # 左眼 (瞪大)
-            painter.drawEllipse(18, 23, 12, 12) 
-            # 右眼 (瞪大)
-            painter.drawEllipse(34, 23, 12, 12)
-            # 眼白部分可以稍微亮一点
-            painter.setBrush(QBrush(QColor(255, 200, 200)))
-            painter.drawEllipse(21, 26, 6, 6)
-            painter.drawEllipse(37, 26, 6, 6)
-            
-            # 鼻子 (与idle相同)
-            painter.setBrush(QBrush(QColor(255, 150, 150)))
-            painter.drawEllipse(29, 35, 6, 4)
-
-            # 嘴 (张开表示惊讶/警告)
-            painter.setPen(QPen(QColor(70, 70, 70), 1))
-            painter.setBrush(QBrush(QColor(70,70,70)))
-            painter.drawEllipse(28, 40, 8, 8) # 张开的嘴
-            
-            painter.end()
-            
-            logger.debug(f"Created memory warning placeholder image: {width}x{height}")
-            return image
-        except Exception as e:
-            logger.error(f"Failed to create memory warning placeholder image: {str(e)}")
-            return None
-
-    def _create_error_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
-        """创建一个代表'错误'状态的占位符图像"""
-        try:
-            image = QImage(width, height, QImage.Format.Format_ARGB32)
-            image.fill(QColor(0,0,0,0)) # Transparent
-            painter = QPainter(image)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            
-            # Background for error (e.g., dark red)
-            painter.setBrush(QBrush(QColor(139, 0, 0, 200))) # Dark Red
-            painter.drawRect(0, 0, width, height)
-            
-            # Error text
-            painter.setPen(QPen(QColor(255, 255, 255))) # White text
-            painter.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-            text_rect = QRect(0, 0, width, height)
-            painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, "ERROR")
-            
-            painter.end()
-            logger.debug("Created error placeholder image")
-            return image
-        except Exception as e:
-            logger.error(f"Failed to create error placeholder image: {e}")
-            return None
 
     def create_character_sprite(self):
-        """创建角色精灵/动画"""
-        try:
-            # 创建待机动画
-            idle_image = self._create_placeholder_image()
-            if idle_image:
-                self.idle_animation = Animation(name="idle", frames=[idle_image], fps=1)
-                self.idle_animation.set_loop(True)
-            
-            # 创建忙碌动画
-            busy_image = self._create_busy_placeholder_image()
-            if busy_image:
-                self.busy_animation = Animation(name="busy", frames=[busy_image], fps=1)
-                self.busy_animation.set_loop(True)
-                
-            # 创建内存警告动画
-            memory_warning_image = self._create_memory_warning_placeholder_image()
-            if memory_warning_image:
-                self.memory_warning_animation = Animation(name="memory_warning", frames=[memory_warning_image], fps=1)
-                self.memory_warning_animation.set_loop(True)
-            
-            # 创建早晨动画
-            morning_image = self._create_morning_placeholder_image()
-            if morning_image:
-                self.morning_animation = Animation(name="morning", frames=[morning_image], fps=1)
-                self.morning_animation.set_loop(True)
-                
-            # 创建中午动画
-            noon_image = self._create_noon_placeholder_image()
-            if noon_image:
-                self.noon_animation = Animation(name="noon", frames=[noon_image], fps=1)
-                self.noon_animation.set_loop(True)
-                
-            # 创建下午动画（新增）
-            afternoon_image = self._create_noon_placeholder_image(color_adjust=True)
-            if afternoon_image:
-                self.afternoon_animation = Animation(name="afternoon", frames=[afternoon_image], fps=1)
-                self.afternoon_animation.set_loop(True)
-                
-            # 创建晚上动画（新增）
-            evening_image = self._create_night_placeholder_image(make_darker=False)
-            if evening_image:
-                self.evening_animation = Animation(name="evening", frames=[evening_image], fps=1)
-                self.evening_animation.set_loop(True)
-                
-            # 创建深夜动画
-            night_image = self._create_night_placeholder_image()
-            if night_image:
-                self.night_animation = Animation(name="night", frames=[night_image], fps=1)
-                self.night_animation.set_loop(True)
+        """创建角色精灵和各种状态的动画"""
+        logger.info("使用PlaceholderFactory创建角色精灵和各种状态的动画...")
 
-            # 创建错误动画
-            error_img_frames = []
-            error_img = self._create_error_placeholder_image() # Use new dedicated method
-            if error_img:
-                error_img_frames.append(error_img)
-            self.error_animation = Animation(name="error", frames=error_img_frames, fps=1)
-            if self.error_animation:
-                self.error_animation.set_loop(False)
+        if not self.placeholder_factory:
+            logger.error("PlaceholderFactory未初始化。无法创建角色精灵。")
+            return
 
-            # 新增交互动画
-            clicked_frames = []
-            clicked_img = self._create_clicked_placeholder_image()
-            if clicked_img:
-                clicked_frames.append(clicked_img)
-            self.clicked_animation = Animation(name="clicked", frames=clicked_frames, fps=2)
-            if self.clicked_animation:
-                self.clicked_animation.set_loop(False)
+        # 使用 PlaceholderFactory 获取各种状态的动画
+        self.idle_animation = self.placeholder_factory.get_animation(PetState.IDLE)
+        self.busy_animation = self.placeholder_factory.get_animation(PetState.BUSY)
+        self.memory_warning_animation = self.placeholder_factory.get_animation(PetState.MEMORY_WARNING)
+        self.error_animation = self.placeholder_factory.get_animation(PetState.SYSTEM_ERROR)
 
-            dragged_frames = []
-            dragged_img = self._create_dragged_placeholder_image()
-            if dragged_img:
-                dragged_frames.append(dragged_img)
-            self.dragged_animation = Animation(name="dragged", frames=dragged_frames, fps=2)
-            if self.dragged_animation:
-                self.dragged_animation.set_loop(False) # Drag should be non-looping
+        # 获取交互动画
+        self.clicked_animation = self.placeholder_factory.get_animation(PetState.CLICKED)
+        self.dragged_animation = self.placeholder_factory.get_animation(PetState.DRAGGED)
+        self.petted_animation = self.placeholder_factory.get_animation(PetState.PETTED)
+        self.hover_animation = self.placeholder_factory.get_animation(PetState.HOVER)
 
-            petted_frames = []
-            petted_img = self._create_petted_placeholder_image()
-            if petted_img:
-                petted_frames.append(petted_img)
-            self.petted_animation = Animation(name="petted", frames=petted_frames, fps=2)
-            if self.petted_animation:
-                self.petted_animation.set_loop(False)
+        # 获取时间相关的动画
+        self.morning_animation = self.placeholder_factory.get_animation(PetState.MORNING)
+        self.noon_animation = self.placeholder_factory.get_animation(PetState.NOON)
+        self.afternoon_animation = self.placeholder_factory.get_animation(PetState.AFTERNOON)
+        self.evening_animation = self.placeholder_factory.get_animation(PetState.EVENING)
+        self.night_animation = self.placeholder_factory.get_animation(PetState.NIGHT)
+        
+        animations_to_check = {
+            "idle": self.idle_animation,
+            "busy": self.busy_animation,
+            "memory_warning": self.memory_warning_animation,
+            "error": self.error_animation,
+            "clicked": self.clicked_animation,
+            "dragged": self.dragged_animation,
+            "petted": self.petted_animation,
+            "hover": self.hover_animation,
+            "morning": self.morning_animation,
+            "noon": self.noon_animation,
+            "afternoon": self.afternoon_animation,
+            "evening": self.evening_animation,
+            "night": self.night_animation,
+        }
 
-            # 创建悬停动画
-            hover_frames = []
-            hover_img = self._create_hover_placeholder_image()
-            if hover_img:
-                hover_frames.append(hover_img)
-            self.hover_animation = Animation(name="hover", frames=hover_frames, fps=2)
-            if self.hover_animation:
-                self.hover_animation.set_loop(False)
+        all_loaded = True
+        for name, anim in animations_to_check.items():
+            if anim is None:
+                logger.error(f"从PlaceholderFactory加载'{name}'动画失败。")
+                all_loaded = False
+            else:
+                logger.info(f"成功从PlaceholderFactory加载'{name}'动画: {anim.name}, 帧数: {len(anim.frames)}")
 
-            # 初始化状态到动画的映射表
-            self._initialize_state_to_animation_map()
-                
-            # 设置初始动画为待机
+        if not all_loaded:
+            logger.error("一个或多个动画加载失败。应用程序可能无法按预期运行。")
+
+        if self.idle_animation:
             self.current_animation = self.idle_animation
-            if self.current_animation:
-                self.current_animation.play()
-                
-            logger.info("Character animations created successfully")
-        except Exception as e:
-            logger.error(f"Failed to create character animations: {e}")
+            logger.info(f"默认当前动画设置为: {self.current_animation.name}")
+            if self.main_window and self.current_animation.current_frame():
+                 self.main_window.set_image(self.current_animation.current_frame())
+        else:
+            logger.error("Idle动画加载失败。宠物将不会有动画。")
+            fallback_image = QImage(64, 64, QImage.Format.Format_ARGB32)
+            fallback_image.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(fallback_image)
+            painter.setPen(QPen(Qt.GlobalColor.red))
+            painter.drawText(QRect(0,0,64,64), Qt.AlignmentFlag.AlignCenter, "Anim ERR")
+            painter.end()
+            self.current_animation = Animation(name="fallback_idle", frames=[fallback_image], fps=1)
+            if self.main_window:
+                self.main_window.set_image(fallback_image)
+
+        logger.info("角色精灵和动画创建/加载过程完成。")
 
     def _initialize_state_to_animation_map(self):
         """初始化状态到对应动画的映射表"""
@@ -670,367 +414,18 @@ class StatusPet:
             # PetState.BODY_PETTED: self.petted_animation,
             # PetState.TAIL_PETTED: self.petted_animation,
         }
-        logger.debug("State to animation map initialized.")
-
-    def _create_clicked_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
-        """创建一个代表'被点击'状态的占位符图像"""
-        try:
-            image = QImage(width, height, QImage.Format.Format_ARGB32)
-            image.fill(QColor(0,0,0,0)) # Transparent
-            painter = QPainter(image)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setBrush(QBrush(QColor(100, 200, 255, 200))) # Light blueish
-            painter.drawEllipse(width // 4, height // 4, width // 2, height // 2) # A circle
-            painter.setPen(QPen(Qt.GlobalColor.black))
-            painter.setFont(QFont("Arial", 10))
-            painter.drawText(QRect(0,0,width,height), Qt.AlignmentFlag.AlignCenter, "Clicked!")
-            painter.end()
-            logger.debug("Created clicked placeholder image")
-            return image
-        except Exception as e:
-            logger.error(f"Failed to create clicked placeholder: {e}")
-            return None
-
-    def _create_dragged_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
-        """创建一个代表'被拖拽'状态的占位符图像"""
-        try:
-            image = QImage(width, height, QImage.Format.Format_ARGB32)
-            image.fill(QColor(0,0,0,0)) # Transparent
-            painter = QPainter(image)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setBrush(QBrush(QColor(255, 180, 100, 200))) # Orangey
-            # Draw a stretched ellipse
-            painter.drawEllipse(width // 8, height // 4, width * 3 // 4, height // 2)
-            painter.setPen(QPen(Qt.GlobalColor.black))
-            painter.setFont(QFont("Arial", 10))
-            painter.drawText(QRect(0,0,width,height), Qt.AlignmentFlag.AlignCenter, "Dragged!")
-            painter.end()
-            logger.debug("Created dragged placeholder image")
-            return image
-        except Exception as e:
-            logger.error(f"Failed to create dragged placeholder: {e}")
-            return None
-
-    def _create_petted_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
-        """创建一个代表'被抚摸'状态的占位符图像"""
-        try:
-            image = QImage(width, height, QImage.Format.Format_ARGB32)
-            image.fill(QColor(0,0,0,0)) # Transparent
-            painter = QPainter(image)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setBrush(QBrush(QColor(255, 100, 200, 200))) # Pinkish
-            # Draw a heart shape (simplified)
-            path = QPainterPath()
-            path.moveTo(width / 2, height / 4)
-            path.cubicTo(width / 10, height / 5, width / 3, height * 3 / 4, width / 2, height * 3 / 4)
-            path.cubicTo(width * 2 / 3, height * 3 / 4, width * 9 / 10, height / 5, width / 2, height / 4)
-            painter.drawPath(path)
-            painter.setPen(QPen(Qt.GlobalColor.black))
-            painter.setFont(QFont("Arial", 10))
-            painter.drawText(QRect(0,0,width,height), Qt.AlignmentFlag.AlignCenter, "Petted!")
-            painter.end()
-            logger.debug("Created petted placeholder image")
-            return image
-        except Exception as e:
-            logger.error(f"Failed to create petted placeholder: {e}")
-            return None
-            
-    def _create_hover_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
-        """创建一个代表'鼠标悬停'状态的占位符图像"""
-        try:
-            image = QImage(width, height, QImage.Format.Format_ARGB32)
-            image.fill(QColor(0,0,0,0)) # Transparent
-            painter = QPainter(image)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            
-            # 创建发光效果 - 淡黄色光晕
-            gradient = QRadialGradient(width / 2, height / 2, width / 2)
-            gradient.setColorAt(0, QColor(255, 255, 200, 180))  # 中心较亮
-            gradient.setColorAt(0.7, QColor(255, 255, 150, 100))  # 中间渐变
-            gradient.setColorAt(1, QColor(255, 255, 100, 0))    # 边缘透明
-            
-            painter.setBrush(QBrush(gradient))
-            painter.setPen(Qt.PenStyle.NoPen)  # 无边框
-            painter.drawEllipse(2, 2, width - 4, height - 4)  # 略小于整个图像
-            
-            # 添加交互提示
-            painter.setPen(QPen(QColor(80, 80, 80, 200)))
-            painter.setFont(QFont("Arial", 10))
-            painter.drawText(QRect(0, 0, width, height), Qt.AlignmentFlag.AlignCenter, "Hover!")
-            
-            # 添加一些动态感的元素 - 小星星
-            painter.setPen(QPen(QColor(255, 255, 0, 200), 1))
-            star_points = [
-                QPoint(width // 4, height // 4),
-                QPoint(3 * width // 4, height // 4),
-                QPoint(width // 2, 3 * height // 4),
-                QPoint(width // 5, 2 * height // 3),
-                QPoint(4 * width // 5, 2 * height // 3)
-            ]
-            for point in star_points:
-                painter.drawLine(point.x() - 3, point.y(), point.x() + 3, point.y())
-                painter.drawLine(point.x(), point.y() - 3, point.x(), point.y() + 3)
-            
-            painter.end()
-            logger.debug("Created hover placeholder image")
-            return image
-        except Exception as e:
-            logger.error(f"Failed to create hover placeholder: {e}")
-            return None
-
-    def _create_morning_placeholder_image(self, width=64, height=64) -> Optional[QImage]:
-        """创建一个代表'早晨'状态的占位符图像"""
-        try:
-            logger.debug("Creating morning placeholder image for pet")
-
-            image = QImage(width, height, QImage.Format.Format_ARGB32)
-            image.fill(QColor(0, 0, 0, 0))  # 透明背景
-            
-            painter = QPainter(image)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            
-            # 基础形状与普通状态相同
-            painter.setPen(QPen(QColor(70, 70, 70), 2))
-            # 使用暖色调（黄色和橙色）来表示早晨的阳光
-            painter.setBrush(QBrush(QColor(255, 230, 180, 220)))
-            
-            # 绘制头部（圆形）
-            painter.drawEllipse(10, 10, 44, 44)
-            
-            # 绘制耳朵
-            painter.setBrush(QBrush(QColor(255, 210, 160, 220)))
-            # 左耳
-            painter.drawPolygon([QPoint(15, 15), QPoint(25, 5), QPoint(30, 15)])
-            # 右耳
-            painter.drawPolygon([QPoint(49, 15), QPoint(39, 5), QPoint(34, 15)])
-            
-            # 绘制眼睛（睁开的明亮眼睛）
-            painter.setPen(QPen(QColor(30, 30, 30), 1))
-            painter.setBrush(QBrush(QColor(30, 30, 30)))
-            painter.drawEllipse(20, 25, 8, 8)  # 左眼
-            painter.drawEllipse(36, 25, 8, 8)  # 右眼
-            
-            # 添加一点点高光表示阳光
-            painter.setBrush(QBrush(QColor(255, 255, 255, 180)))
-            painter.setPen(QPen(QColor(255, 255, 255, 0)))
-            painter.drawEllipse(22, 27, 3, 3)  # 左眼高光
-            painter.drawEllipse(38, 27, 3, 3)  # 右眼高光
-            
-            # 绘制鼻子
-            painter.setPen(QPen(QColor(70, 70, 70), 1))
-            painter.setBrush(QBrush(QColor(255, 150, 150)))
-            painter.drawEllipse(29, 35, 6, 4)
-            
-            # 绘制微笑的嘴
-            painter.setPen(QPen(QColor(70, 70, 70), 1))
-            painter.drawArc(QRect(25, 38, 14, 10), 0, -180 * 16)  # 微笑的弧线
-            
-            # 绘制阳光光芒（额外装饰）
-            painter.setPen(QPen(QColor(255, 200, 0, 100), 1))
-            for i in range(8):
-                angle = i * 45
-                rad = angle * 3.14159 / 180
-                x1 = width / 2 + (width / 2 - 5) * math.cos(rad)
-                y1 = height / 2 + (height / 2 - 5) * math.sin(rad)
-                x2 = width / 2 + (width / 2 + 5) * math.cos(rad)
-                y2 = height / 2 + (height / 2 + 5) * math.sin(rad)
-                painter.drawLine(int(x1), int(y1), int(x2), int(y2))
-            
-            painter.end()
-            
-            logger.debug(f"Created morning placeholder image: {width}x{height}")
-            return image
-        except Exception as e:
-            logger.error(f"Failed to create morning placeholder image: {str(e)}")
-            return None
-            
-    def _create_noon_placeholder_image(self, width=64, height=64, color_adjust=False) -> Optional[QImage]:
-        """创建一个代表'中午'/'下午'状态的占位符图像
         
-        Args:
-            width: 图像宽度
-            height: 图像高度
-            color_adjust: 是否调整颜色（用于区分中午和下午）
-        """
-        try:
-            # 创建透明图像
-            image = QImage(width, height, QImage.Format.Format_ARGB32)
-            image.fill(Qt.GlobalColor.transparent)
-            
-            # 创建画布
-            painter = QPainter(image)
-            
-            # 启用抗锯齿
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            
-            # 绘制太阳
-            if color_adjust:
-                # 下午的太阳颜色偏橙
-                sun_color = QColor(255, 180, 80)  # 橙色
-            else:
-                # 中午的太阳颜色偏黄
-                sun_color = QColor(255, 220, 0)  # 亮黄色
-            
-            painter.setBrush(QBrush(sun_color))
-            painter.setPen(Qt.PenStyle.NoPen)
-            
-            # 太阳位置，根据是中午还是下午调整
-            if color_adjust:
-                # 下午的太阳偏右下
-                sun_x, sun_y = 48, 15  # 右边45度位置
-            else:
-                # 中午的太阳在顶部中央
-                sun_x, sun_y = 32, 10  # 顶部中央
-                
-            painter.drawEllipse(sun_x, sun_y, 12, 12)
-            
-            # 绘制身体
-            painter.setBrush(QBrush(QColor(200, 200, 200)))
-            painter.setPen(QPen(QColor(70, 70, 70), 1))
-            painter.drawEllipse(20, 25, 24, 20)
-            
-            # 绘制头部
-            painter.drawEllipse(32, 18, 16, 16)
-            
-            # 绘制耳朵
-            painter.drawEllipse(34, 10, 8, 8)
-            painter.drawEllipse(42, 12, 8, 8)
-            
-            # 绘制眼睛
-            if color_adjust:
-                # 下午状态 - 半睁眼
-                painter.setBrush(QBrush(QColor(70, 70, 70)))
-                painter.drawEllipse(35, 20, 3, 2)
-                painter.drawEllipse(42, 21, 3, 2)
-            else:
-                # 中午状态 - 眯眼（炎热）
-                painter.setBrush(QBrush(QColor(70, 70, 70)))
-                painter.drawEllipse(35, 21, 3, 1)
-                painter.drawEllipse(42, 22, 3, 1)
-            
-            # 绘制嘴巴 - 因炎热伸出舌头
-            painter.setBrush(QBrush(QColor(255, 150, 150)))
-            painter.drawEllipse(38, 26, 4, 2)
-            
-            # 额外的效果
-            if color_adjust:
-                # 下午 - 添加一些小云和阴影
-                painter.setBrush(QBrush(QColor(255, 255, 255, 180)))
-                painter.drawEllipse(10, 15, 12, 8)
-                painter.drawEllipse(15, 12, 10, 7)
-            else:
-                # 中午 - 添加热气线条
-                painter.setPen(QPen(QColor(255, 200, 100, 150), 1, Qt.PenStyle.DashLine))
-                painter.drawLine(28, 18, 26, 10)
-                painter.drawLine(46, 20, 48, 12)
-            
-            painter.end()
-
-            logger.debug(f"Created noon/afternoon placeholder image: {width}x{height}, color_adjust={color_adjust}")
-            return image
-        except Exception as e:
-            logger.error(f"Failed to create noon/afternoon placeholder image: {str(e)}")
-            return None
-            
-    def _create_night_placeholder_image(self, width=64, height=64, make_darker=True) -> Optional[QImage]:
-        """创建一个代表'晚上'/'夜晚'状态的占位符图像
+        # 使用PlaceholderFactory加载哪些还没有专门定义的状态占位符
+        # 例如，如果有HAPPY状态的占位符文件，它将被加载
+        if self.placeholder_factory:
+            for state in PetState:
+                if state not in self.state_to_animation_map:
+                    anim = self.placeholder_factory.get_animation(state)
+                    if anim:
+                        logger.debug(f"从PlaceholderFactory加载{state.name}状态的占位符动画")
+                        self.state_to_animation_map[state] = anim
         
-        Args:
-            width: 图像宽度
-            height: 图像高度
-            make_darker: 是否使颜色更暗（区分晚上和深夜）
-        """
-        try:
-            # 创建透明图像
-            image = QImage(width, height, QImage.Format.Format_ARGB32)
-            image.fill(Qt.GlobalColor.transparent)
-            
-            # 创建画布
-            painter = QPainter(image)
-            
-            # 启用抗锯齿
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            
-            # 绘制月亮/星星背景
-            if make_darker:
-                # 深夜 - 深蓝色背景与月亮
-                bg_color = QColor(20, 20, 60, 80)  # 深蓝色半透明背景
-                moon_color = QColor(230, 230, 255)  # 亮白月亮
-            else:
-                # 晚上 - 淡蓝色背景与日落
-                bg_color = QColor(40, 50, 100, 50)  # 淡蓝色半透明背景
-                moon_color = QColor(255, 200, 100)  # 橙黄色月亮/太阳
-            
-            # 添加背景色
-            painter.fillRect(0, 0, width, height, bg_color)
-            
-            # 绘制月亮/落日
-            painter.setBrush(QBrush(moon_color))
-            painter.setPen(Qt.PenStyle.NoPen)
-            
-            if make_darker:
-                # 深夜 - 月亮在右上角
-                painter.drawEllipse(46, 8, 10, 10)
-                
-                # 添加几颗星星
-                painter.setBrush(QBrush(QColor(255, 255, 255, 200)))
-                painter.drawEllipse(10, 12, 2, 2)
-                painter.drawEllipse(22, 8, 2, 2)
-                painter.drawEllipse(35, 6, 2, 2)
-                painter.drawEllipse(15, 20, 1, 1)
-            else:
-                # 晚上 - 落日在左下角
-                painter.drawEllipse(8, 20, 12, 12)
-                
-                # 添加一些云彩
-                painter.setBrush(QBrush(QColor(150, 120, 200, 100)))
-                painter.drawEllipse(30, 15, 10, 6)
-                painter.drawEllipse(25, 12, 12, 8)
-
-            # 绘制身体
-            gray_level = 150 if make_darker else 180
-            painter.setBrush(QBrush(QColor(gray_level, gray_level, gray_level)))
-            painter.setPen(QPen(QColor(70, 70, 70), 1))
-            painter.drawEllipse(20, 25, 24, 20)
-            
-            # 绘制头部
-            painter.drawEllipse(32, 18, 16, 16)
-            
-            # 绘制耳朵
-            painter.drawEllipse(34, 10, 8, 8)
-            painter.drawEllipse(42, 12, 8, 8)
-            
-            # 绘制眼睛
-            if make_darker:
-                # 深夜状态 - 闭眼
-                painter.setPen(QPen(QColor(70, 70, 70), 1))
-                painter.drawLine(35, 22, 38, 22)
-                painter.drawLine(41, 23, 44, 23)
-            else:
-                # 晚上状态 - 半睁眼
-                painter.setBrush(QBrush(QColor(70, 70, 70)))
-                painter.drawEllipse(35, 21, 3, 2)
-                painter.drawEllipse(42, 22, 3, 2)
-            
-            # 绘制鼻子
-            painter.setBrush(QBrush(QColor(255, 150, 150)))
-            painter.drawEllipse(29, 35, 6, 4)
-            
-            # 绘制闭口打哈欠的嘴
-            painter.setPen(QPen(QColor(70, 70, 70), 1))
-            painter.drawLine(28, 42, 36, 42)  # 简单的嘴线
-            
-            # 添加小泡泡表示睡意（Z字）
-            painter.setPen(QPen(QColor(200, 200, 255, 200), 1))
-            painter.drawText(QPoint(48, 15), "z")
-            
-            painter.end()
-            
-            logger.debug(f"Created night/evening placeholder image: {width}x{height}, make_darker={make_darker}")
-            return image
-        except Exception as e:
-            logger.error(f"Failed to create night/evening placeholder image: {str(e)}")
-            return None
+        logger.debug("状态到动画的映射表已初始化")
 
     def update(self):
         """应用主更新循环，由QTimer调用"""
@@ -1056,7 +451,7 @@ class StatusPet:
                 if self.state_machine: # 检查state_machine是否存在
                     current_actual_state = self.state_machine.get_state() 
                 else:
-                    logger.warning("Update: State machine not available, defaulting to IDLE for background animation.")
+                    logger.warning("Update: 状态机不可用，默认回到IDLE动画。")
                 
                 background_animation = self.state_to_animation_map.get(current_actual_state, self.idle_animation)
                 
@@ -1085,7 +480,7 @@ class StatusPet:
         else:
             # 如果没有当前动画（理论上不应该在初始化后发生，至少有idle），尝试设置idle
             if self.main_window and self.idle_animation:
-                logger.warning("No current animation, defaulting to idle animation.")
+                logger.warning("当前无动画，默认回到idle动画。")
                 self.current_animation = self.idle_animation
                 self.current_animation.reset()
                 self.current_animation.play()
@@ -1140,8 +535,15 @@ class StatusPet:
         # 创建 StatsPanel 实例 (但不显示)
         self.stats_panel = StatsPanel()
         
-        # 创建角色精灵/动画
+        # 初始化占位符工厂 (移到 create_character_sprite 之前)
+        self.placeholder_factory = PlaceholderFactory()
+        logger.info("占位符工厂已初始化")
+
+        # 创建角色精灵/动画 (现在 PlaceholderFactory 已初始化)
         self.create_character_sprite()
+        
+        # 初始化状态到动画的映射表 (在动画加载后进行)
+        self._initialize_state_to_animation_map()
         
         # 创建状态机
         self.state_machine = PetStateMachine()
@@ -1287,7 +689,15 @@ class StatusPet:
                  logger.debug(f"新状态 {current_pet_state.name} 的目标动画与刚播放完毕的一次性动画相同，不重新触发。交由update逻辑处理后续。")
                  return 
 
+        # 尝试获取目标动画，如果映射表中没有，尝试使用占位符工厂动态加载
         target_animation = self.state_to_animation_map.get(current_pet_state)
+        if not target_animation and self.placeholder_factory:
+            # 尝试动态加载该状态的占位符动画
+            anim = self.placeholder_factory.get_animation(current_pet_state)
+            if anim:
+                logger.info(f"动态加载了{current_pet_state.name}状态的占位符动画")
+                self.state_to_animation_map[current_pet_state] = anim
+                target_animation = anim
 
         if target_animation and target_animation != self.current_animation:
             logger.info(f"切换动画: 从 {self.current_animation.name if self.current_animation else 'None'} 到 {target_animation.name}")

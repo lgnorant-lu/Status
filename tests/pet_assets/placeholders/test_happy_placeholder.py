@@ -11,11 +11,20 @@ Changed history:
 ----
 """
 import unittest
+import sys
+from PySide6.QtWidgets import QApplication
 from status.pet_assets.placeholders.happy_placeholder import create_animation
 from status.animation.animation import Animation
 
 class TestHappyPlaceholder(unittest.TestCase):
     """测试'开心'状态的占位符动画"""
+    
+    @classmethod
+    def setUpClass(cls):
+        """创建一个QApplication实例，确保Qt环境正确设置"""
+        # 检查是否已存在QApplication实例，如果不存在则创建
+        if not QApplication.instance():
+            cls.app = QApplication(sys.argv)
     
     def test_create_animation_returns_animation_object(self):
         """测试create_animation返回Animation对象"""

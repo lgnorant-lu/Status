@@ -95,9 +95,28 @@
 │   │   ├── interaction_event.py      # 交互事件定义 [待补全]
 │   │   ├── interaction_manager.py    # 交互总管理器 (Linter错误待处理) [进行中]
 │   │   └── mouse_interaction.py      # 鼠标交互处理 [待补全]
-│   ├── main.py                 # 应用主入口 [核心模块] [进行中]
+│   ├── main.py                 # 应用主入口, 依赖PlaceholderFactory加载动画 [核心模块] [进行中]
 │   ├── monitoring/             # 系统监控模块 [计划中]
 │   │   └── ... [待补全]
+│   ├── pet_assets/             # 宠物资源管理模块 [已完成]
+│   │   ├── __init__.py         # 包初始化文件 [已完成]
+│   │   ├── placeholder_factory.py # 占位符工厂，负责动态加载状态占位符 [已完成]
+│   │   └── placeholders/       # 各状态的占位符实现目录 [已完成]
+│   │       ├── __init__.py     # 包初始化文件 [已完成]
+│   │       ├── happy_placeholder.py # \"开心\"状态占位符实现 [已完成]
+│   │       ├── idle_placeholder.py # \"空闲\"状态占位符实现 [已完成]
+│   │       ├── busy_placeholder.py # \"忙碌\"状态占位符实现 [已完成]
+│   │       ├── memory_warning_placeholder.py # \"内存警告\"状态占位符实现 [已完成]
+│   │       ├── error_placeholder.py # \"错误\"状态占位符实现 [已完成]
+│   │       ├── clicked_placeholder.py # \"点击\"状态占位符实现 [已完成]
+│   │       ├── dragged_placeholder.py # \"拖拽\"状态占位符实现 [已完成]
+│   │       ├── petted_placeholder.py # \"抚摸\"状态占位符实现 [已完成]
+│   │       ├── hover_placeholder.py # \"悬停\"状态占位符实现 [已完成]
+│   │       ├── morning_placeholder.py # \"早晨\"状态占位符实现 [已完成]
+│   │       ├── noon_placeholder.py # \"中午\"状态占位符实现 [已完成]
+│   │       ├── afternoon_placeholder.py # \"下午\"状态占位符实现 [已完成]
+│   │       ├── evening_placeholder.py # \"傍晚\"状态占位符实现 [已完成]
+│   │       └── night_placeholder.py # \"夜晚\"状态占位符实现 [已完成]
 │   ├── plugin/                 # 插件系统模块 [核心模块] [已完成]
 │   │   ├── __init__.py         # 包初始化文件
 │   │   ├── plugin_base.py      # 插件基类定义 [已完成]
@@ -121,6 +140,25 @@
 │   │   ├── __init__.py         # 包初始化文件
 │   │   └── test_event_manager.py  # 事件管理器测试 [已完成]
 │   ├── mocks.py                # Mock对象定义 [待补全]
+│   ├── pet_assets/             # 宠物资源管理模块测试 [已完成]
+│   │   ├── __init__.py         # 包初始化文件 [已完成]
+│   │   ├── test_placeholder_factory.py # 占位符工厂测试 [已完成]
+│   │   └── placeholders/       # 各状态占位符实现测试 [已完成]
+│   │       ├── __init__.py     # 包初始化文件 [已完成]
+│   │       └── test_happy_placeholder.py # "开心"状态占位符测试 [已完成]
+│   │       ├── test_idle_placeholder.py # "空闲"状态占位符测试 [已完成]
+│   │       ├── test_busy_placeholder.py # "忙碌"状态占位符测试 [已完成]
+│   │       ├── test_memory_warning_placeholder.py # "内存警告"状态占位符测试 [已完成]
+│   │       ├── test_error_placeholder.py # "错误"状态占位符测试 [已完成]
+│   │       ├── test_clicked_placeholder.py # "点击"状态占位符测试 [已完成]
+│   │       ├── test_dragged_placeholder.py # "拖拽"状态占位符测试 [已完成]
+│   │       ├── test_petted_placeholder.py # "抚摸"状态占位符测试 [已完成]
+│   │       ├── test_hover_placeholder.py # "悬停"状态占位符测试 [已完成]
+│   │       ├── test_morning_placeholder.py # "早晨"状态占位符测试 [已完成]
+│   │       ├── test_noon_placeholder.py # "中午"状态占位符测试 [已完成]
+│   │       ├── test_afternoon_placeholder.py # "下午"状态占位符测试 [已完成]
+│   │       ├── test_evening_placeholder.py # "傍晚"状态占位符测试 [已完成]
+│   │       └── test_night_placeholder.py # "夜晚"状态占位符测试 [已完成]
 │   ├── plugin/                 # 插件系统测试 [已完成]
 │   │   ├── __init__.py         # 包初始化文件
 │   │   ├── test_plugin_manager.py  # 插件管理器测试 [已完成]
@@ -184,8 +222,9 @@
       - `recovery/`: 提供错误恢复机制，包括状态持久化、崩溃检测和异常处理功能。`[已完成]`
     - `events/`: 实现增强的事件系统，包括优先级、过滤、节流和异步处理功能。`[已完成]`
     - `interaction/`: 处理所有用户输入和系统交互（基于PySide6），如鼠标点击/移动、键盘输入、系统命令等。`[进行中]`
-    - `main.py`: 应用程序的主入口点，负责初始化和启动整个应用。`[核心模块] [进行中]`
+    - `main.py`: 应用程序的主入口点，负责初始化和启动整个应用。现在依赖 `PlaceholderFactory` 来加载所有状态动画，移除了内部的动画直接创建逻辑。`[核心模块] [进行中]`
     - `monitoring/`: (新规划) 负责监控系统性能、应用状态等。`[计划中]`
+    - `pet_assets/`: 宠物资源管理模块，负责动态加载状态占位符。其子目录 `placeholders/` 存放了各个具体状态（如 idle, busy, morning, clicked 等）的动画实现模块。`[已完成]`
     - `plugin/`: 实现基于生命周期管理的插件系统，支持动态加载、启用和卸载插件。`[已完成]`
     - `renderer/`: 处理所有视觉元素的渲染（基于PySide6），包括桌宠精灵（猫咪占位符）、动画、未来UI组件等。`[进行中]`
     - `resources/`: 负责运行时资源的加载、管理和缓存。`[进行中]`
@@ -198,6 +237,7 @@
 - **子模块**:
     - `events/`: 包含对增强事件系统的测试用例。`[已完成]`
     - `plugin/`: 包含对插件系统各组件的测试用例。`[已完成]`
+    - `pet_assets/`: 包含对宠物资源管理模块的测试用例，包括工厂和所有具体的状态占位符。`[已完成]`
 - **结构**: 通常会按照 `status/` 目录结构镜像组织测试文件。`[进行中]`
 
 ### 3. `plugins/` - 插件目录

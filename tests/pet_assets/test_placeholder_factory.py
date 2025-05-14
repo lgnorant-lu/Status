@@ -11,13 +11,22 @@ Changed history:
 ----
 """
 import unittest
+import sys
 from unittest.mock import patch, MagicMock
+from PySide6.QtWidgets import QApplication
 from status.pet_assets.placeholder_factory import PlaceholderFactory
 from status.behavior.pet_state import PetState
 from status.animation.animation import Animation
 
 class TestPlaceholderFactory(unittest.TestCase):
     """测试占位符工厂"""
+    
+    @classmethod
+    def setUpClass(cls):
+        """创建一个QApplication实例，确保Qt环境正确设置"""
+        # 检查是否已存在QApplication实例，如果不存在则创建
+        if not QApplication.instance():
+            cls.app = QApplication(sys.argv)
     
     def setUp(self):
         """每个测试前的设置"""
