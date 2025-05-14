@@ -304,6 +304,13 @@
     *   **Description**: 为 `idle_placeholder.py`, `busy_placeholder.py`, `clicked_placeholder.py`, `morning_placeholder.py`, 和 `night_placeholder.py` 模块的 `create_animation()` 函数编写单元测试。测试将验证返回类型、帧内容、元数据和循环性。
     *   **Date**: 2025-05-15
 
+### Sub-phase 2.4: 动画内容与质量提升 [进行中]
+
+*   **Task 2.4.1: 阶段一：创建特殊日期/节气L4动画**
+    *   **Status**: [已完成]
+    *   **Description**: 为选定的特殊日期（如春节）和节气（如立春）创建高质量（L4级别）的程序化占位符动画。这些动画将通过 `PlaceholderFactory` 和 `EnhancedTimeAnimationManager`（或相关时间行为逻辑）集成。包括创建新的动画模块、对应的单元测试，并更新相关文档。
+    *   **Date**: 2025-05-15
+
 ## 四、当前开发环境准备状态
 
 ### 类型提示系统优化 [已完成]

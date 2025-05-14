@@ -59,7 +59,8 @@ class TimeStateBridge(ComponentBase):
             "新年": PetState.NEW_YEAR,
             "元旦": PetState.NEW_YEAR,
             "情人节": PetState.VALENTINE,
-            "春节": PetState.NEW_YEAR,
+            "春节": PetState.SPRING_FESTIVAL,
+            "立春": PetState.LICHUN,
             "Birth of Status-Ming!": PetState.BIRTHDAY,
             # 可以添加更多特殊日期到状态的映射
         }

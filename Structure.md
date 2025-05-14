@@ -117,6 +117,8 @@
 │   │       ├── afternoon_placeholder.py # \"下午\"状态占位符实现 [已完成]
 │   │       ├── evening_placeholder.py # \"傍晚\"状态占位符实现 [已完成]
 │   │       └── night_placeholder.py # \"夜晚\"状态占位符实现 [已完成]
+│   │       ├── spring_festival_placeholder.py # \"春节\"L4占位符实现 [已完成]
+│   │       └── lichun_placeholder.py # \"立春\"L4占位符实现 [已完成]
 │   ├── plugin/                 # 插件系统模块 [核心模块] [已完成]
 │   │   ├── __init__.py         # 包初始化文件
 │   │   ├── plugin_base.py      # 插件基类定义 [已完成]
@@ -164,6 +166,8 @@
 │   │       ├── test_clicked_placeholder_core.py # "点击"核心动画单元测试 [已完成]
 │   │       ├── test_morning_placeholder_core.py # "早晨"核心动画单元测试 [已完成]
 │   │       └── test_night_placeholder_core.py # "夜晚"核心动画单元测试 [已完成]
+│   │       ├── test_spring_festival_placeholder.py # \"春节\"L4占位符测试 [已完成]
+│   │       └── test_lichun_placeholder.py # \"立春\"L4占位符测试 [已完成]
 │   ├── plugin/                 # 插件系统测试 [已完成]
 │   │   ├── __init__.py         # 包初始化文件
 │   │   ├── test_plugin_manager.py  # 插件管理器测试 [已完成]

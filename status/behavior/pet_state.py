@@ -76,6 +76,8 @@ class PetState(Enum):
     BIRTHDAY = 121         # 生日状态
     NEW_YEAR = 122         # 新年状态
     VALENTINE = 123        # 情人节状态
+    SPRING_FESTIVAL = 124  # 春节状态
+    LICHUN = 125           # 立春状态
     
     # 用户交互状态
     HAPPY = 151            # 开心状态
