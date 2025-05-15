@@ -16,6 +16,9 @@
 - [2025-04-02_core_config.md](Logs/Core/2025-04-02_core_config.md) - 配置系统实现
 - [2025-04-02_core_plugin.md](Logs/Core/2025-04-02_core_plugin.md) - 插件系统实现
 
+## 项目规划
+- [2025-05-15] [项目规划] 项目开发计划精细化调整 - 详见 [Logs/main/2025-05-15_project_plan_enhancement.md]
+
 ## 渲染系统
 - [2025-03-29] [渲染系统] 基础渲染器实现 - 详见 [Logs/2025-03-29_renderer_base.md]
 - [2025-03-30] [渲染系统] UI渲染实现 - 详见 [Logs/2025-03-30_ui_renderer.md]
