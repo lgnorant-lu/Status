@@ -26,12 +26,15 @@ from PySide6.QtCore import Qt, QPoint, QSize, QTimer, QEvent
 from PySide6.QtGui import QFont, QIcon, QPixmap, QColor, QPalette, QBrush, QLinearGradient, QPaintEvent, QShowEvent
 
 # 导入事件系统相关
-from status.core.events import EventManager, SystemStatsUpdatedEvent, WindowPositionChangedEvent
+from status.core.events import EventManager, SystemStatsUpdatedEvent, WindowPositionChangedEvent, get_app_instance as get_core_app_instance
 from status.core.event_system import EventType, Event # 导入 Event
 # 导入时间行为系统相关
-from status.behavior.time_based_behavior import TimePeriod
+from status.behavior.time_based_behavior import TimePeriod # Removed get_time_data and DEFAULT_TIME_PERIOD_STR
+from status.monitoring.system_monitor import get_time_data # Added import for get_time_data
 
 logger = logging.getLogger(__name__)
+# 定义一个模块级别的默认字符串，如果 time_based_behavior.py 中确实没有
+DEFAULT_TIME_PERIOD_STR_LOCAL = "未知"
 
 # 面板位置常量
 PANEL_OFFSET_X = 10  # 面板相对于主窗口的X轴偏移量
@@ -87,7 +90,8 @@ class StatsPanel(QWidget):
         self.hide() # 默认隐藏
         
         # 获取 EventManager 实例并注册处理器
-        self.event_manager = EventManager.get_instance()
+        self.event_manager = EventManager() # This is LegacyEventManagerAdapter.get_instance
+        logger.info(f"[StatsPanel.__init__] EventManager type: {type(self.event_manager)}, id: {id(self.event_manager)}")
         self.event_manager.register_handler(EventType.SYSTEM_STATS_UPDATED, self.handle_stats_update)
         self.event_manager.register_handler(EventType.WINDOW_POSITION_CHANGED, self.handle_window_position_changed)
         
@@ -294,59 +298,68 @@ class StatsPanel(QWidget):
         super().paintEvent(event)
 
     def update_data(self, data: Dict[str, Any]):
-        """用新数据更新面板显示。"""
-        # 减少日志输出频率，仅在调试需要时才输出完整数据
-        logger.debug(f"StatsPanel 更新数据，键: {list(data.keys())}")
+        """更新面板上显示的统计数据。"""
+        logger.debug(f"DEBUG_PANEL_UPDATE_DATA_ENTRY: update_data called with data keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}, data: {str(data)[:200]}")
+
+        # 更新主要统计数据 (CPU, 内存)
+        cpu_usage = data.get('cpu')
+        logger.debug(f"DEBUG_PANEL_CPU_RAW: cpu_usage from data.get('cpu'): {cpu_usage} (type: {type(cpu_usage)})")
         
-        # 检查数据是否有变化，避免不必要的更新
-        current_data = getattr(self, '_current_data', {})
-        
-        # 仅比较基本数据，不考虑详细信息以减少计算量
-        basic_changed = False
-        if ('cpu_usage' in data and data.get('cpu_usage') != current_data.get('cpu_usage', None)) or \
-           ('memory_usage' in data and data.get('memory_usage') != current_data.get('memory_usage', None)):
-            basic_changed = True
-        
-        # 更新缓存数据
-        if not hasattr(self, '_current_data'):
-            self._current_data = {}
-        self._current_data.update(data)
-        
-        # 基本信息更新
-        cpu_usage = data.get('cpu_usage', None)
-        memory_usage = data.get('memory_usage', None)
-        
-        if cpu_usage is not None:
-            # 根据CPU使用率设置不同颜色
-            if cpu_usage < 30:
-                color = "#80D8FF"  # 低负载 - 蓝色
-            elif cpu_usage < 70:
-                color = "#FFCC80"  # 中负载 - 橙色
-            else:
-                color = "#FF8080"  # 高负载 - 红色
-            
+        if cpu_usage is not None and isinstance(cpu_usage, (float, int)):
+            color = "#80D8FF" # Default blue
+            if cpu_usage > 90: color = "#FF6060" # Red for high
+            elif cpu_usage > 70: color = "#FFC107" # Amber for medium
             self.cpu_label.setStyleSheet(f"color: {color}; font-size: 12px;")
             self.cpu_label.setText(f"CPU: {cpu_usage:.1f}%")
-        else:
-            self.cpu_label.setText("CPU: --%")
-            
-        if memory_usage is not None:
-            # 根据内存使用率设置不同颜色
-            if memory_usage < 50:
-                color = "#80FFD8"  # 低使用率 - 绿色
-            elif memory_usage < 80:
-                color = "#FFCC80"  # 中使用率 - 橙色
-            else:
-                color = "#FF8080"  # 高使用率 - 红色
-            
+        elif isinstance(cpu_usage, str) and cpu_usage in ["warning", "error", "critical"]:
+            if cpu_usage == "warning":
+                self.cpu_label.setStyleSheet("color: #FFC107; font-size: 12px;") 
+                self.cpu_label.setText("CPU: 预警!")
+            elif cpu_usage == "error":
+                self.cpu_label.setStyleSheet("color: #FF8080; font-size: 12px;") 
+                self.cpu_label.setText("CPU: 错误!")
+            elif cpu_usage == "critical":
+                self.cpu_label.setStyleSheet("color: #FF6060; font-size: 12px;") 
+                self.cpu_label.setText("CPU: 危险!")
+        else: 
+            # Fallback for None or other unexpected types for cpu_usage
+            logger.debug(f"DEBUG_PANEL_CPU_FALLBACK: cpu_usage is None or unexpected type. Value: '{cpu_usage}', Type: {type(cpu_usage)}")
+            self.cpu_label.setStyleSheet("color: #E0E0E0; font-size: 12px;") # Default/fallback style
+            self.cpu_label.setText("CPU: --%") # Fallback text for other cases
+
+        # 内存使用率
+        memory_usage = data.get('memory')
+        logger.debug(f"DEBUG_PANEL_MEM_RAW: memory_usage from data.get('memory'): {memory_usage} (type: {type(memory_usage)})")
+        if memory_usage is not None and isinstance(memory_usage, (float, int)):
+            color = "#80FFD8"
+            if memory_usage > 90: color = "#FF6060"
+            elif memory_usage > 75: color = "#FFCC60" # Original amber for memory
             self.memory_label.setStyleSheet(f"color: {color}; font-size: 12px;")
-            self.memory_label.setText(f"Mem: {memory_usage:.1f}%")
-        else:
-            self.memory_label.setText("Mem: --%")
+            self.memory_label.setText(f"内存: {memory_usage:.1f}%")
+        elif isinstance(memory_usage, str) and memory_usage in ["warning", "error", "critical"]:
+            if memory_usage == "warning":
+                self.memory_label.setStyleSheet("color: #FFCC60; font-size: 12px;")
+                self.memory_label.setText("内存: 预警!")
+            elif memory_usage == "error":
+                self.memory_label.setStyleSheet("color: #FF8080; font-size: 12px;")
+                self.memory_label.setText("内存: 错误!")
+            elif memory_usage == "critical":
+                self.memory_label.setStyleSheet("color: #FF6060; font-size: 12px;")
+                self.memory_label.setText("内存: 危险!")
+        else: 
+            logger.debug(f"DEBUG_PANEL_MEM_FALLBACK: memory_usage is None or not float/int. Type: {type(memory_usage)}")
+            self.memory_label.setText("内存: --%")
         
-        # 仅在面板展开状态下才更新详细信息，节省资源
-        if self.is_expanded:
+        logger.debug(f"DEBUG_PANEL_UPDATE: In update_data. Checking expansion: self.is_expanded={self.is_expanded}, self.detailed_info_frame_exists={self.detailed_info_frame is not None}")
+        if self.is_expanded and self.detailed_info_frame:
+            # Log the data being passed to _update_detailed_info
+            logger.info(f"[StatsPanel.update_data] Panel is expanded. Calling _update_detailed_info. Current is_expanded: {self.is_expanded}")
+            logger.debug(f"DEBUG_PANEL_CALL_DETAIL: Calling _update_detailed_info with data: {data}")
             self._update_detailed_info(data)
+        elif not self.is_expanded:
+            logger.info(f"[StatsPanel.update_data] Panel is NOT expanded. _update_detailed_info will NOT be called. Current is_expanded: {self.is_expanded}")
+        
+        logger.debug(f"DEBUG_PANEL_UPDATE: update_data FINISHED. cpu_label='{self.cpu_label.text()}', memory_label='{self.memory_label.text()}'")
 
     def _update_detailed_info(self, data: Dict[str, Any]):
         """更新详细信息区域
@@ -356,185 +369,132 @@ class StatsPanel(QWidget):
         Args:
             data: 统计数据字典
         """
-        # 更新CPU核心信息
-        cpu_cores = data.get('cpu_cores_usage', [])
-        if cpu_cores and self.cpu_cores_label is not None:
-            cores_text = "CPU 核心: "
-            for i, core in enumerate(cpu_cores):
-                if i > 0:
-                    cores_text += " | "
-                
-                # 根据核心使用率设置不同颜色
-                if core < 30:
-                    color_code = "80D8FF"  # 低负载 - 蓝色
-                elif core < 70:
-                    color_code = "FFCC80"  # 中负载 - 橙色
+        logger.debug(f"DEBUG_PANEL_DETAIL_START: _update_detailed_info CALLED. Incoming data keys: {list(data.keys())}")
+        # 确保所有标签都存在 (excluding time labels that are now handled by _update_time_ui)
+        if not all([self.cpu_cores_label, self.memory_details_label, self.disk_label, 
+                    self.network_label, self.disk_io_label, self.network_speed_label, 
+                    self.gpu_label]): # Removed time_period_label, special_date_label, upcoming_dates_label from this check
+            logger.warning("StatsPanel: 部分核心详细信息标签未初始化，跳过更新。")
+            # Time labels are checked in _update_time_ui or implicitly by their existence.
+            # return # Do not return, still attempt to update what's available and time data.
+
+        # 1. CPU 核心使用率
+        cpu_cores_usage = data.get('cpu_cores') 
+        if self.cpu_cores_label:
+            if cpu_cores_usage is not None and isinstance(cpu_cores_usage, list):
+                cores_text = ", ".join([f"{usage:.1f}%" for usage in cpu_cores_usage])
+                self.cpu_cores_label.setText(f"CPU 核心: {cores_text}")
+            else:
+                self.cpu_cores_label.setText("CPU 核心: 加载中...")
+
+        # 2. 内存详细信息
+        memory_details = data.get('memory_details')
+        if self.memory_details_label:
+            if memory_details is not None and isinstance(memory_details, dict):
+                mem_text = f"总: {memory_details.get('total_mb', '?')}MB, 可用: {memory_details.get('available_mb', '?')}MB, 已用: {memory_details.get('used_mb', '?')}MB"
+                self.memory_details_label.setText(f"内存详情: {mem_text}")
+            else:
+                self.memory_details_label.setText("内存详情: 加载中...")
+
+        # 3. 磁盘使用情况
+        disk_info_list = data.get('disk') 
+        if self.disk_label:
+            if disk_info_list and isinstance(disk_info_list, list) and disk_info_list[0]: # Check disk_info_list[0] is not None
+                main_disk = disk_info_list[0]
+                if main_disk: # Ensure main_disk is not None
+                    disk_text = f"{main_disk.get('mountpoint', '?')}: {main_disk.get('used_gb', '?')}GB / {main_disk.get('total_gb', '?')}GB ({main_disk.get('percent', '?')}%) "
+                    self.disk_label.setText(f"磁盘: {disk_text}")
                 else:
-                    color_code = "FF8080"  # 高负载 - 红色
-                
-                cores_text += f"<span style='color: #{color_code}'>#{i}: {core:.1f}%</span>"
-            
-            self.cpu_cores_label.setText(cores_text)
-            self.cpu_cores_label.setTextFormat(Qt.TextFormat.RichText)
+                    self.disk_label.setText("磁盘: 数据错误")
+            else:
+                self.disk_label.setText("磁盘: 加载中...")
+
+        # 4. 网络信息 (总量)
+        network_info = data.get('network') 
+        if self.network_label:
+            if network_info and isinstance(network_info, dict):
+                net_text = f"已发送: {network_info.get('sent_mb', '?')}MB, 已接收: {network_info.get('recv_mb', '?')}MB"
+                self.network_label.setText(f"网络: {net_text}")
+            else:
+                self.network_label.setText("网络: 加载中...")
+
+        # 5. 磁盘IO速度
+        disk_io_speed = data.get('disk_io') 
+        if self.disk_io_label:
+            if disk_io_speed and isinstance(disk_io_speed, dict):
+                read_kbps = disk_io_speed.get('read_kbps', 0) # Changed from read_mbps
+                write_kbps = disk_io_speed.get('write_kbps', 0) # Changed from write_mbps
+                read_speed_str = f"{read_kbps/1024:.1f} MB/s" if read_kbps >= 1024 else f"{read_kbps:.1f} KB/s"
+                write_speed_str = f"{write_kbps/1024:.1f} MB/s" if write_kbps >= 1024 else f"{write_kbps:.1f} KB/s"
+                self.disk_io_label.setText(f"磁盘读写: 读 {read_speed_str}, 写 {write_speed_str}")
+            else:
+                self.disk_io_label.setText("磁盘IO: 加载中...")
+
+        # 6. 网络速度
+        network_speed = data.get('network_speed')
+        if self.network_speed_label:
+            if network_speed and isinstance(network_speed, dict):
+                up_kbps = network_speed.get('upload_kbps', 0)
+                down_kbps = network_speed.get('download_kbps', 0)
+                up_speed_str = f"{up_kbps/1024:.1f} MB/s" if up_kbps >= 1024 else f"{up_kbps:.1f} KB/s"
+                down_speed_str = f"{down_kbps/1024:.1f} MB/s" if down_kbps >= 1024 else f"{down_kbps:.1f} KB/s"
+                self.network_speed_label.setText(f"网络速度: ↑ {up_speed_str}, ↓ {down_speed_str}")
+            else:
+                self.network_speed_label.setText("网络速度: 加载中...")
+
+        # 7. GPU 信息 (如果可用)
+        gpu_info = data.get('gpu')
+        if self.gpu_label:
+            if gpu_info and isinstance(gpu_info, list) and gpu_info: 
+                gpu_texts = []
+                for i, gpu_item in enumerate(gpu_info): # Renamed gpu to gpu_item
+                    if isinstance(gpu_item, dict): # Ensure gpu_item is a dict
+                        name = gpu_item.get('name', f'GPU{i}')
+                        load = gpu_item.get('load_percent', gpu_item.get('load')) # Accommodate 'load' or 'load_percent'
+                        mem_used = gpu_item.get('memory_used_mb', gpu_item.get('memoryUsed'))
+                        mem_total = gpu_item.get('memory_total_mb', gpu_item.get('memoryTotal'))
+                        temp = gpu_item.get('temperature_c', gpu_item.get('temperature'))
+                        
+                        text_parts = [name]
+                        if load is not None: text_parts.append(f"负载:{float(load):.0f}%")
+                        if mem_used is not None and mem_total is not None: text_parts.append(f"显存:{mem_used}/{mem_total}MB")
+                        if temp is not None: text_parts.append(f"温度:{temp}°C")
+                        gpu_texts.append(" - ".join(text_parts))
+                    else:
+                        gpu_texts.append(f"GPU{i}: invalid_data")
+
+                self.gpu_label.setText("GPU: " + "; ".join(gpu_texts) if gpu_texts else "GPU: 无有效数据")
+            elif gpu_info and isinstance(gpu_info, dict) and gpu_info.get("error"): # Handle GPUtil error case
+                 self.gpu_label.setText(f"GPU: {gpu_info.get('error')}")
+            else:
+                self.gpu_label.setText("GPU: 加载中...")
         
-        # 更新内存详情
-        memory_details = data.get('memory_details', {})
-        if memory_details and self.memory_details_label is not None:
-            total_mb = memory_details.get('total_mb', 0)
-            used_mb = memory_details.get('used_mb', 0)
-            free_mb = memory_details.get('free_mb', 0)
-            percent = memory_details.get('percent', 0)
-            
-            # 根据内存使用率设置颜色
-            if percent < 50:
-                color_code = "80FFD8"  # 低使用率 - 绿色
-            elif percent < 80:
-                color_code = "FFCC80"  # 中使用率 - 橙色
-            else:
-                color_code = "FF8080"  # 高使用率 - 红色
-            
-            memory_text = f"内存: <span style='color: #{color_code}'>{used_mb} MB</span> / {total_mb} MB"
-            memory_text += f"<br>({percent:.1f}% 使用, {free_mb} MB 空闲)"
-            
-            self.memory_details_label.setText(memory_text)
-            self.memory_details_label.setTextFormat(Qt.TextFormat.RichText)
-        
-        # 更新磁盘信息
-        disk_info = data.get('disk_usage_root', {})
-        if disk_info and self.disk_label is not None:
-            used_gb = disk_info.get('used_gb', 0)
-            total_gb = disk_info.get('total_gb', 0)
-            free_gb = disk_info.get('free_gb', 0)
-            percent = disk_info.get('percent', 0)
-            
-            # 根据使用率设置颜色
-            if percent < 50:
-                color_code = "FFD080"  # 低使用率
-            elif percent < 80:
-                color_code = "FFCC80"  # 中使用率
-            else:
-                color_code = "FF8080"  # 高使用率
-            
-            disk_text = f"磁盘: <span style='color: #{color_code}'>{used_gb} GB</span> / {total_gb} GB"
-            disk_text += f"<br>({percent:.1f}% 使用, {free_gb} GB 空闲)"
-            
-            self.disk_label.setText(disk_text)
-            self.disk_label.setTextFormat(Qt.TextFormat.RichText)
-        
-        # 更新网络信息
-        network_info = data.get('network_info', {})
-        if network_info and self.network_label is not None:
-            sent_mb = network_info.get('sent_mb', 0)
-            recv_mb = network_info.get('recv_mb', 0)
-            
-            network_text = f"网络: <span style='color: #D0A0FF'>↑{sent_mb} MB</span> 发送"
-            network_text += f"<br><span style='color: #A0D0FF'>↓{recv_mb} MB</span> 接收"
-            
-            self.network_label.setText(network_text)
-            self.network_label.setTextFormat(Qt.TextFormat.RichText)
-            
-        # 新增: 更新磁盘IO信息
-        disk_io = data.get('disk_io_speed', {})
-        if disk_io and self.disk_io_label is not None:
-            read_kbps = disk_io.get('read_mbps', 0) * 1024  # convert MB/s to KB/s
-            write_kbps = disk_io.get('write_mbps', 0) * 1024  # convert MB/s to KB/s
-            
-            # 转换为合适的单位和文本格式
-            read_text = f"{read_kbps:.1f} KB/s" if read_kbps < 1024 else f"{read_kbps / 1024:.1f} MB/s"
-            write_text = f"{write_kbps:.1f} KB/s" if write_kbps < 1024 else f"{write_kbps / 1024:.1f} MB/s"
-            
-            disk_io_text = f"磁盘IO: <span style='color: #80D0A0'>↓{read_text}</span> 读取"
-            disk_io_text += f"<br><span style='color: #D0A080'>↑{write_text}</span> 写入"
-            
-            self.disk_io_label.setText(disk_io_text)
-            self.disk_io_label.setTextFormat(Qt.TextFormat.RichText)
-            
-        # 新增: 更新网络速度信息
-        network_speed = data.get('network_speed', {})
-        if network_speed and self.network_speed_label is not None:
-            upload_kbps = network_speed.get('upload_kbps', 0)
-            download_kbps = network_speed.get('download_kbps', 0)
-            
-            # 转换为合适的单位和文本格式
-            upload_text = f"{upload_kbps:.1f} KB/s" if upload_kbps < 1024 else f"{upload_kbps / 1024:.1f} MB/s"
-            download_text = f"{download_kbps:.1f} KB/s" if download_kbps < 1024 else f"{download_kbps / 1024:.1f} MB/s"
-            
-            network_speed_text = f"网络速度: <span style='color: #D0A0FF'>↑{upload_text}</span> 上传"
-            network_speed_text += f"<br><span style='color: #A0D0FF'>↓{download_text}</span> 下载"
-            
-            self.network_speed_label.setText(network_speed_text)
-            self.network_speed_label.setTextFormat(Qt.TextFormat.RichText)
-            
-        # 新增: 更新GPU信息
-        gpu_info = data.get('gpu_info', {})
-        if gpu_info and self.gpu_label is not None and not gpu_info.get('error'):
-            gpu_name = gpu_info.get('name', 'Unknown')
-            gpu_load = gpu_info.get('load', 0)
-            gpu_memory_total = gpu_info.get('memoryTotal', 0)
-            gpu_memory_used = gpu_info.get('memoryUsed', 0)
-            gpu_memory_percent = gpu_info.get('memoryUtil', 0)
-            gpu_temp = gpu_info.get('temperature', 0)
-            
-            # 根据GPU负载设置颜色
-            if gpu_load < 30:
-                load_color = "80D8FF"  # 低负载
-            elif gpu_load < 70:
-                load_color = "FFCC80"  # 中负载
-            else:
-                load_color = "FF8080"  # 高负载
-            
-            # 根据GPU内存使用率设置颜色
-            if gpu_memory_percent < 30:
-                memory_color = "80FFD8"  # 低使用率
-            elif gpu_memory_percent < 70:
-                memory_color = "FFCC80"  # 中使用率
-            else:
-                memory_color = "FF8080"  # 高使用率
-            
-            # 根据GPU温度设置颜色
-            if gpu_temp < 60:
-                temp_color = "80FFD8"  # 低温
-            elif gpu_temp < 80:
-                temp_color = "FFCC80"  # 中温
-            else:
-                temp_color = "FF8080"  # 高温
-            
-            # 生成GPU信息文本
-            gpu_text = f"GPU: {gpu_name}<br>"
-            gpu_text += f"负载: <span style='color: #{load_color}'>{gpu_load:.1f}%</span>"
-            
-            if gpu_memory_total > 0:
-                gpu_text += f"<br>显存: <span style='color: #{memory_color}'>{gpu_memory_used} MB</span> / {gpu_memory_total} MB ({gpu_memory_percent:.1f}%)"
-            
-            if gpu_temp > 0:
-                gpu_text += f"<br>温度: <span style='color: #{temp_color}'>{gpu_temp}°C</span>"
-            
-            self.gpu_label.setText(gpu_text)
-            self.gpu_label.setTextFormat(Qt.TextFormat.RichText)
-            self.gpu_label.setVisible(True)
+        # --- Time related information ---
+        # Extract time data from the incoming 'data' if present
+        event_time_data = {}
+        has_event_time_data = False
+        if 'period' in data: # Check if key exists
+            event_time_data['period'] = data.get('period')
+            has_event_time_data = True
+        if 'special_date' in data: # Check if key exists
+            event_time_data['special_date'] = data.get('special_date')
+            has_event_time_data = True
+        if 'upcoming_dates' in data: # Check if key exists
+            event_time_data['upcoming_dates'] = data.get('upcoming_dates')
+            has_event_time_data = True
+
+        if has_event_time_data:
+            logger.debug(f"DEBUG_PANEL_DETAIL_TIME: _update_detailed_info has event time data: {event_time_data}")
+            # Update self._time_data and then the UI via self.update_time_data -> _update_time_ui
+            self.update_time_data(event_time_data) 
         else:
-            # 如果没有GPU信息，隐藏该标签
-            if self.gpu_label is not None:
-                self.gpu_label.setVisible(False)
-        
-        # 只有在确实存在显著变化时才调整大小
-        need_resize = False
-        # 新增或移除了部分内容（例如CPU核心信息、内存详情等）
-        if ('cpu_cores_usage' in data and not hasattr(self, '_had_cpu_cores')) or \
-           ('memory_details' in data and not hasattr(self, '_had_memory_details')) or \
-           ('disk_usage_root' in data and not hasattr(self, '_had_disk_usage')) or \
-           ('network_info' in data and not hasattr(self, '_had_network_info')) or \
-           ('gpu_info' in data and not hasattr(self, '_had_gpu_info')):
-            need_resize = True
-            # 更新标记
-            self._had_cpu_cores = 'cpu_cores_usage' in data
-            self._had_memory_details = 'memory_details' in data
-            self._had_disk_usage = 'disk_usage_root' in data
-            self._had_network_info = 'network_info' in data
-            self._had_gpu_info = 'gpu_info' in data
-        
-        if need_resize:
-            self.adjustSize()
+            # If event data doesn't have its own time info, but panel is expanded,
+            # ensure the time UI reflects the latest self._time_data (which would be from a periodic refresh).
+            if hasattr(self, '_time_data') and self.is_expanded: # self.is_expanded check might be redundant as _update_detailed_info is called when expanded
+                 logger.debug(f"DEBUG_PANEL_DETAIL_TIME: No time data in event stats, ensuring UI reflects current self._time_data by calling _update_time_ui directly using: {self._time_data}")
+                 self._update_time_ui(self._time_data) # Ensure consistency
+
+        logger.debug(f"DEBUG_PANEL_DETAIL: _update_detailed_info FINISHED. disk_io_label='{self.disk_io_label.text() if self.disk_io_label else 'None'}'")
 
     def update_time_data(self, data: Dict[str, Any]):
         """更新时间相关数据
@@ -549,82 +509,80 @@ class StatsPanel(QWidget):
         self._time_data.update(data)
         
         # 如果面板未展开，只更新数据不更新UI
-        if not self.is_expanded:
-            logger.debug("StatsPanel 未展开，仅存储时间数据不更新UI")
-            return
+        # if not self.is_expanded:
+        #     logger.debug("StatsPanel 未展开，仅存储时间数据不更新UI")
+        #     return
+        # Always update UI if expanded, when specific time data comes through this method.
+        if self.is_expanded:
+            logger.debug(f"StatsPanel is expanded, calling _update_time_ui with merged data: {self._time_data}")
+            self._update_time_ui(self._time_data)
             
-        # 根据存储的数据更新UI
-        self._update_time_ui(self._time_data)
-    
-    def _update_time_ui(self, time_data):
+    def _update_time_ui(self, time_data: Dict[str, Any]): # Added type hint for time_data
         """更新时间UI显示
 
         Args:
-            time_data: 时间数据字典
+            time_data: 时间数据字典 (should be self._time_data which is kept up-to-date)
         """
-        logger.debug(f"更新时间UI: {time_data}")
+        logger.debug(f"_update_time_ui CALLED with: {time_data}")
         
-        # 如果面板未展开，不更新UI
+        # 如果面板未展开，不更新UI - This check might be redundant if called only when expanded
+        # However, keeping it for safety if called from other places without check.
         if not self.is_expanded:
-            logger.debug("面板未展开，不更新时间UI")
+            logger.debug("面板未展开，不更新时间UI from _update_time_ui")
             return
             
         # 更新时间段标签
-        if 'period' in time_data and self.time_period_label:
-            period_name = time_data['period']
-            
-            # 根据时间段名称设置不同颜色
-            if period_name == TimePeriod.MORNING.name:
-                color = "#FFE0A0"  # 淡黄色
-            elif period_name == TimePeriod.NOON.name:
-                color = "#FFCC80"  # 橙色
-            elif period_name == TimePeriod.AFTERNOON.name:
-                color = "#80D0FF"  # 淡蓝色
-            elif period_name == TimePeriod.EVENING.name:
-                color = "#FFA080"  # 淡橙色
-            elif period_name == TimePeriod.NIGHT.name:
-                color = "#A080FF"  # 淡紫色
+        # period_name = time_data.get('period', DEFAULT_TIME_PERIOD_STR_LOCAL) # Use local default
+        # Always use the period from time_data for UI consistency
+        period_name = time_data.get('period')
+        if self.time_period_label:
+            if period_name:
+                color = "#E0E0E0" # Default
+                if period_name == TimePeriod.MORNING.name: color = "#FFE0A0"
+                elif period_name == TimePeriod.NOON.name: color = "#FFCC80"
+                elif period_name == TimePeriod.AFTERNOON.name: color = "#80D0FF"
+                elif period_name == TimePeriod.EVENING.name: color = "#FFA080"
+                elif period_name == TimePeriod.NIGHT.name: color = "#A080FF"
+                self.time_period_label.setText(f"当前时段: {period_name}")
+                self.time_period_label.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: bold;")
+                logger.debug(f"_update_time_ui: 已更新时间段标签: {period_name}")
             else:
-                color = "#E0E0E0"  # 默认浅灰色
-                
-            # 更新标签文字和颜色
-            self.time_period_label.setText(f"当前时段: {period_name}")
-            self.time_period_label.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: bold;")
-            logger.debug(f"已更新时间段标签: {period_name}")
+                self.time_period_label.setText(f"当前时段: {DEFAULT_TIME_PERIOD_STR_LOCAL}")
+                self.time_period_label.setStyleSheet(f"color: #E0E0E0; font-size: 12px; font-weight: bold;")
+                logger.debug(f"_update_time_ui: 时间段信息为None或缺失, 设置为默认.")
         
         # 更新特殊日期标签
-        if 'special_date' in time_data and self.special_date_label:
-            special_date = time_data['special_date']
-            if special_date:
-                special_date_text = f"{special_date['name']}: {special_date['description']}"
+        special_date = time_data.get('special_date')
+        if self.special_date_label:
+            if special_date and isinstance(special_date, dict):
+                special_date_text = f"{special_date.get('name', '未知')}: {special_date.get('description', '')}"
                 self.special_date_label.setText(special_date_text)
-                self.special_date_label.setStyleSheet("color: #FF8080; font-size: 11px;")  # 特殊日期用红色表示
+                self.special_date_label.setStyleSheet("color: #FF8080; font-size: 11px;")
                 self.special_date_label.show()
-                logger.debug(f"已更新特殊日期标签: {special_date['name']}")
+                logger.debug(f"_update_time_ui: 已更新特殊日期标签: {special_date.get('name')}")
             else:
                 self.special_date_label.setText("今天没有特殊日期")
                 self.special_date_label.setStyleSheet("color: #A0A0A0; font-size: 11px;")
-                logger.debug("今天没有特殊日期")
+                logger.debug("_update_time_ui: 今天没有特殊日期或数据格式不正确.")
         
         # 更新即将到来的特殊日期标签
-        if 'upcoming_dates' in time_data and self.upcoming_dates_label:
-            upcoming = time_data['upcoming_dates']
-            if upcoming:
-                # 显示最多3个即将到来的特殊日期
+        upcoming = time_data.get('upcoming_dates')
+        if self.upcoming_dates_label:
+            if upcoming and isinstance(upcoming, list):
                 upcoming_text = "即将到来: "
-                upcoming_text += ", ".join([f"{d['name']} ({d['date']})" for d in upcoming[:3]])
+                upcoming_text += ", ".join([f"{d.get('name', 'N/A')} ({d.get('date', 'N/A')})" for d in upcoming[:3] if isinstance(d, dict)])
                 self.upcoming_dates_label.setText(upcoming_text)
                 self.upcoming_dates_label.setStyleSheet("color: #80C080; font-size: 11px;")
                 self.upcoming_dates_label.show()
-                logger.debug(f"已更新即将到来的特殊日期标签: {len(upcoming)}个")
+                logger.debug(f"_update_time_ui: 已更新即将到来的特殊日期标签: {len(upcoming)}个")
             else:
                 self.upcoming_dates_label.setText("近期没有特殊日期")
                 self.upcoming_dates_label.setStyleSheet("color: #A0A0A0; font-size: 11px;")
-                logger.debug("近期没有特殊日期")
+                logger.debug("_update_time_ui: 近期没有特殊日期或数据格式不正确.")
         
         # 调整大小
-        self.adjustSize()
-        logger.debug("时间UI更新完成")
+        # self.adjustSize() # adjustSize might be too broad here; let the caller decide if needed.
+        logger.debug("_update_time_ui 完成")
 
     def toggle_expand_collapse(self):
         """切换面板的展开/折叠状态。"""
@@ -758,59 +716,46 @@ class StatsPanel(QWidget):
 
     def handle_stats_update(self, event: Event):
         """处理 SystemStatsUpdatedEvent 事件。"""
-        if event.type == EventType.SYSTEM_STATS_UPDATED and isinstance(event, SystemStatsUpdatedEvent):
-            logger.debug(f"StatsPanel 接收到事件: {event.type.name} with data keys: {list(event.stats_data.keys())}")
+        if event.type == EventType.SYSTEM_STATS_UPDATED:
+            stats_data_from_event = event.data
+            if not isinstance(stats_data_from_event, dict):
+                logger.error(f"StatsPanel received SYSTEM_STATS_UPDATED but event.data is not a dict: {type(stats_data_from_event)}. Event data: {str(stats_data_from_event)[:200]}")
+                return
+
+            logger.debug(f"StatsPanel received SYSTEM_STATS_UPDATED. Data keys: {list(stats_data_from_event.keys())}")
             
-            # 检查是否包含时间数据
-            time_keys = ['period', 'special_date', 'upcoming_dates']
-            time_data_exists = any(key in event.stats_data for key in time_keys)
-            logger.debug(f"事件中包含时间数据: {time_data_exists}")
-            if time_data_exists:
-                logger.debug(f"时间数据详情: {[k for k in time_keys if k in event.stats_data]}")
+            self.update_data(stats_data_from_event) # This will call _update_detailed_info if expanded
             
-            self.update_data(event.stats_data)
+            # REMOVED: Time data processing here, as it's handled by _update_detailed_info if panel is expanded
+            # and if it receives stats_data_from_event which should contain time info.
+            # Specific time events (TIME_PERIOD_CHANGED, SPECIAL_DATE) will call update_time_data directly.
             
-            # 提取事件中的时间数据
-            time_data = {}
-            if 'period' in event.stats_data:
-                time_data['period'] = event.stats_data['period']
-                logger.info(f"StatsPanel 收到时间段数据: {event.stats_data['period']}")
-            if 'special_date' in event.stats_data:
-                time_data['special_date'] = event.stats_data['special_date']
-                logger.info(f"StatsPanel 收到特殊日期数据: {event.stats_data['special_date']['name']}")
-            if 'upcoming_dates' in event.stats_data:
-                time_data['upcoming_dates'] = event.stats_data['upcoming_dates']
-                dates_str = ', '.join([f"{d['name']} ({d['date']})" for d in event.stats_data['upcoming_dates'][:2]])
-                logger.info(f"StatsPanel 收到即将到来的特殊日期: {dates_str}")
-                
-            # 如果有时间数据，就更新
-            if time_data:
-                logger.debug(f"更新时间数据: {time_data}")
-                self.update_time_data(time_data)
-                
-                # 如果面板已展开，强制更新UI
-                if self.is_expanded and hasattr(self, '_time_data'):
-                    logger.debug(f"强制更新时间UI，面板已展开")
-                    self._update_time_ui(self._time_data)
-                
-                logger.debug(f"StatsPanel 时间数据更新完成，面板展开状态: {self.is_expanded}")
-            else:
-                logger.warning("未在事件中找到任何时间数据")
+            # logger.debug(f"StatsPanel 时间数据更新完成，面板展开状态: {self.is_expanded}")
         else:
-            logger.warning(f"StatsPanel 收到非预期的事件类型: {event.type.name}")
+            logger.warning(f"StatsPanel 收到非预期的事件类型: {event.type.name if event and hasattr(event, 'type') else 'Unknown event type'}")
     
     def handle_window_position_changed(self, event: Event):
         """处理 WindowPositionChangedEvent 事件，更新面板位置。"""
-        if event.type == EventType.WINDOW_POSITION_CHANGED and isinstance(event, WindowPositionChangedEvent):
-            # 存储父窗口位置信息
-            self.parent_window_pos = event.position
-            self.parent_window_size = event.size
-            
-            # 如果面板正在显示，更新位置
-            if self.isVisible():
-                self.update_position(event.position, event.size)
-                logger.debug(f"StatsPanel 位置已更新，跟随窗口移动到: {event.position}")
-    
+        if event.type == EventType.WINDOW_POSITION_CHANGED:
+            actual_event_data = event.data # This should now be the WindowPositionChangedEvent instance
+            if isinstance(actual_event_data, WindowPositionChangedEvent):
+                parent_pos = actual_event_data.position
+                parent_size = actual_event_data.size
+                if parent_pos and parent_size: # Ensure they are not None
+                    self.parent_window_pos = parent_pos
+                    self.parent_window_size = parent_size
+                    # logger.debug(f"StatsPanel: Parent window moved/resized to Pos:{parent_pos}, Size:{parent_size}")
+                    if self.isVisible():
+                        # logger.debug(f"StatsPanel: visible, updating position.")
+                        self.update_position(parent_pos, parent_size)
+                    else:
+                        # logger.debug(f"StatsPanel: not visible, position will update on show.")
+                        pass # Position will be updated when shown
+                else:
+                    logger.warning("handle_window_position_changed: Received None for parent_pos or parent_size.")                    
+            else:
+                logger.warning(f"handle_window_position_changed: event.data is not WindowPositionChangedEvent, type: {type(actual_event_data)}. Event: {event}")
+
     def update_position(self, parent_pos: QPoint, parent_size: QSize):
         """根据父窗口位置和大小，更新面板位置。
         

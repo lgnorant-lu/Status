@@ -146,8 +146,7 @@ class InteractionManager:
         for subsystem in subsystems:
             if subsystem and hasattr(subsystem, 'handle_event'):
                 try:
-                    # subsystem.handle_event(event_type, event_data) # 实际处理逻辑待实现
-                    pass # 占位符
+                    subsystem.handle_event(event_type, event_data) # 实际处理逻辑待实现
                 except Exception as e:
                     logger.error(f"Error处理事件在子系统 {subsystem.__class__.__name__}: {e}", exc_info=True)
     

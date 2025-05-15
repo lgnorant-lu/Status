@@ -285,26 +285,25 @@ class TestLastEventThrottler(unittest.TestCase):
     
     def test_last_event_processing(self):
         """测试最后事件处理逻辑"""
-        throttler = LastEventThrottler(cooldown_ms=100)
+        throttler = LastEventThrottler(cooldown_ms=100, name="TestLastEvtProc")
         
         event1 = InteractionEvent(InteractionEventType.MOUSE_MOVE, {"x": 100, "y": 200})
         event2 = InteractionEvent(InteractionEventType.MOUSE_MOVE, {"x": 101, "y": 201})
         event3 = InteractionEvent(InteractionEventType.MOUSE_MOVE, {"x": 102, "y": 202})
         
-        # 第一个事件应该被节流并保存
         self.assertFalse(throttler.throttle(event1))
-        
-        # 第二个事件应该替换第一个事件并被节流
         self.assertFalse(throttler.throttle(event2))
-        
-        # 第三个事件应该替换第二个事件并被节流
         self.assertFalse(throttler.throttle(event3))
         
-        # 等待足够时间后，应该可以获取到最后一个挂起的事件
-        time.sleep(0.11)  # 稍微超过cooldown时间
-        pending_events = throttler.flush()
-        self.assertEqual(len(pending_events), 1)
-        self.assertEqual(pending_events[0].data["x"], 102)  # 应该是最后一个事件
+        time.sleep(0.11)
+        
+        pending_events_var = throttler.flush()
+        
+        self.assertEqual(len(pending_events_var), 1)
+        if pending_events_var:
+            self.assertEqual(pending_events_var[0].data["x"], 102)
+        else:
+            self.fail("pending_events_var list was empty after flush, but expected one event.")
     
     def test_flush_with_property_key(self):
         """测试使用属性键的刷新功能"""
@@ -402,37 +401,40 @@ class TestEventThrottlerChain(unittest.TestCase):
         self.assertTrue(chain.throttle(event))
     
     def test_stats(self):
-        """测试统计信息"""
-        chain = EventThrottlerChain()
-        throttler1 = MockEventThrottler("Throttler1", should_throttle=False)
-        throttler2 = MockEventThrottler("Throttler2", should_throttle=True)
-        
+        """测试链的统计信息"""
+        throttler1 = MockEventThrottler(name="Throttler1", should_throttle=False)
+        throttler2 = MockEventThrottler(name="Throttler2", should_throttle=True)
+
+        chain = EventThrottlerChain(name="TestChain")
         chain.add_throttler(throttler1)
         chain.add_throttler(throttler2)
-        
-        event = InteractionEvent(InteractionEventType.MOUSE_CLICK)
-        
-        # 第一次处理，应该被节流
-        self.assertFalse(chain.throttle(event))
+
+        event1 = InteractionEvent(InteractionEventType.MOUSE_MOVE)
+        event2 = InteractionEvent(InteractionEventType.MOUSE_CLICK)
+
+        chain.throttle(event1)
+        chain.throttle(event2)
+
         stats = chain.get_stats()
-        self.assertEqual(stats["total_processed"], 1)
-        self.assertEqual(stats["total_throttled"], 1)
+
+        self.assertEqual(stats["name"], "TestChain")
+        self.assertEqual(stats["total_throttlers"], 2)
         
-        # 禁用节流的节流器
-        throttler2.disable()
+        # 链自身的统计 (基于 throttle 调用)
+        self.assertEqual(stats["total_processed"], 2) # Chain was asked to process 2 events
+        self.assertEqual(stats["total_throttled"], 2) # Both events were ultimately throttled by Throttler2
+
+        # 子节流器聚合统计
+        self.assertEqual(stats["children_total_processed"], 4) # t1.proc(2) + t2.proc(2)
+        self.assertEqual(stats["children_total_throttled"], 2) # t1.throt(0) + t2.throt(2)
+
+        # 单个节流器的统计信息
+        self.assertIn("throttlers", stats)
+        self.assertEqual(stats["throttlers"]["Throttler1"]["total_processed"], 2) # Changed "processed" to "total_processed"
+        self.assertEqual(stats["throttlers"]["Throttler1"]["total_throttled"], 0)
         
-        # 第二次处理，应该通过
-        self.assertTrue(chain.throttle(event))
-        stats = chain.get_stats()
-        self.assertEqual(stats["total_processed"], 2)
-        self.assertEqual(stats["total_throttled"], 1)
-        
-        # 验证节流器统计数据
-        self.assertEqual(stats["throttlers"]["Throttler1"]["processed"], 2)
-        self.assertEqual(stats["throttlers"]["Throttler1"]["throttled"], 0)
-        # Throttler2被禁用，第二次不应该增加计数
-        self.assertEqual(stats["throttlers"]["Throttler2"]["processed"], 1)
-        self.assertEqual(stats["throttlers"]["Throttler2"]["throttled"], 1)
+        self.assertEqual(stats["throttlers"]["Throttler2"]["total_processed"], 2) # Changed "processed" to "total_processed"
+        self.assertEqual(stats["throttlers"]["Throttler2"]["total_throttled"], 2)
     
     def test_reset(self):
         """测试重置所有节流器"""

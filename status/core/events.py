@@ -12,17 +12,23 @@ Changed history:
                             2025/04/09: 添加系统状态更新事件;
                             2025/05/13: 添加全局访问函数;
                             2025/05/14: 添加获取应用实例函数;
+                            2025/05/16: 将 EventManager 指向 LegacyEventManagerAdapter
 ----
 """
 
 from enum import Enum, auto
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
-# 从event_system.py导入所有内容
+from PySide6.QtCore import QPoint, QSize # Added import
+
+# 从event_system.py导入所有内容 (旧事件系统的基础)
 from status.core.event_system import EventType # 直接导入原始 EventType
 from status.core.event_system import Event
-from status.core.event_system import EventSystem as _EventSystem
+# from status.core.event_system import EventSystem as _EventSystem # 不再直接使用 _EventSystem 作为基类
+
+# 导入新的适配器
+from status.events.legacy_adapter import LegacyEventManagerAdapter
 
 # 创建模块级日志器
 logger = logging.getLogger(__name__)
@@ -136,102 +142,12 @@ class InteractionEvent(Event):
         return (f"InteractionEvent(type={self.interaction_type.name}, "
                 f"sender={self.sender}, data={self.data}, position={self.position})")
 
-# 重命名EventSystem为EventManager
-class EventManager(_EventSystem):
-    """
-    事件管理器
-    
-    为保持与现有代码兼容，将EventSystem重命名为EventManager
-    所有功能与EventSystem相同
-    """
-    
-    # 为保持与接口文档一致，添加get_instance方法
-    @classmethod
-    def get_instance(cls):
-        """获取事件管理器的单例实例
-        
-        Returns:
-            EventManager: 事件管理器的单例实例
-        """
-        return cls()
-    
-    def publish(self, event_type, data=None, sender=None):
-        """发布事件 (兼容API)
-        
-        Args:
-            event_type: 事件类型，可以是EventType枚举值或字符串
-            data: 事件数据
-            sender: 事件发送者，默认为None
-            
-        Note:
-            此方法提供与事件管理器统一API的兼容性
-            内部调用dispatch_event方法
-        """
-        # 字符串事件类型目前不支持，仅保留API
-        if isinstance(event_type, str):
-            self.logger.warning(f"字符串事件类型 '{event_type}' 暂不支持，请使用EventType枚举")
-            return
-        
-        # 使用标准的dispatch_event方法
-        self.dispatch_event(event_type, sender, data)
-    
-    def subscribe(self, event_type, handler):
-        """订阅事件 (兼容API)
-        
-        Args:
-            event_type: 事件类型，可以是EventType枚举值或字符串
-            handler: 事件处理函数
-            
-        Returns:
-            handler: 返回原始处理函数
-            
-        Note:
-            此方法提供与事件管理器统一API的兼容性
-            内部调用register_handler方法
-        """
-        # 字符串事件类型目前不支持，仅保留API
-        if isinstance(event_type, str):
-            self.logger.warning(f"字符串事件类型 '{event_type}' 暂不支持，请使用EventType枚举")
-            return handler
-        
-        # 使用标准的register_handler方法
-        self.register_handler(event_type, handler)
-        return handler
-    
-    def unsubscribe(self, event_type, handler):
-        """取消订阅事件 (兼容API)
-        
-        Args:
-            event_type: 事件类型，可以是EventType枚举值或字符串
-            handler: 事件处理函数
-            
-        Returns:
-            bool: 取消订阅是否成功
-            
-        Note:
-            此方法提供与事件管理器统一API的兼容性
-            内部调用unregister_handler方法
-        """
-        # 字符串事件类型目前不支持，仅保留API
-        if isinstance(event_type, str):
-            self.logger.warning(f"字符串事件类型 '{event_type}' 暂不支持，请使用EventType枚举")
-            return False
-        
-        # 使用标准的unregister_handler方法
-        return self.unregister_handler(event_type, handler)
-    
-    def dispatch_interaction_event(self, interaction_type: InteractionEventType, 
-                                 sender=None, data=None, position=None) -> None:
-        """分发交互事件
-        
-        Args:
-            interaction_type: 交互事件类型
-            sender: 事件发送者
-            data: 事件数据
-            position: 事件位置
-        """
-        event = InteractionEvent(interaction_type, sender, data, position)
-        self.dispatch(event)
+# EventManager 现在应该指向 LegacyEventManagerAdapter 的 get_instance 方法
+# 以便 EventManager() 调用可以返回实例。
+EventManager = LegacyEventManagerAdapter.get_instance
+
+# 原来的 EventManager(_EventSystem) 子类及其兼容方法被移除，
+# 因为适配器现在负责处理旧API的兼容性。
 
 # 新的系统统计信息更新事件
 class SystemStatsUpdatedEvent(Event):
@@ -248,26 +164,37 @@ class SystemStatsUpdatedEvent(Event):
         self.stats_data = stats_data
 
     def __str__(self) -> str:
-        return (f"SystemStatsUpdatedEvent(sender={self.sender}, stats_data={self.stats_data})")
+        return f"SystemStatsUpdatedEvent(sender={self.sender}, stats_count={len(self.stats_data)})"
 
-# 新的窗口位置变更事件
+# 窗口位置改变事件
 class WindowPositionChangedEvent(Event):
-    """当窗口位置变更时触发的事件。"""
-    def __init__(self, position, size, sender=None):
-        """初始化窗口位置变更事件。
+    """窗口位置或大小改变事件"""
+    position: Optional[QPoint] # Changed type hint
+    size: Optional[QSize]     # Changed type hint
+
+    def __init__(self, position: Optional[QPoint] = None, size: Optional[QSize] = None, window_id: Optional[str] = None, sender: Optional[object] = None):
+        """初始化窗口位置/大小改变事件
 
         Args:
-            position: 窗口的新位置，通常是QPoint对象
-            size: 窗口的大小，通常是QSize对象
-            sender: 事件发送者，通常是MainPetWindow
+            position: 新的位置 (QPoint)，可选
+            size: 新的大小 (QSize)，可选
+            window_id: 关联的窗口ID (例如，对于多窗口应用)，可选
+            sender: 事件发送者
         """
-        data = {"position": position, "size": size}
-        super().__init__(EventType.WINDOW_POSITION_CHANGED, sender, data)
+        # 确保 window_id 参数在 super 调用之前处理，或者如果 Event 基类不接受它，则不传递
+        # Event class __init__ is (self, type, sender=None, data=None)
+        # So, window_id should be stored as an attribute if needed, not passed to super.
+        
+        if position is None and size is None:
+            raise ValueError("WindowPositionChangedEvent must have at least position or size.")
+        
+        super().__init__(EventType.WINDOW_POSITION_CHANGED, sender)
         self.position = position
         self.size = size
+        self.window_id = window_id # Store window_id
 
     def __str__(self) -> str:
-        return (f"WindowPositionChangedEvent(sender={self.sender}, position={self.position}, size={self.size})")
+        return f"WindowPositionChangedEvent(pos={self.position}, size={self.size}, sender={self.sender})"
 
 # 导出所有成员
 __all__ = ['EventType', 'Event', 'EventManager', 'InteractionEventType', 'InteractionEvent', 'SystemStatsUpdatedEvent', 'WindowPositionChangedEvent'] 

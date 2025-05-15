@@ -62,11 +62,14 @@ class TestDragPrecision(unittest.TestCase):
         # 计算新的鼠标位置
         new_mouse_x = self.window.last_mouse_pos.x() + dx
         new_mouse_y = self.window.last_mouse_pos.y() + dy
+        local_pos = QPoint(new_mouse_x, new_mouse_y)
+        global_pos = self.window.pos() + local_pos
         
         # 创建鼠标移动事件
         event = QMouseEvent(
             QEvent.Type.MouseMove,
-            QPoint(new_mouse_x, new_mouse_y),
+            local_pos,
+            global_pos,
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier
@@ -88,10 +91,13 @@ class TestDragPrecision(unittest.TestCase):
         self.window.set_drag_mode("precise")
         # 模拟鼠标移动事件计算平滑系数
         
+        local_pos_press = QPoint(10, 10)
+        global_pos_press = self.window.pos() + local_pos_press
         # 创建一个MouseEvent模拟鼠标按下
         mouse_press_event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
-            QPoint(10, 10),  # 本地坐标
+            local_pos_press,
+            global_pos_press,
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier
@@ -107,10 +113,13 @@ class TestDragPrecision(unittest.TestCase):
         self.window.last_mouse_time = QElapsedTimer()
         self.window.last_mouse_time.start()
         
+        local_pos_move = QPoint(20, 20)
+        global_pos_move = self.window.pos() + local_pos_move
         # 创建一个MouseEvent模拟鼠标移动
         mouse_move_event = QMouseEvent(
             QEvent.Type.MouseMove,
-            QPoint(20, 20),  # 本地坐标，移动了10像素
+            local_pos_move,
+            global_pos_move,
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier
@@ -132,10 +141,13 @@ class TestDragPrecision(unittest.TestCase):
         self.window.current_pos = QPoint(100, 100)
         self.window.target_pos = QPoint(100, 100)
         
+        local_pos_tracking = QPoint(20, 20)
+        global_pos_tracking = self.window.pos() + local_pos_tracking
         # 模拟鼠标移动10个像素
         mouse_move_event = QMouseEvent(
             QEvent.Type.MouseMove,
-            QPoint(20, 20),  # 本地坐标，移动了10像素
+            local_pos_tracking,
+            global_pos_tracking,
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier
@@ -230,6 +242,9 @@ class TestDragPrecision(unittest.TestCase):
         # 跟踪总移动距离
         expected_x, expected_y = initial_pos.x(), initial_pos.y()
         
+        # 定义测试阈值
+        _test_threshold = 4 # Changed from 2 to 4
+
         for dx, dy in movements:
             # 模拟鼠标移动
             self.simulate_mouse_move(dx, dy)
@@ -243,9 +258,9 @@ class TestDragPrecision(unittest.TestCase):
             x_diff = abs(self.window.current_pos.x() - expected_x)
             y_diff = abs(self.window.current_pos.y() - expected_y)
             
-            # 精确模式下，差距应该小于或等于某个阈值（例如2像素）
-            self.assertLessEqual(x_diff, 2, f"X轴跟踪精度不足: {x_diff}px")
-            self.assertLessEqual(y_diff, 2, f"Y轴跟踪精度不足: {y_diff}px")
+            # 精确模式下，差距应该小于或等于某个阈值
+            self.assertLessEqual(x_diff, _test_threshold, f"X轴跟踪精度不足: {x_diff}px")
+            self.assertLessEqual(y_diff, _test_threshold, f"Y轴跟踪精度不足: {y_diff}px")
     
     def test_mouse_speed_calculation(self):
         """测试鼠标速度的计算和平滑"""

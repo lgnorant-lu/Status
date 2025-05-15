@@ -1,15 +1,30 @@
-Version: 1.1.2
-Date: 2025-05-13
-Author: Ignorant-lu
-Task Reference: TDD for mouse interaction toggle (Task 4.1, 4.2, 4.3)
+Version: 1.1.3
+Date: 2025-05-16
+Author: Ignorant-lu & Gemini
+Task Reference: UI模块测试稳定化与API兼容性修复 (Thread.md - 阶段0 - UI模块 功能稳定化)
 Details: 
-  - Implemented `toggle_pet_interaction` in `status/main.py`.
-  - Added menu item in `status/ui/system_tray.py`.
-  - Created tests in `tests/test_app_features.py` for toggling mouse click-through. Tests passed.
-  - Manually verified the feature.
+  - 全面修复 `tests/ui/` 目录下的所有单元测试 (51个), 确保在统一事件系统下通过。
+  - 解决了 `tests/ui/test_drag_precision.py` 中 `QMouseEvent` 构造函数的废弃警告。
+  - 修复了 `StatsPanel` 中的CPU使用率标签格式化问题、事件处理逻辑，以及与主窗口位置同步问题。
+  - 确保 `MainPetWindow.moveEvent` 正确发布窗口位置变更事件。
+  - 修复了 `StatusPet.__init__` 中 `QApplication` 重复创建问题。
+  - 调整了多个UI测试用例的模拟对象、断言和参数。
 Files Modified: 
+  - `tests/ui/test_main_pet_window.py`
+  - `tests/ui/test_stats_panel.py`
+  - `tests/ui/test_stats_panel_integration.py`
+  - `tests/ui/test_stats_panel_in_app.py`
+  - `tests/ui/test_system_tray.py`
+  - `tests/ui/test_ui_optimization.py`
+  - `tests/ui/test_drag_precision.py`
+  - `status/ui/main_pet_window.py`
+  - `status/ui/stats_panel.py`
   - `status/main.py`
-  - `status/ui/system_tray.py`
-  - `tests/test_app_features.py`
+  - `status/interaction/drag_manager.py` (EventManager调用方式)
+  - `status/monitoring/system_monitor.py` (EventManager调用方式)
+  - `status/core/events.py` (WindowPositionChangedEvent 定义微调)
+  - `status/events/legacy_adapter.py` (emit/dispatch 逻辑微调)
   - `Thread.md`
-  - `Log.md` 
+  - `Log.md`
+  - `Logs/ui/2025-05-16_ui_tests_stabilization.md`
+  - `VERSION` 

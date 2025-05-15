@@ -15,6 +15,7 @@
 - [2025-04-01_core_logging.md](Logs/Core/2025-04-01_core_logging.md) - 日志系统实现
 - [2025-04-02_core_config.md](Logs/Core/2025-04-02_core_config.md) - 配置系统实现
 - [2025-04-02_core_plugin.md](Logs/Core/2025-04-02_core_plugin.md) - 插件系统实现
+- [2025-05-16] [核心][事件系统] 事件系统统一与核心模块稳定化 - 详见 [Logs/core/2025-05-16_core_module_stabilization_phase0.md]
 
 ## 项目规划
 - [2025-05-15] [项目规划] 项目开发计划精细化调整 - 详见 [Logs/main/2025-05-15_project_plan_enhancement.md]
@@ -214,6 +215,7 @@
 
 *(此区域将用于索引 `Status-Ming` 的新日志文件或记录关键更新)*
 
+### UI系统
 - [2025-05-13] [UI系统] 使用TDD方法改进拖拽精度 - 详见 [Logs/Status-Ming/2025-05-14_drag_precision_tdd.md]
   - 创建10个专门测试用例验证拖拽精度各方面功能
   - 优化平滑系数计算和更新机制，移除特殊分支处理提高一致性
@@ -226,6 +228,15 @@
   - 优化平滑系数，提供更自然的拖动感觉
   - 注：精确模式下仍有待完善，不完全1:1跟随鼠标轨迹
 
+- [2025-05-14] [UI][监控] StatsPanel迭代2完成 - 详见 [Logs/Status-Ming/2025-05-14_statspanel_iteration2.md]
+  - 修复面板和桌宠窗口位置绑定问题，实现自动跟随
+  - 优化面板样式，调整背景、字体颜色和展开框
+  - 修复主程序定时器更新问题，确保数据正常刷新
+  - 添加窗口位置变更事件系统，实现UI组件间位置同步
+
+- [[UI] UI模块测试稳定化及API兼容性修复 (2025-05-16)](Logs/ui/2025-05-16_ui_tests_stabilization.md)
+
+### 运行与启动
 - [2025-05-13] [运行] 解决主程序运行问题
   - 通过 `python -m status.main` 解决 `ModuleNotFoundError`
   - 移除 `main_pet_window.py` 中干扰性的测试代码块
@@ -480,5 +491,26 @@
 
 ## resources 模块日志
 - [2025-05-15] TDD实现资源包热加载功能 - [查看详情](./Logs/resources/2025-05-15_resource_hot_loading_implementation.md)
+
+## UI 模块
+- [2025-05-01] [UI模块] 界面布局与基础交互实现 - 详见 [Logs/ui/2025-05-01_ui_layout_interaction.md]
+- [2025-05-03] [UI模块] 系统托盘功能与菜单优化 - 详见 [Logs/ui/2025-05-03_system_tray_menu.md]
+- [2025-05-16] [UI模块] 稳定化Phase0 - Part1: 修复EventManager调用导致的AttributeError - 详见 [Logs/ui/2025-05-16_ui_module_stabilization_phase0_part1.md]
+
+## 新增功能
+
+## 2025-05-16
+
+### 新增功能: 修复画布指针偏移，统一所有显示模式下的pixmap绘制逻辑，确保与坐标换算一致
+
+- 实现了修复画布指针偏移的功能，统一所有显示模式下的pixmap绘制逻辑，确保与坐标换算一致
+- 相关日志链接: [Logs/2025-04-16_sprite_editor_pointer_offset_fix.md]
+
+## 2025-05-15
+
+### 新增功能: 修复画布指针偏移，统一所有显示模式下的pixmap绘制逻辑，确保与坐标换算一致
+
+- 实现了修复画布指针偏移的功能，统一所有显示模式下的pixmap绘制逻辑，确保与坐标换算一致
+- 相关日志链接: [Logs/2025-04-16_sprite_editor_pointer_offset_fix.md]
 
 

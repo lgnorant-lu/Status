@@ -249,21 +249,31 @@
       - 添加了事件过滤功能，支持多重过滤条件
       - 实现了三种节流模式(FIRST, LAST, RATE)用于控制高频事件
 
-*   **Task 2.3.3 (TDD): 事件系统统一**
+*   **Task 2.3.3 (TDD): 事件系统API兼容性初步处理**
     *   **Status**: [已完成]
     *   **Description**:
-      - [已完成] 统一`EventSystem`和`EventManager`的API
-      - [已完成] 添加`publish`/`subscribe`/`unsubscribe`兼容方法
-      - [已完成] 增强调用点的稳健性，添加防御性检查
-      - [已完成] 编写测试确保所有组件正常工作
+      - [已完成] 统一`EventSystem`和`EventManager`的部分API命名冲突。
+      - [已完成] 为 `EventManager` 添加部分兼容旧 `EventSystem` 的方法或别名。
+      - [已完成] 增强部分调用点的稳健性，添加防御性检查以适应两种事件系统可能混用的过渡期。
+      - [已完成] 编写初步测试确保基本兼容性。
     *   **Implementation Details**:
-      - 在`EventManager`类中添加了兼容层方法
-      - 简化设计实现，保留API兼容性
-      - 为字符串事件类型提供了警告日志和备用路径
-      - 在资源管理相关组件中添加了`hasattr`检查
-      - 详情参见 [Logs/core/2025-05-15_event_system_integration.md]
+      - 在`EventManager`类中添加了部分兼容层方法或参数处理。
+      - 主要目标是减少直接API冲突，为后续深度统一做准备。
+      - 详细日志参见 [Logs/core/2025-05-15_event_system_integration.md]
 
-*   **Task 2.3.4: 占位符资源系统重构**
+*   **Task 2.3.4 (TDD): 事件系统深度统一 (Adapter-based Unification)**
+    *   **Status**: [正实现]
+    *   **Description**: 采用适配器模式 (`LegacyEventManagerAdapter`) 将事件系统逐步从 `status.core.event_system` (基础版) 迁移到 `status.events.event_manager` (高级版)。目标是利用高级版的特性，如优先级、过滤、异步处理等，同时确保平稳过渡。最终移除旧的事件系统实现。
+    *   **Strategy**:
+        1.  API对比分析 (已完成)。
+        2.  设计并实现 `LegacyEventManagerAdapter`，使其API兼容旧系统，内部调用新系统。
+        3.  修改 `status.core.events.EventManager` 别名指向适配器。
+        4.  全面测试，确保在适配器模式下功能稳定。
+        5.  分模块逐步将代码直接迁移到使用 `AdvancedEventManager` 的原生API。
+        6.  移除适配器和旧的 `_EventSystem`。
+        7.  更新所有相关文档。
+
+*   **Task 2.3.5: 占位符资源系统重构**
     *   **Status**: [已完成]
     *   **Description**: 
         - 将 `main.py` 中的动画创建逻辑重构到 `PlaceholderFactory` 和各个独立的占位符模块中。
@@ -274,7 +284,7 @@
         - [Logs/pet_assets/2025-05-15_core_animations_L4_enhancement.md]
         - [Logs/pet_assets/2025-05-15_special_date_animations.md]
 
-*   **Task 2.3.5: 修复 `main.py` 运行时错误**
+*   **Task 2.3.6: 修复 `main.py` 运行时错误**
     *   **Status**: [已完成]
     *   **Description**: 解决 `main.py` 启动和运行期间出现的多个错误，包括托盘图标路径、模块导入、`UnboundLocalError`、组件初始化顺序以及 `LunarHelper` 中的未处理异常。
     *   **Log**: [Logs/runtime_errors/2025-05-15_main_runtime_error_fixes.md]
@@ -397,5 +407,84 @@
 ## 四、Phase 3: 测试与文档完善 [计划中]
 
 ## 五、会话日志
+
+## 事件系统统一与适配器验证
+- **状态**: [已完成]
+- **描述**: 完成 LegacyEventManagerAdapter 的实现，确保其与新的 AdvancedEventManager 兼容。
+- **依赖**: AdvancedEventManager 核心实现。
+- **备注**: 此阶段暴露了交互模块中的一些潜在问题。
+
+## 交互模块 (`tests/interaction/`) 兼容性修复与增强
+- **状态**: [已完成]
+- **描述**: 在事件系统统一后，对 `tests/interaction/` 模块下的所有测试进行了修复和验证，确保功能稳定。
+- **涉及子模块**: EventThrottler, LastEventThrottler, InteractionManager 等。
+- **日志**: 参考 Logs/interaction/YYYY-MM-DD_interaction_fixes.md (请用户确认具体日志文件名)
+
+## 阶段0 - 核心模块 (`tests/core/`) 功能稳定化
+- **状态**: [正实现]
+- **描述**: 对 `status/core/` 目录下的核心逻辑和基础组件进行测试驱动的修复和稳定化工作，确保所有 `tests/core/` 测试通过。
+- **依赖**: 无直接新增外部依赖，依赖项目现有核心架构。
+- **子任务**:
+    1. 分析 `tests/core/` 测试失败情况并定位首个修复点
+        - **状态**: [已完成]
+        - **负责人**: AI
+        - **预计开始**: 2025/05/16
+        - **完成时间**: 2025/05/16
+    2. 修复 `LegacyEventManagerAdapter` 中因错误调用 `AdvancedEventManager.get_instance()` 导致的 `AttributeError`
+        - **状态**: [已完成]
+        - **负责人**: AI
+        - **完成时间**: 2025/05/16
+        - **结果**: `tests/core/test_events_manager.py` 测试通过。`tests/core/` 目录下所有测试通过 (29 passed, 1 skipped)。
+    3. (后续具体修复任务将在此处列出)
+
+## 阶段0 - UI模块 (`tests/ui/`) 功能稳定化
+- **状态**: [已完成]
+- **描述**: 对 `status/ui/` 目录下的用户界面相关组件进行测试驱动的修复和稳定化，确保所有 `tests/ui/` 测试通过 (51个测试全部通过)。同时解决了 `QMouseEvent` 构造函数的废弃警告。
+- **依赖**: 核心模块稳定。
+- **子任务**:
+    1. **全面修复与稳定化**
+        - **状态**: [已完成]
+        - **负责人**: AI
+        - **完成时间**: 2025/05/16
+        - **描述**: 
+            - 全面修复 `tests/ui/` 下的单元测试，包括 `AttributeError` (事件管理器调用)、`TypeError` (事件模拟、`__init__` 参数)、`RuntimeError` (`QApplication` 单例)、`AssertionError` (逻辑和预期值不符)。
+            - 修复 `StatsPanel` 中 CPU 使用率标签格式化及相关事件处理逻辑。
+            - 确保 `MainPetWindow.moveEvent` 正确发布窗口位置变更事件。
+            - 调整各测试用例中的模拟、断言及参数以确保正确性。
+        - **结果**: `tests/ui/` 目录下所有 51 个测试全部通过。
+    2. **`QMouseEvent` 废弃警告修复**
+        - **状态**: [已完成]
+        - **负责人**: AI
+        - **完成时间**: 2025/05/16
+        - **描述**: 更新 `tests/ui/test_drag_precision.py` 中所有 `QMouseEvent` 的实例化，采用新的构造函数签名，显式提供 `globalPos` 参数。
+        - **结果**: `QMouseEvent` 相关废弃警告已消除。
+
+## 阶段0 - 行为模块 (`tests/behavior/`) 功能稳定化
+- **状态**: [计划中]
+- **描述**: 对 `status/behavior/` 目录下的行为逻辑进行测试驱动的修复和稳定化。
+- **依赖**: 核心模块稳定。
+- **子任务**:
+    1. 修复因错误调用 `EventManager.get_instance()` 导致的 `AttributeError`
+        - **状态**: [已完成]
+        - **负责人**: AI
+        - **完成时间**: 2025/05/16
+        - **结果**: `tests/behavior/` 测试通过数从 10 提升到 15 (共25个测试)。剩余 10 个失败主要为 `TypeError` (事件模拟, `__init__` 参数) 和 `RuntimeError` (`QApplication` 单例管理)。
+    2. (计划中) 解决 `tests/behavior/test_time_behavior_system.py` 中的 `TypeError` (MagicMock for QMouseEvent)
+    3. (计划中) 解决 `tests/behavior/test_time_state_bridge.py` 中的 `TypeError` (MagicMock for QMouseEvent)
+    4. (计划中) 解决 `tests/behavior/test_time_animation_manager.py` 中的 `TypeError` (MagicMock for QMouseEvent)
+    5. (计划中) 解决 `tests/behavior/test_time_based_behavior_system.py` 中的 `TypeError` (MagicMock for QMouseEvent)
+    6. (计划中) 解决 `tests/behavior/test_time_period.py` 中的 `TypeError` (MagicMock for QMouseEvent)
+    7. (计划中) 解决 `tests/behavior/test_time_state_bridge.py` 中的 `TypeError` (MagicMock for QMouseEvent)
+    8. (计划中) 解决 `tests/behavior/test_time_animation_manager.py` 中的 `TypeError` (MagicMock for QMouseEvent)
+    9. (计划中) 解决 `tests/behavior/test_time_based_behavior_system.py` 中的 `TypeError` (MagicMock for QMouseEvent)
+    10. (计划中) 解决 `tests/behavior/test_time_period.py` 中的 `TypeError` (MagicMock for QMouseEvent)
+
+## 阶段0 - 最终审查与文档完善
+- **状态**: [计划中]
+- **描述**: 在所有主要模块测试通过后，进行全面的代码审查、功能验证，并确保所有项目文档更新至最新状态。
+- **依赖**: 所有其他阶段0任务完成。
+
+---
+*文档维护说明：请在每次会话后更新相关任务状态。对于已完成任务，可以保留简要总结或归档到历史版本。*
 
 

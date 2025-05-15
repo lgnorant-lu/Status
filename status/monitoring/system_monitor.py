@@ -551,194 +551,71 @@ def get_time_data() -> Dict[str, Any]:
     return time_data
 
 def publish_stats(include_details: bool = False):
-    """发布系统统计信息
-    
-    Args:
-        include_details: 是否包含详细的系统指标
-    """
+    """收集系统统计信息并发布事件"""
     logger.info("开始收集系统统计信息...")
+    stats: Dict[str, Any] = {}
 
-    # 获取基本指标
-    cpu_usage = get_cpu_usage()
-    memory_usage = get_memory_usage()
+    # 基本信息
+    stats['cpu'] = get_cpu_usage()
+    stats['memory'] = get_memory_usage()
 
-    # 构建基本数据
-    stats_data: Dict[str, Any] = {
-        "cpu_usage": cpu_usage,
-        "memory_usage": memory_usage,
-    }
-
-    # 如果需要详细指标
     if include_details:
-        # 获取CPU核心使用率
-        try:
-            cpu_cores = get_cpu_cores_usage()
-            stats_data["cpu_cores_usage"] = cpu_cores
-        except Exception as e:
-            logger.error(f"获取CPU核心使用率失败: {e}")
+        stats['cpu_cores'] = get_cpu_cores_usage()
+        stats['memory_details'] = get_memory_details()
         
-        # 获取内存详情
-        try:
-            memory_details = get_memory_details()
-            stats_data["memory_details"] = memory_details
-        except Exception as e:
-            logger.error(f"获取内存详情失败: {e}")
-            
-        # 获取磁盘使用率
-        try:
-            disk_info = get_disk_usage()
-            # 保存完整磁盘信息，而不仅仅是百分比
-            stats_data["disk_usage_root"] = disk_info
-            # 同时保持原有的disk_usage百分比，确保兼容性
-            stats_data["disk_usage"] = disk_info.get("percent", 0.0)
-        except Exception as e:
-            logger.error(f"获取磁盘使用率失败: {e}")
+        # 获取所有挂载点的磁盘使用情况
+        disk_partitions = psutil.disk_partitions(all=False) # all=False 仅物理设备
+        disk_usage_list = []
+        for partition in disk_partitions:
+            if os.name == 'nt': # Windows 系统
+                # 仅处理固定磁盘，避免光驱等设备
+                if 'fixed' in partition.opts or partition.fstype != '':
+                    try:
+                        usage = get_disk_usage(partition.mountpoint)
+                        usage['mountpoint'] = partition.mountpoint
+                        usage['fstype'] = partition.fstype
+                        disk_usage_list.append(usage)
+                    except PermissionError:
+                        logger.warning(f"无权限访问磁盘: {partition.mountpoint}")
+                    except Exception as e:
+                        logger.error(f"获取磁盘 {partition.mountpoint} 信息失败: {e}")
+            else: # Linux/MacOS 系统
+                try:
+                    usage = get_disk_usage(partition.mountpoint)
+                    usage['mountpoint'] = partition.mountpoint
+                    usage['fstype'] = partition.fstype
+                    disk_usage_list.append(usage)
+                except Exception as e:
+                    logger.error(f"获取磁盘 {partition.mountpoint} 信息失败: {e}")
+        stats['disk'] = disk_usage_list
+
+
+        stats['network'] = get_network_info() # 总发送/接收
+        stats['disk_io'] = get_disk_io_speed() # 实时磁盘IO
+        stats['network_speed'] = get_network_speed() # 实时网速
         
-        # 获取网络信息
-        try:
-            network_info = get_network_info()
-            stats_data["network_info"] = network_info
-        except Exception as e:
-            logger.error(f"获取网络信息失败: {e}")
-            
-        # 获取网络速度
-        try:
-            network_speed = get_network_speed()
-            stats_data["network_speed"] = network_speed
-            
-            # 计算总网络使用率（上传+下载）作为指标
-            total_network = network_speed.get("upload_kbps", 0.0) + network_speed.get("download_kbps", 0.0)
-            # 转换为百分比形式（假设100Mbps为标准带宽）
-            network_percent = min(100.0, (total_network / 1024) * 10)  # 10Mbps = 100%
-            stats_data["network_usage"] = network_percent
-        except Exception as e:
-            logger.error(f"获取网络速度失败: {e}")
-            
-        # 获取磁盘IO速度
-        try:
-            disk_io_speed = get_disk_io_speed()
-            stats_data["disk_io_speed"] = disk_io_speed
-        except Exception as e:
-            logger.error(f"获取磁盘IO速度失败: {e}")
-            
-        # 获取GPU信息
-        try:
-            gpu_info = get_gpu_info()
-            stats_data["gpu_info"] = gpu_info
-            
-            # 提取GPU使用率
-            if isinstance(gpu_info, dict) and "load" in gpu_info:
-                # 如果是单个GPU，直接使用其负载
-                stats_data["gpu_usage"] = gpu_info.get("load", 0.0)
-            elif isinstance(gpu_info, dict) and "gpus" in gpu_info:
-                # 如果是多GPU，计算平均负载
-                gpus = gpu_info.get("gpus", [])
-                if gpus:
-                    avg_load = sum(gpu.get("load", 0.0) for gpu in gpus) / len(gpus)
-                    stats_data["gpu_usage"] = avg_load
-                else:
-                    stats_data["gpu_usage"] = 0.0
-            else:
-                stats_data["gpu_usage"] = 0.0
-        except Exception as e:
-            logger.error(f"获取GPU信息失败: {e}")
-        
-        # 添加时间数据 - 首先尝试从时间行为系统获取
-        try:
-            # 使用全局函数获取应用主实例
-            app = get_app_instance()
-            time_data_added = False
-            
-            # 如果找到应用实例且存在时间行为系统
-            if app and hasattr(app, 'time_behavior_system') and app.time_behavior_system and app.time_behavior_system.is_active:
-                tbs = app.time_behavior_system
-                logger.debug(f"时间行为系统实例: {tbs}, 已初始化: {tbs.is_initialized}, 已激活: {tbs.is_active}")
-                
-                # 添加当前时间段
-                current_period = tbs.get_current_period()
-                if current_period:
-                    stats_data["period"] = current_period.name
-                    logger.debug(f"从时间行为系统获取到当前时间段: {current_period.name}")
-                
-                # 添加当前特殊日期
-                special_dates = tbs.get_current_special_dates()
-                if special_dates:
-                    first_date = special_dates[0]
-                    stats_data["special_date"] = {
-                        "name": first_date.name,
-                        "description": first_date.description
-                    }
-                    logger.debug(f"从时间行为系统获取到当前特殊日期: {first_date.name}")
-                
-                # 添加即将到来的特殊日期
-                upcoming_dates = tbs.get_upcoming_special_dates(days=7)
-                if upcoming_dates:
-                    upcoming_list = []
-                    for date_obj, date_time in upcoming_dates[:3]:  # 只取前3个
-                        upcoming_list.append({
-                            "name": date_obj.name,
-                            "date": date_time.strftime("%Y-%m-%d"),
-                            "description": date_obj.description
-                        })
-                    stats_data["upcoming_dates"] = upcoming_list
-                    logger.debug(f"从时间行为系统获取到即将到来的特殊日期: {len(upcoming_list)}个")
-                
-                logger.debug(f"已添加时间行为系统数据: 当前时间段={current_period.name if current_period else '未知'}")
-                time_data_added = True
-            
-            # 如果无法从时间行为系统获取数据，使用独立函数
-            if not time_data_added:
-                logger.debug("无法从时间行为系统获取数据，使用独立函数获取时间数据")
-                time_data = get_time_data()
-                stats_data.update(time_data)
-                logger.debug(f"使用独立函数获取的时间数据: {time_data}")
-        except Exception as e:
-            # 如果上述方法失败，确保至少有基本的时间数据
-            logger.error(f"获取时间数据失败, 使用备用方法: {e}", exc_info=True)
-            try:
-                # 使用备用方法获取时间数据
-                time_data = get_time_data()
-                stats_data.update(time_data)
-                logger.debug("使用备用方法成功获取时间数据")
-            except Exception as e2:
-                logger.error(f"备用时间数据获取也失败: {e2}")
+        # 尝试获取GPU信息
+        gpu_info_list = get_gpu_info() # 这会返回一个列表
+        if gpu_info_list: # 确保列表不为空
+            stats['gpu'] = gpu_info_list
+        else:
+            stats['gpu'] = [] # 或者 None，取决于StatsPanel如何处理
+
+        # 添加时间相关数据
+        time_data = get_time_data() # { 'period': 'MORNING', 'special_date': None, 'upcoming_dates': [] }
+        if time_data:
+            stats.update(time_data) # 将时间数据合并到stats字典
+            logger.info(f"系统统计包含时间数据: 包含{list(time_data.keys())}")
+
+    # 获取事件管理器实例 (适配器)
+    event_manager = EventManager() # This should be the adapter's get_instance()
+    logger.info(f"[publish_stats] EventManager type: {type(event_manager)}, id: {id(event_manager)}")
     
-    # 检查并记录时间相关数据
-    time_related_keys = ['period', 'special_date', 'upcoming_dates']
-    time_data_exists = any(key in stats_data for key in time_related_keys)
-    
-    if time_data_exists:
-        # 只记录确实存在的数据
-        time_data = {k: stats_data[k] for k in time_related_keys if k in stats_data}
-        time_keys = list(time_data.keys())
-        logger.info(f"系统统计包含时间数据: 包含{time_keys}")
-    else:
-        # 如果没有时间数据但需要详细信息，尝试添加基本时间段
-        if include_details:
-            try:
-                current_period = get_current_time_period()
-                stats_data['period'] = current_period.name
-                logger.info(f"添加基本时间段信息: {current_period.name}")
-            except Exception as e:
-                logger.error(f"添加基本时间段失败: {e}")
-    
-    # 创建事件对象
-    event = SystemStatsUpdatedEvent(stats_data=stats_data, sender="SystemMonitor")
-    
-    # 发布事件
-    event_manager = EventManager.get_instance()
-    event_manager.dispatch(event)
-    
-    logger.debug(f"Publishing system stats: CPU {cpu_usage:.1f}%, Mem {memory_usage:.1f}%")
-    
-    # 获取事件系统实例
-    event_system = EventSystem.get_instance()
-    
-    # 创建事件对象
-    event = SystemStatsUpdatedEvent(stats_data=stats_data)
-    
-    # 发布事件
-    event_system.dispatch(event)
-    logger.info(f"System stats event published: CPU {cpu_usage:.1f}%, Mem {memory_usage:.1f}%") # 日志: 确认事件发布
+    # 创建并发布事件
+    # 关键点: SystemStatsUpdatedEvent 应该使用 stats_data 参数
+    system_event = SystemStatsUpdatedEvent(stats_data=stats) 
+    event_manager.emit(EventType.SYSTEM_STATS_UPDATED, system_event) # event_data is SystemStatsUpdatedEvent instance
+
+    logger.info(f"System stats event published: CPU {stats.get('cpu', 'N/A')}%, Mem {stats.get('memory', 'N/A')}%")
 
 # 可以在这里添加其他系统监控函数

@@ -249,6 +249,36 @@ Status-Ming的事件系统是一个强大的基于发布-订阅模式的机制�
 - 提供优先级队列确保高优先级事件优先处理
 - 包含异常处理和容错机制
 
+#### 事件系统统一计划
+
+**背景与现状**:
+目前项目中并存两套事件机制：
+1.  **`status.core.event_system._EventSystem` (基础版)**: 一个简单的事件派发器，使用枚举定义事件类型，目前被应用核心 (`StatusPet`) 和部分UI组件 (如 `StatsPanel`) 使用。
+2.  **`status.events.event_manager.EventManager` (高级版)**: 一个功能更丰富的事件系统，使用字符串定义事件类型，支持信号槽式连接、弱引用、优先级、过滤、节流、异步处理等。此系统已完成开发，但尚未完全集成到主应用流程中。
+3.  **`ConfigManager`**: 使用其自身独立的事件通知机制。
+
+**统一目标**:
+为了充分利用高级版事件系统的特性，提升代码的健壮性和可维护性，计划将项目中的事件处理统一到 `status.events.event_manager.EventManager`。
+
+**统一策略**:
+将采用一种渐进式的迁移策略，以确保平稳过渡并最小化风险：
+1.  **API对比与分析 (已完成)**: 详细对比了两个事件系统的API和机制，明确了主要的差异点。
+2.  **适配器模式实现 (`LegacyEventManagerAdapter`)**:
+    *   创建一个适配器类 (`LegacyEventManagerAdapter`)，该类将暴露与旧的 `_EventSystem` 兼容的API。
+    *   适配器内部会将对旧API的调用转换为对 `AdvancedEventManager` 的调用。
+    *   将 `status.core.events.EventManager` (目前是 `_EventSystem` 的别名) 指向这个适配器实例。
+    *   **目的**: 使得现有代码在几乎不做修改的情况下，能够通过适配器间接使用新的事件系统，从而快速验证基础兼容性。
+3.  **分模块逐步迁移**:
+    *   在适配器模式下确保系统稳定运行后，将逐个模块（如 `StatsPanel`, `StatusPet`核心逻辑等）的代码直接重构为使用 `AdvancedEventManager` 的原生API。
+    *   在此过程中，充分利用新系统提供的优先级、过滤、异步等高级特性来优化模块的事件处理逻辑。
+    *   每个模块的迁移都将伴随严格的测试 (TDD)。
+4.  **清理与最终化**:
+    *   当所有相关模块都成功迁移到 `AdvancedEventManager` 的原生API后，将移除 `LegacyEventManagerAdapter`。
+    *   彻底移除旧的 `status.core.event_system.py` 文件和所有相关引用。
+    *   更新所有项目文档，以反映统一后的事件系统架构。
+
+这种策略旨在平衡迁移效率与系统稳定性，确保在整个统一过程中，应用的核心功能不受大的影响。
+
 ### 7.3 宠物资源与占位符系统 (`pet_assets`)
 
 为了实现宠物状态多样化表现及未来资源扩展（如网络资源加载），Status-Ming引入了`pet_assets`模块，采用一种高度模块化、可扩展的占位符管理架构。

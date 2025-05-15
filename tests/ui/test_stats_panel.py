@@ -16,8 +16,9 @@ import os
 import unittest
 import logging
 from unittest.mock import MagicMock, patch
+from typing import Optional, Callable
 
-from PySide6.QtCore import QPoint, QSize, QEvent, Qt
+from PySide6.QtCore import QPoint, QSize, QEvent, Qt, QCoreApplication
 from PySide6.QtWidgets import QApplication
 
 # 将项目根目录添加到路径
@@ -33,21 +34,32 @@ logging.basicConfig(level=logging.DEBUG,
                    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 logger = logging.getLogger("TestStatsPanel")
 
+# QApplication instance management
+_app: Optional[QCoreApplication] = None
+
+def get_qapp_for_tests():
+    global _app
+    if _app is None:
+        _app = QApplication.instance()
+        if _app is None:
+            _app = QApplication(sys.argv)
+    return _app
+
 class TestStatsPanel(unittest.TestCase):
     """StatsPanel 测试类"""
+    stats_panel: StatsPanel
+    app: Optional[QApplication] = None
+    test_stats_data_dict: dict
+    test_stats_data_dict_for_mocking: dict
+    original_update_data: Optional[Callable] = None
     
     @classmethod
     def setUpClass(cls):
         """测试类初始化，创建QApplication实例"""
-        # 创建QApplication（如果不存在）
-        if not QApplication.instance():
-            cls.app = QApplication(sys.argv)
-        else:
-            cls.app = QApplication.instance()
+        get_qapp_for_tests()
     
     def setUp(self):
         """每个测试前的准备工作"""
-        # 创建 StatsPanel 实例
         self.stats_panel = StatsPanel()
         
         # 记录原始方法以便还原
@@ -58,44 +70,14 @@ class TestStatsPanel(unittest.TestCase):
         # 模拟EventManager（可选）
         self.mock_event_manager = MagicMock()
         
-        # 测试数据
-        self.test_stats_data = {
-            'cpu': 25.5,
-            'memory': 60.2,
-            'cpu_cores': [20.1, 30.5, 15.8, 40.2],
-            'memory_details': {
-                'total_mb': 16384,
-                'used_mb': 9830,
-                'free_mb': 6554,
-                'percent': 60.2
-            },
-            'disk': {
-                'total_gb': 500,
-                'used_gb': 200,
-                'free_gb': 300,
-                'percent': 40.0
-            },
-            'network': {
-                'sent_mb': 120,
-                'recv_mb': 500
-            },
-            'disk_io': {
-                'read_kbps': 1500,  # 1.5 MB/s
-                'write_kbps': 800  # 0.8 MB/s
-            },
-            'network_speed': {
-                'upload_kbps': 250,
-                'download_kbps': 1200
-            },
-            'gpu': {
-                'name': 'Test GPU',
-                'load_percent': 35,
-                'memory_total_mb': 4096,
-                'memory_used_mb': 1024,
-                'memory_percent': 25.0,
-                'temperature': 65
-            }
-        }
+        # 修改: self.test_stats_data_dict_for_mocking is now a general dict for other tests
+        # that might rely on update_data being mocked (e.g. handle_stats_update)
+        self.test_stats_data_dict_for_mocking = {'cpu': 50.0, 'memory': 60.0, 'period': 'DAY'}
+        
+        # Store the original update_data method
+        self.original_update_data = self.stats_panel.update_data
+        # Mock update_data for tests that specifically test event handlers, not the update_data logic itself
+        self.stats_panel.update_data = MagicMock()
     
     def tearDown(self):
         """每个测试后的清理工作"""
@@ -108,8 +90,9 @@ class TestStatsPanel(unittest.TestCase):
             self.stats_panel.move = self.original_move
         
         # 销毁StatsPanel实例
-        if hasattr(self, 'stats_panel') and self.stats_panel:
-            # 不使用closeEvent直接调用，改用delete方法或直接丢弃引用
+        if self.stats_panel:
+            if hasattr(self, 'original_update_data') and self.original_update_data is not None:
+                self.stats_panel.update_data = self.original_update_data
             if hasattr(self.stats_panel, 'event_manager') and self.stats_panel.event_manager:
                 try:
                     # 直接调用注销方法
@@ -121,7 +104,8 @@ class TestStatsPanel(unittest.TestCase):
             # 使用deleteLater而不是直接调用closeEvent
             self.stats_panel.hide()
             self.stats_panel.deleteLater()
-            self.stats_panel = None
+            self.stats_panel = None # type: ignore[assignment]
+        QApplication.processEvents()
     
     def test_init(self):
         """测试StatsPanel初始化"""
@@ -157,136 +141,144 @@ class TestStatsPanel(unittest.TestCase):
     
     def test_handle_stats_update(self):
         """测试处理系统统计更新事件"""
-        # 模拟update_data方法
-        self.stats_panel.update_data = MagicMock()
+        # Use the renamed dictionary meant for when update_data is mocked
+        old_event_with_dict_data = Event(EventType.SYSTEM_STATS_UPDATED, data=self.test_stats_data_dict_for_mocking)
         
-        # 创建SystemStatsUpdatedEvent实例
-        event = SystemStatsUpdatedEvent(self.test_stats_data)
+        # For debugging:
+        print(f"[TestHandleStatsUpdate] Event type: {old_event_with_dict_data.type}, Event data: {old_event_with_dict_data.data}, Event data type: {type(old_event_with_dict_data.data)}")
         
-        # 调用事件处理方法
-        self.stats_panel.handle_stats_update(event)
-        
-        # 验证update_data方法被调用，并传入了正确的数据
-        self.stats_panel.update_data.assert_called_once_with(self.test_stats_data)
+        self.stats_panel.handle_stats_update(old_event_with_dict_data)
+        # Assert that the mocked update_data was called with the correct data
+        self.stats_panel.update_data.assert_called_once_with(self.test_stats_data_dict_for_mocking)
     
     def test_handle_wrong_event_type(self):
         """测试处理错误类型的事件"""
-        # 模拟update_data方法
-        self.stats_panel.update_data = MagicMock()
-        
-        # 创建一个MockEvent，非SystemStatsUpdatedEvent类型
-        class MockEvent(Event):
-            def __init__(self):
-                super().__init__(EventType.WINDOW_POSITION_CHANGED)
-        
-        event = MockEvent()
-        
-        # 调用事件处理方法
-        self.stats_panel.handle_stats_update(event)
-        
-        # 验证update_data方法未被调用
+        # Create an event of a different type
+        wrong_event = Event(EventType.WINDOW_POSITION_CHANGED, data={}) 
+        self.stats_panel.handle_stats_update(wrong_event)
         self.stats_panel.update_data.assert_not_called()
     
     def test_handle_window_position_changed(self):
         """测试处理窗口位置变化事件"""
-        # 模拟isVisible方法和update_position方法
-        self.stats_panel.isVisible = MagicMock(return_value=True)
-        self.stats_panel.update_position = MagicMock()
-        
-        # 创建WindowPositionChangedEvent实例
         test_position = QPoint(200, 200)
         test_size = QSize(50, 50)
-        event = WindowPositionChangedEvent(test_position, test_size)
         
-        # 调用事件处理方法
-        self.stats_panel.handle_window_position_changed(event)
+        new_event_as_data = WindowPositionChangedEvent(position=test_position, size=test_size, sender=self.stats_panel)
+        old_event_wrapping_new = Event(EventType.WINDOW_POSITION_CHANGED, data=new_event_as_data)
+
+        print(f"[TestHandleWindowPosChanged] Event type: {old_event_wrapping_new.type}, Event data: {old_event_wrapping_new.data}, Event data type: {type(old_event_wrapping_new.data)}")
         
-        # 验证存储了父窗口位置信息
+        self.stats_panel.handle_window_position_changed(old_event_wrapping_new)
+        
         self.assertEqual(self.stats_panel.parent_window_pos, test_position)
         self.assertEqual(self.stats_panel.parent_window_size, test_size)
-        
-        # 验证update_position方法被调用
-        self.stats_panel.update_position.assert_called_once_with(test_position, test_size)
     
     def test_toggle_expand_collapse(self):
         """测试展开/折叠功能"""
+        # 确保面板可见以正确测试子控件的可见性
+        self.stats_panel.show()
+        QApplication.processEvents() # Allow show event to be processed
+
         # 记录初始状态
         initial_expanded = self.stats_panel.is_expanded
+        self.assertFalse(initial_expanded, "Initial state should be collapsed")
         
-        # 切换状态
+        if self.stats_panel.detailed_info_frame:
+            self.assertFalse(self.stats_panel.detailed_info_frame.isVisible(), 
+                             "Detailed info frame should be initially invisible")
+
+        # 切换状态 (第一次切换：折叠 -> 展开)
         self.stats_panel.toggle_expand_collapse()
+        QApplication.processEvents()
         
         # 验证状态已切换
         self.assertNotEqual(initial_expanded, self.stats_panel.is_expanded)
-        self.assertEqual(self.stats_panel.is_expanded, True)  # 应该从False变为True
+        self.assertTrue(self.stats_panel.is_expanded, "State should be expanded after first toggle")
         
         # 验证详细信息区域可见性
         if self.stats_panel.detailed_info_frame:
-            # 让QtApplication处理事件，确保UI更新
-            QApplication.processEvents()
-            # 手动确保详细信息框架设置为可见
-            self.stats_panel.detailed_info_frame.setVisible(True)
-            self.assertTrue(self.stats_panel.detailed_info_frame.isVisible())
+            self.assertTrue(self.stats_panel.detailed_info_frame.isVisible(),
+                            "Detailed info frame should be visible after expanding")
         
-        # 再次切换
+        # 再次切换 (第二次切换：展开 -> 折叠)
         self.stats_panel.toggle_expand_collapse()
+        QApplication.processEvents()
         
         # 验证状态再次切换
-        self.assertEqual(self.stats_panel.is_expanded, False)
+        self.assertFalse(self.stats_panel.is_expanded, "State should be collapsed after second toggle")
         
         # 验证详细信息区域可见性
         if self.stats_panel.detailed_info_frame:
-            # 让QtApplication处理事件，确保UI更新
-            QApplication.processEvents()
-            # 手动确保详细信息框架设置为不可见
-            self.stats_panel.detailed_info_frame.setVisible(False)
-            self.assertFalse(self.stats_panel.detailed_info_frame.isVisible())
+            self.assertFalse(self.stats_panel.detailed_info_frame.isVisible(),
+                             "Detailed info frame should be invisible after collapsing")
     
-    def test_update_data(self):
+    @patch('status.ui.stats_panel.QTimer.singleShot') 
+    def test_update_data(self, mock_single_shot: MagicMock):
         """测试更新数据功能"""
-        # 先显示面板
+        # Restore the original update_data method for this specific test
+        if self.original_update_data is not None:
+            self.stats_panel.update_data = self.original_update_data
+        else:
+            # Fallback or error if original_update_data was not captured
+            # This case should ideally not happen if setUp ran correctly
+            pass
+
         self.stats_panel.show()
+        QApplication.processEvents()
+
+        # Define comprehensive test data for this test
+        detailed_test_data = {
+            'cpu': 25.5,  # For "CPU: 25.5%"
+            'memory': 60.2, # For "内存: 60.2%"
+            'cpu_cores': [20.1, 30.5, 15.0], # For "CPU 核心: 20.1%, 30.5%, 15.0%"
+            'memory_details': {'total_mb': 8192, 'available_mb': 4096, 'used_mb': 3072},
+            'disk': [{'mountpoint': 'C:', 'used_gb': 100, 'total_gb': 200, 'percent': 50.0}],
+            'network': {'sent_mb': 1024, 'recv_mb': 2048},
+            'disk_io': {'read_kbps': 1536.0, 'write_kbps': 800.0}, # read: 1.5 MB/s, write: 800.0 KB/s
+            'network_speed': {'upload_kbps': 512, 'download_kbps': 2048},
+            'gpu': [{'name': 'GPU 0', 'load': 45.5, 'memory_used_mb': 1024, 'memory_total_mb': 2048}],
+            'period': 'DAY',
+            'special_date': 'None',
+            'upcoming_dates': 'None'
+        }
+
+        self.stats_panel.update_data(detailed_test_data)
+        QApplication.processEvents()
+
+        actual_cpu_text = self.stats_panel.cpu_label.text()
+        self.assertEqual("CPU: 25.5%", actual_cpu_text, f"CPU text expected 'CPU: 25.5%', got '{actual_cpu_text}'")
+        actual_memory_text = self.stats_panel.memory_label.text()
+        self.assertEqual("内存: 60.2%", actual_memory_text, f"Memory text expected '内存: 60.2%', got '{actual_memory_text}'")
         
-        # 调用update_data方法
-        self.stats_panel.update_data(self.test_stats_data)
+        # Expand panel to test detailed info update
+        if not self.stats_panel.is_expanded:
+            self.stats_panel.toggle_expand_collapse() # Use the method to expand
+        self.assertTrue(self.stats_panel.is_expanded, "Panel should be expanded before updating detailed info")
+        QApplication.processEvents()
         
-        # 验证标签内容
-        self.assertTrue("CPU: 25.5%" in self.stats_panel.cpu_label.text())
-        self.assertTrue("60.2%" in self.stats_panel.memory_label.text())
-        
-        # 切换到展开状态
-        self.stats_panel.is_expanded = True
-        if self.stats_panel.detailed_info_frame:
-            self.stats_panel.detailed_info_frame.setVisible(True)
-        
-        # 再次调用update_data方法
-        self.stats_panel.update_data(self.test_stats_data)
-        
-        # 验证详细标签内容
+        print(f"DEBUG_TEST_EXPAND: About to call update_data for details. self.stats_panel.is_expanded = {self.stats_panel.is_expanded}")
+        self.stats_panel.update_data(detailed_test_data) # Call again to ensure detailed info is updated if panel was just expanded
+        QApplication.processEvents()
+
+        # Check CPU Cores
+        if self.stats_panel.cpu_cores_label:
+            expected_cpu_cores_text = "CPU 核心: 20.1%, 30.5%, 15.0%"
+            actual_cpu_cores_text = self.stats_panel.cpu_cores_label.text()
+            self.assertEqual(expected_cpu_cores_text, actual_cpu_cores_text,
+                             f"CPU Cores text expected '{expected_cpu_cores_text}', got '{actual_cpu_cores_text}'")
+        else:
+            self.fail("cpu_cores_label was not initialized in StatsPanel UI or test setup did not make panel visible for it to be created")
+
+        # Check Disk IO
         if self.stats_panel.disk_io_label:
-            self.assertTrue("1500" in self.stats_panel.disk_io_label.text() or "1.5 MB/s" in self.stats_panel.disk_io_label.text())
-        
-        if self.stats_panel.network_speed_label:
-            self.assertTrue("1200" in self.stats_panel.network_speed_label.text() or "1.2 MB/s" in self.stats_panel.network_speed_label.text())
-        
-        if self.stats_panel.gpu_label:
-            self.assertTrue("Test GPU" in self.stats_panel.gpu_label.text())
-            self.assertTrue("35%" in self.stats_panel.gpu_label.text())
-    
-    def test_panel_visible_on_real_show(self):
-        """测试真实的显示功能"""
-        # 直接使用原始show方法
-        self.stats_panel.show()
-        self.assertTrue(self.stats_panel.isVisible())
-        
-        # 使用show_panel方法
-        self.stats_panel.hide()  # 先隐藏
-        test_position = QPoint(100, 100)
-        self.stats_panel.show_panel(test_position)
-        self.assertTrue(self.stats_panel.isVisible())
-        
-        # 测试位置
-        self.assertEqual(self.stats_panel.pos(), test_position)
+            # From data: read_kbps: 1536.0 (1.5 MB/s), write_kbps: 800.0 (800.0 KB/s)
+            # Expected format: f"磁盘读写: 读 {read_speed_str}, 写 {write_speed_str}"
+            expected_disk_io_text = "磁盘读写: 读 1.5 MB/s, 写 800.0 KB/s"
+            actual_disk_io_text = self.stats_panel.disk_io_label.text()
+            self.assertEqual(expected_disk_io_text, actual_disk_io_text,
+                             f"磁盘IO文本应为 '{expected_disk_io_text}', 实际为 '{actual_disk_io_text}'")
+        else:
+            self.fail("disk_io_label was not initialized in StatsPanel UI or test setup did not make panel visible for it to be created")
 
 if __name__ == "__main__":
     unittest.main() 

@@ -14,6 +14,7 @@ Changed history:
                             2025/05/13: 修复精确模式闪动和高速滑动边界问题;
                             2025/05/13: 优化拖拽精度并通过TDD测试;
                             2025/05/13: 修复拖动功能有时不响应的问题;
+                            2025/05/16: 修复窗口大小改变事件处理;
 ----
 """
 
@@ -28,8 +29,8 @@ from PySide6.QtGui import (
 )
 from PySide6.QtCore import QPoint, QSize, QRect, QTimer, Signal, Slot, QObject, QTime, QElapsedTimer
 
-from status.core.events import WindowPositionChangedEvent
-from status.core.event_system import EventSystem, EventType
+from status.core.events import WindowPositionChangedEvent, EventManager
+from status.core.event_system import EventType as OldEventType
 
 logger = logging.getLogger(__name__)
 
@@ -242,12 +243,18 @@ class MainPetWindow(QMainWindow):
         if self.is_dragging:
             # 检查是否超过拖动阈值
             if not self.drag_activated:
-                delta_move = (current_mouse_pos - self.drag_start_pos)
-                move_distance = (delta_move.x() ** 2 + delta_move.y() ** 2) ** 0.5
+                # Decomposed Manhattan distance calculation for clarity and to rule out type issues
+                current_pos_point = event.position().toPoint()
+                start_pos_point = self.drag_start_pos # This is a QPoint
                 
-                if move_distance >= DRAG_THRESHOLD:
+                delta_x = abs(current_pos_point.x() - start_pos_point.x())
+                delta_y = abs(current_pos_point.y() - start_pos_point.y())
+                manhattan_dist = delta_x + delta_y
+                # logger.debug(f"Delta calculation: current={current_pos_point}, start={start_pos_point}, manhattan_dist={manhattan_dist}, threshold={DRAG_THRESHOLD}")
+
+                if manhattan_dist > DRAG_THRESHOLD:
                     self.drag_activated = True
-                    logger.debug(f"拖动已激活，移动距离: {move_distance}像素")
+                    logger.debug(f"拖动已激活，移动距离: {manhattan_dist}像素")
             
             # 只有在拖动激活后才处理移动
             if self.drag_activated:
@@ -484,6 +491,9 @@ class MainPetWindow(QMainWindow):
         Args:
             event: 鼠标事件
         """
+        # Call super first, then our logic
+        super().mouseDoubleClickEvent(event)
+
         if event.button() == Qt.MouseButton.LeftButton:
             # 确保不会处于拖动状态
             self.is_dragging = False
@@ -492,8 +502,6 @@ class MainPetWindow(QMainWindow):
             
             # 发送双击信号
             self.double_clicked.emit(event.position().toPoint())
-        
-        super().mouseDoubleClickEvent(event)
     
     def resizeEvent(self, event: QResizeEvent) -> None:
         """窗口大小改变事件处理
@@ -515,17 +523,19 @@ class MainPetWindow(QMainWindow):
         # 发送位置改变信号
         self.position_changed.emit(event.pos())
         
-        # 获取事件系统实例
-        event_system = EventSystem.get_instance()
+        # 获取事件管理器实例 (EventManager is the adapter instance provider)
+        em = EventManager()
         
-        # 发送窗口位置变化事件
-        event_data = WindowPositionChangedEvent(
-            position=self.pos(),
-            size=self.size(),
+        # 创建新的窗口位置变化事件，使用 QPoint 和 QSize
+        new_event = WindowPositionChangedEvent(
+            position=self.pos(),  # self.pos() is already a QPoint
+            size=self.size(),     # self.size() is already a QSize
             sender=self
         )
-        event_system.dispatch_event(EventType.WINDOW_POSITION_CHANGED, data=event_data)
-        logger.debug(f"发送窗口位置变化事件: pos={self.pos()}")
+        
+        # 通过适配器的 emit 方法发送事件，传递旧的 EventType 和新的事件实例作为数据
+        em.emit(OldEventType.WINDOW_POSITION_CHANGED, new_event)
+        logger.debug(f"发送窗口位置变化事件 (via adapter.emit): pos={self.pos()}, size={self.size()}")
         
         super().moveEvent(event)
 

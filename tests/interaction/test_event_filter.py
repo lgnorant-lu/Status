@@ -14,9 +14,9 @@ Changed history:
 import unittest
 import time
 from unittest.mock import Mock, patch
+import sys # Ensure sys is imported for sys.path
 
 # 导入测试配置，确保模拟模块已设置
-import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import tests.conftest
@@ -205,18 +205,32 @@ class TestEventFilterChain(unittest.TestCase):
         filter2_pass = MockEventFilter("PassFilter2", should_pass=True)
         filter3_fail = MockEventFilter("FailFilter3", should_pass=False)
 
+        # ---- DEBUGGING MockEventFilter ----
+        event_for_mock_test = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data="mock_test_event")
+        is_filter1_passing = filter1_pass.filter(event_for_mock_test)
+        print(f"\nDEBUG: filter1_pass.filter(event) direct call returned: {is_filter1_passing}")
+        print(f"DEBUG: filter1_pass.should_pass: {filter1_pass.should_pass}")
+        print(f"DEBUG: filter1_pass.is_enabled(): {filter1_pass.is_enabled()}")
+        self.assertTrue(is_filter1_passing, "filter1_pass instance should directly return True when filter() is called.")
+        # ---- END DEBUGGING ----
+
         # 所有都通过
         chain_all_pass = EventFilterChain(filters=[filter1_pass, filter2_pass])
         event = InteractionEvent(InteractionEventType.SYSTEM_EVENT)
         self.assertTrue(chain_all_pass.filter(event))
-        self.assertEqual(len(filter1_pass.filtered_events), 1)
+        self.assertEqual(len(filter1_pass.filtered_events), 2) # 1 from direct test, 1 from chain
         self.assertEqual(len(filter2_pass.filtered_events), 1)
+
+        # 清空 filtered_events 计数器，以便下次准确测试
+        filter1_pass.filtered_events.clear()
+        filter2_pass.filtered_events.clear()
+        filter3_fail.filtered_events.clear() # Clear this one too for completeness
 
         # 其中一个不通过
         chain_one_fail = EventFilterChain(filters=[filter1_pass, filter3_fail])
-        event = InteractionEvent(InteractionEventType.SYSTEM_EVENT)
-        self.assertFalse(chain_one_fail.filter(event))
-        self.assertEqual(len(filter1_pass.filtered_events), 2) # 之前调用过一次
+        event_fail_test = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data="fail_test_event")
+        self.assertFalse(chain_one_fail.filter(event_fail_test))
+        self.assertEqual(len(filter1_pass.filtered_events), 1) 
         self.assertEqual(len(filter3_fail.filtered_events), 1)
 
 
@@ -273,67 +287,68 @@ class TestRangeFilter(unittest.TestCase):
         self.assertEqual(filter.min_value, 0)
         self.assertEqual(filter.max_value, 100)
         self.assertTrue(filter.inclusive)
+        self.assertTrue(callable(filter.predicate))
 
     def test_inclusive_range(self):
         """测试包含边界的范围过滤"""
-        filter = RangeFilter(property_name="value", min_value=0, max_value=100, inclusive=True)
-        event_in = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 50})
-        event_min = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 0})
-        event_max = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 100})
-        event_out_min = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": -10})
-        event_out_max = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 110})
-        event_none = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": None})
-        event_missing = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={})
-
-        self.assertTrue(filter.filter(event_in))
-        self.assertTrue(filter.filter(event_min))
-        self.assertTrue(filter.filter(event_max))
-        self.assertFalse(filter.filter(event_out_min))
-        self.assertFalse(filter.filter(event_out_max))
-        self.assertFalse(filter.filter(event_none))
-        self.assertTrue(filter.filter(event_missing)) # PropertyFilter base allows if property missing
+        filter = RangeFilter(property_name="value", min_value=10, max_value=20, inclusive=True)
+        self.assertTrue(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 10})))
+        self.assertTrue(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 15})))
+        self.assertTrue(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 20})))
+        self.assertFalse(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 9})))
+        self.assertFalse(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 21})))
 
     def test_exclusive_range(self):
         """测试不包含边界的范围过滤"""
-        filter = RangeFilter(property_name="value", min_value=0, max_value=100, inclusive=False)
-        event_in = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 50})
-        event_min = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 0})
-        event_max = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 100})
-        event_out_min = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": -10})
-        event_out_max = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 110})
-        event_none = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": None})
-        event_missing = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={})
-
-        self.assertTrue(filter.filter(event_in))
-        self.assertFalse(filter.filter(event_min))
-        self.assertFalse(filter.filter(event_max))
-        self.assertFalse(filter.filter(event_out_min))
-        self.assertFalse(filter.filter(event_out_max))
-        self.assertFalse(filter.filter(event_none))
-        self.assertTrue(filter.filter(event_missing)) # PropertyFilter base allows if property missing
+        filter = RangeFilter(property_name="value", min_value=10, max_value=20, inclusive=False)
+        self.assertFalse(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 10})))
+        self.assertTrue(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 15})))
+        self.assertFalse(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 20})))
+        self.assertFalse(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 9})))
+        self.assertFalse(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 21})))
 
     def test_set_range(self):
         """测试动态设置范围"""
-        filter = RangeFilter(property_name="value", min_value=0, max_value=100, inclusive=True)
-        event_test = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 150})
+        filter = RangeFilter(property_name="value", name="TestRangeSet")
+        event_pass = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 150})
+        event_fail_low = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 50})
+        event_fail_high = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 250})
+        event_test = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 100})
 
-        self.assertFalse(filter.filter(event_test))
+        # Initial state (default range is None, None, inclusive=True)
+        self.assertTrue(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 0})))
 
+        # Test inclusive range
         filter.set_range(min_value=100, max_value=200, inclusive=True)
-        self.assertTrue(filter.filter(event_test))
+        self.assertTrue(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 100})))
+        self.assertTrue(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 150})))
+        self.assertTrue(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 200})))
+        self.assertFalse(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 99})))
+        self.assertFalse(filter.filter(InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": 201})))
 
+        # Test exclusive range
         filter.set_range(min_value=100, max_value=200, inclusive=False)
-        self.assertFalse(filter.filter(event_test)) # 150 在非包含范围内
+        
+        self.assertTrue(filter.filter(event_pass))
+        self.assertFalse(filter.filter(event_fail_low))
+        self.assertFalse(filter.filter(event_fail_high))
+        self.assertFalse(filter.filter(event_test))
 
     def test_missing_or_none_value(self):
         """测试属性缺失或值为None时RangeFilter的行为"""
-        filter = RangeFilter(property_name="value", min_value=0, max_value=100)
+        filter_inclusive = RangeFilter(property_name="value", min_value=0, max_value=100, inclusive=True)
+        filter_exclusive = RangeFilter(property_name="value", min_value=0, max_value=100, inclusive=False)
+        
         event_none = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": None})
         event_missing = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={})
+        event_wrong_type = InteractionEvent(InteractionEventType.SYSTEM_EVENT, data={"value": "abc"})
 
-        # PropertyFilter 基类在属性缺失时返回 True，RangeFilter 在值为 None 时返回 False
-        self.assertFalse(filter.filter(event_none))
-        self.assertTrue(filter.filter(event_missing))
+        self.assertFalse(filter_inclusive.filter(event_none))
+        self.assertFalse(filter_exclusive.filter(event_none))
+        self.assertTrue(filter_inclusive.filter(event_missing)) # Missing property defaults to True for PropertyFilter
+        self.assertTrue(filter_exclusive.filter(event_missing)) # Missing property defaults to True for PropertyFilter
+        self.assertFalse(filter_inclusive.filter(event_wrong_type))
+        self.assertFalse(filter_exclusive.filter(event_wrong_type))
 
 
 if __name__ == "__main__":

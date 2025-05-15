@@ -21,8 +21,10 @@ from unittest.mock import MagicMock, patch
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 sys.path.insert(0, project_root)
 
-from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt, QPoint, QSize
+from PySide6.QtWidgets import QApplication, QMainWindow
+from PySide6.QtCore import Qt, QPoint, QSize, QTimer, QCoreApplication
+from PySide6.QtTest import QTest
+import logging
 
 # 导入被测试的模块
 from status.ui.stats_panel import StatsPanel
@@ -31,6 +33,20 @@ from status.core.events import WindowPositionChangedEvent, SystemStatsUpdatedEve
 from status.core.event_system import EventSystem, EventType
 from status.monitoring.system_monitor import publish_stats
 
+# Configure logging for tests
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(levelname)s - %(name)s - %(module)s - %(funcName)s - %(message)s')
+logger = logging.getLogger("TestStatsPanelIntegration")
+
+# QApplication instance management
+_app: QCoreApplication | None = None
+
+def get_qapp():
+    global _app
+    _app = QApplication.instance()
+    if _app is None:
+        _app = QApplication([])
+    return _app
 
 class TestStatsPanel(unittest.TestCase):
     """测试StatsPanel的集成功能"""
@@ -38,11 +54,7 @@ class TestStatsPanel(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """设置测试环境"""
-        # 创建QApplication实例，如果尚未创建
-        if not QApplication.instance():
-            cls.app = QApplication([])
-        else:
-            cls.app = QApplication.instance()
+        cls.app = get_qapp()
     
     def setUp(self):
         """每个测试前的设置"""
@@ -52,53 +64,50 @@ class TestStatsPanel(unittest.TestCase):
         self.main_window.move(100, 100)
         
         # 创建状态面板
-        self.stats_panel = StatsPanel()
+        self.stats_panel = StatsPanel(parent=self.main_window)
         
         # 获取事件系统
         self.event_system = EventSystem.get_instance()
         
-        # 尝试重置事件监听器
-        # 由于我们不确定EventSystem类的具体实现，使用更简单的方式设置
-        # 直接注册我们需要的事件处理器，不考虑之前的注册状态
-        try:
-            if self.stats_panel and self.event_system:
-                # 注册状态面板的事件处理器
-                self.event_system.register_handler(EventType.SYSTEM_STATS_UPDATED, self.stats_panel.handle_stats_update)
-                self.event_system.register_handler(EventType.WINDOW_POSITION_CHANGED, self.stats_panel.handle_window_position_changed)
-        except Exception as e:
-            print(f"注册事件处理器时出错: {e}")
+        # 显示状态面板
+        self.stats_panel.show()
+        self.stats_panel.toggle_expand_collapse()
+        self.app.processEvents()
     
     def tearDown(self):
         """每个测试后的清理"""
         # 清理窗口
         if hasattr(self, 'main_window') and self.main_window:
             self.main_window.close()
-            self.main_window = None
         
         if hasattr(self, 'stats_panel') and self.stats_panel:
             self.stats_panel.close()
-            self.stats_panel = None
         
         # 清理事件监听器 - 简化处理
         # 我们不尝试清除所有处理器，因为这可能依赖于EventSystem的具体实现
         # 测试环境的清理会通过Python的垃圾回收来处理
+        self.app.processEvents()
         pass
     
-    def test_stats_panel_receives_data(self):
+    @patch('status.ui.stats_panel.QTimer.singleShot')
+    def test_stats_panel_receives_data(self, mock_single_shot: MagicMock):
         """测试状态面板是否能正确接收系统数据"""
         # 确保状态面板存在
         if not self.stats_panel:
             self.skipTest("状态面板未正确初始化")
         
-        # 显示状态面板
-        self.stats_panel.show()
-        self.assertTrue(self.stats_panel.isVisible(), "状态面板应该可见")
+        # 确保面板已展开以显示详细信息
+        if not self.stats_panel.is_expanded:
+            logger.debug("Panel was not expanded, expanding now.")
+            self.stats_panel.toggle_expand_collapse()
+            self.app.processEvents()
+            self.assertTrue(self.stats_panel.is_expanded, "Panel did not expand for test")
         
         # 模拟系统数据
         test_data = {
-            'cpu_usage': 25.5,
-            'memory_usage': 60.2,
-            'disk_usage': 45.0,
+            'cpu': 25.5, # Changed key to match what update_data expects based on StatsPanel unit tests
+            'memory': 60.2, # Changed key
+            # 'disk_usage': 45.0, # disk key is different in StatsPanel
             'network_speed': {
                 'upload_kbps': 128.5,
                 'download_kbps': 1024.3
@@ -106,10 +115,29 @@ class TestStatsPanel(unittest.TestCase):
             'period': 'MORNING'
         }
         
-        # 发布模拟数据事件
-        event = SystemStatsUpdatedEvent(stats_data=test_data)
-        if self.event_system:
-            self.event_system.dispatch(event)
+        # 发布模拟数据事件 using OldEvent for the old EventSystem
+        # Event is imported as 'from status.core.event_system import Event'
+        # REMOVED: old_event = Event(EventType.SYSTEM_STATS_UPDATED, data=test_data) # Use OldEvent
+        
+        # This test was intended to check if panel receives data when an event is sent via the old EventSystem
+        # because the test's setUp used to register panel's handler to it.
+        # However, StatsPanel now self-registers to the adapter. 
+        # To properly test the adapter path for this kind of direct data, we should use the adapter.
+        # For now, let's see if sending to the adapter works as it would be the primary path.
+        # self.stats_panel.event_manager.dispatch_event(EventType.SYSTEM_STATS_UPDATED, data=test_data)
+        # The above uses adapter.dispatch_event -> adapter.dispatch -> adv_event_data[_data_] should be test_data
+
+        # Let's use the adapter's emit, similar to how SystemMonitor would, but with raw data for simplicity if adapter handles it.
+        # The adapter's emit expects event_data to either be raw data or an OldEvent instance.
+        # If we pass raw test_data: emit will wrap it in OldEvent(type, sender, data=test_data)
+        # then actual_event_to_send.data is test_data.
+        # Then payload_for_new_em[_data_] will be test_data.
+        # Then _create_adapted_handler gets actual_data as test_data.
+        # Then legacy_event.data is test_data. This looks correct.
+        self.stats_panel.event_manager.emit(EventType.SYSTEM_STATS_UPDATED, event_data=test_data)
+
+        # if self.event_system: # This was for the old system, which might not be relevant if panel only uses adapter
+        #     self.event_system.dispatch(old_event)
         
         # 给事件处理一点时间
         QApplication.processEvents()
@@ -123,7 +151,12 @@ class TestStatsPanel(unittest.TestCase):
             memory_text = self.stats_panel.memory_label.text()
             self.assertIn("60.2", memory_text, f"内存标签应显示60.2%, 实际为: {memory_text}")
         
-        if (hasattr(self.stats_panel, 'is_expanded') and self.stats_panel.is_expanded and 
+        # Expand panel to check time_period_label if it's relevant to this test_data
+        if not self.stats_panel.is_expanded:
+            self.stats_panel.toggle_expand_collapse()
+        QApplication.processEvents() # ensure toggle is processed
+
+        if (self.stats_panel.is_expanded and 
             hasattr(self.stats_panel, 'time_period_label') and self.stats_panel.time_period_label):
             time_text = self.stats_panel.time_period_label.text()
             self.assertIn("MORNING", time_text, f"时间段标签应显示MORNING, 实际为: {time_text}")
@@ -156,8 +189,9 @@ class TestStatsPanel(unittest.TestCase):
             size=self.main_window.size(),
             sender=self.main_window
         )
-        if self.event_system:
-            self.event_system.dispatch(event)
+        # if self.event_system: # Old direct dispatch
+        #     self.event_system.dispatch(event)
+        self.stats_panel.event_manager.emit(EventType.WINDOW_POSITION_CHANGED, event) # Use adapter
         
         # 给事件处理一点时间
         QApplication.processEvents()
@@ -175,7 +209,8 @@ class TestStatsPanel(unittest.TestCase):
         self.assertEqual(main_window_offset, panel_offset, 
                         f"状态面板X轴位移({panel_offset})应该与主窗口位移({main_window_offset})相同")
     
-    def test_publish_stats_updates_panel(self):
+    @patch('status.ui.stats_panel.QTimer.singleShot')
+    def test_publish_stats_updates_panel(self, mock_single_shot: MagicMock):
         """测试publish_stats函数是否能更新状态面板"""
         # 确保状态面板存在
         if not self.stats_panel:

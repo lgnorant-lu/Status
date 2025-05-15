@@ -44,8 +44,7 @@ class EventFilter:
             bool: True允许事件通过，False拦截事件
         """
         if not self.enabled:
-            return True  # 如果禁用，则不过滤
-            
+            return True
         return self._do_filter(event)
     
     def _do_filter(self, event: InteractionEvent) -> bool:
@@ -148,32 +147,31 @@ class PropertyFilter(EventFilter):
         super().__init__(name=name)
         self.property_name = property_name
         self.predicate = predicate
-    
+
     def _do_filter(self, event: InteractionEvent) -> bool:
-        """执行过滤
-        
-        Args:
-            event: 要过滤的事件
-            
-        Returns:
-            bool: 如果事件没有指定属性或谓词函数返回True则允许事件通过
-        """
+        """执行过滤"""
         if not self.property_name:
             return True
             
-        if not hasattr(event, self.property_name) and self.property_name not in event.data:
-            return True  # 如果事件没有该属性，则允许通过
-            
-        # 获取属性值
-        property_value = None
-        if hasattr(event, self.property_name):
+        property_value: Any = None
+        found_property = False
+        if hasattr(event, self.property_name): 
             property_value = getattr(event, self.property_name)
-        else:
+            found_property = True
+        elif self.property_name in event.data:
             property_value = event.data.get(self.property_name)
-            
-        # 应用谓词函数
-        return self.predicate(property_value)
-    
+            found_property = True
+        
+        if not found_property:
+            return True # Or False depending on desired strictness - current behavior is True
+
+        result = self.predicate(property_value)
+        return result
+
+    def set_predicate(self, predicate: Callable[[Any], bool]) -> None:
+        """设置谓词函数"""
+        self.predicate = predicate
+
     def set_property_name(self, property_name: str) -> None:
         """设置要检查的属性名
         
@@ -181,14 +179,6 @@ class PropertyFilter(EventFilter):
             property_name: 属性名
         """
         self.property_name = property_name
-    
-    def set_predicate(self, predicate: Callable[[Any], bool]) -> None:
-        """设置谓词函数
-        
-        Args:
-            predicate: 谓词函数
-        """
-        self.predicate = predicate
     
     def __str__(self) -> str:
         return f"{self.name} (property={self.property_name})"
@@ -218,53 +208,28 @@ class RangeFilter(PropertyFilter):
         self.max_value = max_value
         self.inclusive = inclusive
         
-        # 根据是否包含边界值创建不同的谓词函数
-        if inclusive:
-            predicate = self._check_range_inclusive
-        else:
-            predicate = self._check_range_exclusive
-            
-        super().__init__(name=name, property_name=property_name, predicate=predicate)
+        # Determine initial predicate based on inclusive flag
+        initial_predicate = self._check_range_inclusive if inclusive else self._check_range_exclusive
+        super().__init__(name=name, property_name=property_name, predicate=initial_predicate)
     
     def _check_range_inclusive(self, value: Any) -> bool:
-        """检查值是否在包含边界的范围内
-        
-        Args:
-            value: 要检查的值
-            
-        Returns:
-            bool: 是否在范围内
-        """
-        if value is None:
-            return False
-            
+        """检查值是否在包含边界的范围内"""
+        if value is None: return False
         try:
             numeric_value = float(value)
             min_ok = self.min_value is None or numeric_value >= self.min_value
             max_ok = self.max_value is None or numeric_value <= self.max_value
             return min_ok and max_ok
-        except (ValueError, TypeError):
-            return False
+        except (ValueError, TypeError): return False
     
     def _check_range_exclusive(self, value: Any) -> bool:
-        """检查值是否在不包含边界的范围内
-        
-        Args:
-            value: 要检查的值
-            
-        Returns:
-            bool: 是否在范围内
-        """
-        if value is None:
-            return False
-            
+        if value is None: return False
         try:
             numeric_value = float(value)
             min_ok = self.min_value is None or numeric_value > self.min_value
             max_ok = self.max_value is None or numeric_value < self.max_value
             return min_ok and max_ok
-        except (ValueError, TypeError):
-            return False
+        except (ValueError, TypeError): return False
     
     def set_range(self, min_value: Optional[float] = None, max_value: Optional[float] = None, inclusive: Optional[bool] = None) -> None:
         """设置范围
@@ -274,17 +239,13 @@ class RangeFilter(PropertyFilter):
             max_value: 最大值
             inclusive: 是否包含边界值
         """
-        if min_value is not None:
-            self.min_value = min_value
-        if max_value is not None:
-            self.max_value = max_value
-        if inclusive is not None:
-            self.inclusive = inclusive
-            # 更新谓词函数
-            if self.inclusive:
-                self.predicate = self._check_range_inclusive
-        else:
-                self.predicate = self._check_range_exclusive
+        if min_value is not None: self.min_value = min_value
+        if max_value is not None: self.max_value = max_value
+        if inclusive is not None: self.inclusive = inclusive # Update RangeFilter's own inclusive state
+        
+        # Determine the new predicate based on the (potentially updated) inclusive flag
+        new_predicate = self._check_range_inclusive if self.inclusive else self._check_range_exclusive
+        self.set_predicate(new_predicate) # Call PropertyFilter's set_predicate to update the one it uses
 
 
 class EventFilterChain(EventFilter):
@@ -299,25 +260,27 @@ class EventFilterChain(EventFilter):
             filters: 初始过滤器列表
         """
         super().__init__(name=name)
-        self.filters: List[EventFilter] = []
-        
-        if filters:
-            self.filters.extend(filters)
+        self.filters: List[EventFilter] = filters if filters else []
     
     def _do_filter(self, event: InteractionEvent) -> bool:
-        """执行所有过滤器
+        """执行过滤器链的过滤逻辑
+        
+        对于EventFilterChain，默认行为是 AND 逻辑：
+        链中的所有过滤器都必须返回True，事件才能通过。
+        一旦有过滤器返回False，则立即停止并返回False。
         
         Args:
             event: 要过滤的事件
             
         Returns:
-            bool: 如果所有过滤器都允许通过则返回True，否则返回False
+            bool: True允许事件通过，False拦截事件
         """
+        if not self.filters:
+            return True
         for filter_obj in self.filters:
             if not filter_obj.filter(event):
-                # 记录哪个过滤器拦截了事件
-                logger.debug(f"Event {event.event_type} blocked by filter: {filter_obj}")
-            return False
+                logger.debug(f"EventFilterChain ({self.name}): Filter {getattr(filter_obj, 'name', 'UnnamedFilter')} failed. Chain returns False.")
+                return False
         return True
     
     def add_filter(self, filter_obj: EventFilter) -> None:

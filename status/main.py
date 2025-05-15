@@ -15,6 +15,7 @@ Changed history:
                             2025/05/13: 实现基础交互功能;
                             2025/05/14: 添加时间行为系统;
                             2025/05/15: 添加占位符工厂;
+                            2025/05/16: 修复退出功能;
 ----
 """
 
@@ -70,6 +71,8 @@ import math
 class StatusPet:
     """Status Pet 应用主类"""
     
+    app: QApplication  # Class level type hint
+
     def __init__(self):
         """初始化应用"""
         logger.info("Initializing Status Pet...")
@@ -78,8 +81,15 @@ class StatusPet:
         global instance
         instance = self
         
-        # 创建应用实例
-        self.app = QApplication(sys.argv)
+        # 创建应用实例 (确保单例)
+        app_instance = QApplication.instance()
+        if isinstance(app_instance, QApplication):
+            self.app = app_instance
+        elif app_instance is not None: 
+            logger.warning(f"An existing QCoreApplication instance ({type(app_instance)}) was found, but QApplication is needed. A new QApplication will be created.")
+            self.app = QApplication(sys.argv)
+        else: # No instance exists
+            self.app = QApplication(sys.argv)
 
         # 创建主窗口
         self.main_window: Optional[MainPetWindow] = None
@@ -91,7 +101,6 @@ class StatusPet:
         self.stats_panel: Optional[StatsPanel] = None
         
         # 动画
-        self.animation_manager = None  # 动画管理器
         self.idle_animation: Optional[Animation] = None  # 待机动画
         self.busy_animation: Optional[Animation] = None  # 忙碌动画
         self.current_animation: Optional[Animation] = None # 当前播放的动画
@@ -261,34 +270,41 @@ class StatusPet:
 
     def exit_app(self):
         """退出应用"""
-        logger.info("用户请求退出应用程序")
+        logger.info("Exiting Status Pet...")
         
-        # 关闭时间状态桥接器
-        if hasattr(self, 'time_state_bridge') and self.time_state_bridge:
-            self.time_state_bridge._shutdown()
-            logger.debug("时间状态桥接器已关闭")
+        # 停止所有定时器
+        self._update_timer.stop()
+        if self.main_window and self.main_window.smoothing_timer.isActive():
+            self.main_window.smoothing_timer.stop()
+        if self.main_window and self.main_window.watchdog_timer.isActive():
+            self.main_window.watchdog_timer.stop()
         
-        # 关闭时间行为系统
-        if hasattr(self, 'time_behavior_system') and self.time_behavior_system:
-            self.time_behavior_system._shutdown()
-            logger.debug("时间行为系统已关闭")
+        # 清理交互处理器
+        if self.interaction_handler:
+            self.interaction_handler._shutdown() # Changed from cleanup to _shutdown
+            self.interaction_handler = None
+            
+        # 清理主窗口
+        if self.main_window:
+            self.main_window.close()
+            self.main_window.deleteLater()
+            self.main_window = None
+            
+        # 清理统计面板
+        if self.stats_panel:
+            self.stats_panel.close()
+            self.stats_panel.deleteLater() # 确保正确清理
+            self.stats_panel = None
         
-        # 关闭交互状态适配器
-        if hasattr(self, 'interaction_state_adapter') and self.interaction_state_adapter:
-            self.interaction_state_adapter._shutdown()
-            logger.debug("交互状态适配器已关闭")
-        
-        # 关闭系统状态适配器
-        if hasattr(self, 'system_state_adapter') and self.system_state_adapter:
-            self.system_state_adapter._shutdown()
-            logger.debug("系统状态适配器已关闭")
-        
-        # 关闭交互处理器
-        if hasattr(self, 'interaction_handler') and self.interaction_handler:
-            self.interaction_handler._shutdown()
-            logger.debug("交互处理器已关闭")
-        
-        self.app.quit()
+        # 清理系统托盘
+        if self.system_tray:
+            self.system_tray.tray_icon.hide() # Hide the icon
+            self.system_tray = None
+            
+        # 退出应用
+        if self.app: # Check if app exists before calling quit
+            self.app.quit()
+        logger.info("Status Pet exited.")
 
     def create_character_sprite(self):
         """创建角色精灵和各种状态的动画"""
@@ -824,19 +840,20 @@ class StatusPet:
     
     def run(self):
         """运行应用"""
-        try:
-            # 初始化
-            self.initialize()
+        # 初始化所有组件
+        self.initialize()
         
-            # 在启动应用前检查时间行为系统是否正常
-            if hasattr(self, 'time_behavior_system') and self.time_behavior_system:
-                logger.info("时间行为系统集成测试通过，准备进入事件循环")
-            
-            # 进入事件循环
-            return self.app.exec()
-        except Exception as e:
-            logger.error(f"应用程序运行时发生错误: {e}", exc_info=True)
-            return 1
+        # 显示主窗口
+        if self.main_window:
+            self.main_window.show()
+        
+        # 启动更新定时器
+        self._update_timer.start()
+        
+        # 进入应用事件循环
+        logger.info("Starting Status Pet event loop...")
+        if self.app: # Check if app exists before calling exec
+            sys.exit(self.app.exec())
 
 def main():
     """程序入口函数"""
