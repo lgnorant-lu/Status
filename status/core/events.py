@@ -155,6 +155,71 @@ class EventManager(_EventSystem):
         """
         return cls()
     
+    def publish(self, event_type, data=None, sender=None):
+        """发布事件 (兼容API)
+        
+        Args:
+            event_type: 事件类型，可以是EventType枚举值或字符串
+            data: 事件数据
+            sender: 事件发送者，默认为None
+            
+        Note:
+            此方法提供与事件管理器统一API的兼容性
+            内部调用dispatch_event方法
+        """
+        # 字符串事件类型目前不支持，仅保留API
+        if isinstance(event_type, str):
+            self.logger.warning(f"字符串事件类型 '{event_type}' 暂不支持，请使用EventType枚举")
+            return
+        
+        # 使用标准的dispatch_event方法
+        self.dispatch_event(event_type, sender, data)
+    
+    def subscribe(self, event_type, handler):
+        """订阅事件 (兼容API)
+        
+        Args:
+            event_type: 事件类型，可以是EventType枚举值或字符串
+            handler: 事件处理函数
+            
+        Returns:
+            handler: 返回原始处理函数
+            
+        Note:
+            此方法提供与事件管理器统一API的兼容性
+            内部调用register_handler方法
+        """
+        # 字符串事件类型目前不支持，仅保留API
+        if isinstance(event_type, str):
+            self.logger.warning(f"字符串事件类型 '{event_type}' 暂不支持，请使用EventType枚举")
+            return handler
+        
+        # 使用标准的register_handler方法
+        self.register_handler(event_type, handler)
+        return handler
+    
+    def unsubscribe(self, event_type, handler):
+        """取消订阅事件 (兼容API)
+        
+        Args:
+            event_type: 事件类型，可以是EventType枚举值或字符串
+            handler: 事件处理函数
+            
+        Returns:
+            bool: 取消订阅是否成功
+            
+        Note:
+            此方法提供与事件管理器统一API的兼容性
+            内部调用unregister_handler方法
+        """
+        # 字符串事件类型目前不支持，仅保留API
+        if isinstance(event_type, str):
+            self.logger.warning(f"字符串事件类型 '{event_type}' 暂不支持，请使用EventType枚举")
+            return False
+        
+        # 使用标准的unregister_handler方法
+        return self.unregister_handler(event_type, handler)
+    
     def dispatch_interaction_event(self, interaction_type: InteractionEventType, 
                                  sender=None, data=None, position=None) -> None:
         """分发交互事件

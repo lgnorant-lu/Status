@@ -19,9 +19,12 @@ import typing
 from typing import Dict, Any, Optional, List, Tuple, Union, Set, Callable
 import threading
 import json
+import uuid
 
 from status.resources import ResourceType, ResourceError, ImageFormat
 from status.resources.cache import Cache, CacheStrategy
+from status.events.event_manager import EventManager
+from status.events.event_types import ResourceEventType
 
 # --- 类型检查时导入 --- (避免循环导入)
 if typing.TYPE_CHECKING:
@@ -53,14 +56,15 @@ class AssetManager:
     
     def __init__(self):
         """初始化资源管理器"""
-        if AssetManager._instance is not None:
-            # self.logger.warning("AssetManager 已初始化，将返回现有实例") # logger此时可能未初始化
-            # raise Exception("AssetManager is a singleton") # 或者安静地返回
+        # 使用实例属性 _initialized 来确保 __init__ 只完整运行一次
+        if hasattr(self, '_initialized') and self._initialized:
             return
 
         self.logger = logging.getLogger("AssetManager")
         self.base_path: str = "resources"  # 默认基础路径
-        self.loader: ResourceLoader = ResourceLoader() # 每个 AssetManager 实例有自己的加载器
+        # 从 typing 导入 ResourceLoader 以避免循环依赖，并确保类型提示正确
+        from status.resources.resource_loader import ResourceLoader
+        self.loader: ResourceLoader = ResourceLoader() 
         self.loader.base_path = self.base_path
 
         # 内部测试钩子
@@ -68,14 +72,12 @@ class AssetManager:
         self._load_json: Optional[Callable[..., Any]] = None
 
         # 初始化缓存实例
-        self.image_cache: Cache = Cache(strategy=CacheStrategy.LRU, max_items=200, default_ttl=3600) # 图像缓存，1小时TTL
-        
+        self.image_cache: Cache = Cache(strategy=CacheStrategy.LRU, max_items=200, default_ttl=3600)
         self.audio_cache = Cache(
             strategy=CacheStrategy.LRU,
             max_size=100 * 1024 * 1024,  # 100MB
             default_ttl=300              # 5分钟
         )
-        
         self.other_cache = Cache(
             strategy=CacheStrategy.LRU,
             max_size=50 * 1024 * 1024,   # 50MB
@@ -89,10 +91,15 @@ class AssetManager:
         self.preloaded_groups = {}
         
         # 是否已初始化
-        self.initialized = False
+        self.initialized = False # 这个会被 initialize 方法设置为 True
+        
+        # 事件管理器实例，用于发布事件
+        from status.events.event_manager import EventManager
+        self._event_manager = EventManager() # 直接调用构造函数获取单例
         
         # 这样做是为了支持测试中的mock
         self._actual_logger = self.logger
+        self._initialized = True # 标记初始化完成
     
     def initialize(self, base_path: Optional[str] = None) -> None:
         """初始化资源管理器
@@ -299,7 +306,7 @@ class AssetManager:
             def load_func():
                 try:
                     # 注意：传递 final_resource_type 给 loader
-                    resource_loaded = self.loader.load_resource(path, final_resource_type, **kwargs)
+                    resource_loaded = self.loader.load_resource(path, resource_type=final_resource_type, use_cache=use_cache, **kwargs)
                     
                     # 应用资源转换
                     if transform and callable(transform):
@@ -325,7 +332,7 @@ class AssetManager:
             # 直接加载 (use_cache is False here)
             try:
                 # 注意：传递 final_resource_type 给 loader
-                resource = self.loader.load_resource(path, final_resource_type, **kwargs)
+                resource = self.loader.load_resource(path, resource_type=final_resource_type, use_cache=False, **kwargs)
                 
                 # 应用资源转换
                 if transform and callable(transform):
@@ -1027,6 +1034,97 @@ class AssetManager:
         except Exception as e:
             self.logger.error(f"AssetManager 加载字体失败 {path} size {size}: {str(e)}")
             raise # 重新抛出或返回 None
+
+    def load_assets_batch(self, asset_paths: List[str], batch_description: Optional[str] = None, **kwargs) -> str:
+        """批量加载一系列资源，并发布加载进度事件。
+
+        Args:
+            asset_paths: 要加载的资源路径列表。
+            batch_description: 可选，对本次批量加载的描述。
+            **kwargs: 传递给单个资源加载方法 (self.load_asset) 的额外参数。
+
+        Returns:
+            str: 唯一标识本次批量加载任务的批次ID。
+        """
+        batch_id = uuid.uuid4().hex
+        total_resources = len(asset_paths)
+        loaded_count = 0
+        errors_list: List[Tuple[str, str]] = []
+
+        # 1. 发布 ResourceLoadingBatchStartEvent
+        start_event_data = {
+            "batch_id": batch_id,
+            "total_resources": total_resources,
+            "description": batch_description
+        }
+        # self._event_manager.publish(ResourceEventType.BATCH_LOADING_START, start_event_data)
+        # 使用实际的事件类
+        from status.events.event_types import ResourceLoadingBatchStartEvent, ResourceLoadingProgressEvent, ResourceLoadingBatchCompleteEvent
+        # self._event_manager.publish(ResourceLoadingBatchStartEvent(
+        #     batch_id=batch_id,
+        #     total_resources=total_resources,
+        #     description=batch_description
+        # ))
+        event_obj_start = ResourceLoadingBatchStartEvent(
+            batch_id=batch_id, total_resources=total_resources, description=batch_description
+        )
+        self._event_manager.emit(event_obj_start.TYPE, event_obj_start) # type: ignore
+
+        for path in asset_paths:
+            resource_content = None
+            try:
+                # 调用现有的 load_asset 方法加载单个资源
+                # 注意：kwargs 会传递给 load_asset
+                resource_content = self.load_asset(path, **kwargs)
+                # 如果加载成功，增加计数
+                # loaded_count += 1 # 应该在progress事件发布前递增
+            except Exception as e: # 捕获所有可能的加载异常，例如 AssetLoadError
+                self.logger.error(f"Error loading asset '{path}' in batch '{batch_id}': {e}")
+                errors_list.append((path, str(e)))
+            finally:
+                # 无论成功与否，都增加 loaded_count 并发布 Progress 事件
+                loaded_count += 1
+                progress_percent = (loaded_count / total_resources) if total_resources > 0 else 0
+                
+                # self._event_manager.publish(ResourceLoadingProgressEvent(
+                #     batch_id=batch_id,
+                #     resource_path=path,
+                #     loaded_count=loaded_count,
+                #     total_resources=total_resources
+                #     # progress_percent 会在事件类内部计算
+                # ))
+                event_obj_progress = ResourceLoadingProgressEvent(
+                    batch_id=batch_id, resource_path=path, loaded_count=loaded_count, total_resources=total_resources
+                )
+                self._event_manager.emit(event_obj_progress.TYPE, event_obj_progress) # type: ignore
+
+        # 3. 发布 ResourceLoadingBatchCompleteEvent
+        # self._event_manager.publish(ResourceLoadingBatchCompleteEvent(
+        #     batch_id=batch_id,
+        #     loaded_count=loaded_count, # 同上，这里是尝试加载的总数
+        #     total_resources=total_resources,
+        #     succeeded=succeeded,
+        #     errors=errors_list
+        # ))
+        succeeded = not errors_list
+        event_obj_complete = ResourceLoadingBatchCompleteEvent(
+            batch_id=batch_id, loaded_count=loaded_count, total_resources=total_resources, succeeded=succeeded, errors=errors_list
+        )
+        self._event_manager.emit(event_obj_complete.TYPE, event_obj_complete) # type: ignore
+        
+        return batch_id
+
+    def clear_all_caches(self) -> None:
+        """清空所有类型的资源缓存。"""
+        if hasattr(self, 'image_cache') and self.image_cache:
+            self.image_cache.clear()
+            self.logger.info("Image cache cleared.")
+        if hasattr(self, 'audio_cache') and self.audio_cache:
+            self.audio_cache.clear()
+            self.logger.info("Audio cache cleared.")
+        if hasattr(self, 'other_cache') and self.other_cache:
+            self.other_cache.clear()
+            self.logger.info("Other resources cache cleared.")
 
 
 # 创建全局单例实例

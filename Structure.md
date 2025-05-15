@@ -77,6 +77,7 @@
 │   │   ├── component_base.py   # 应用组件基类，定义了组件生命周期和激活机制 [已完成]
 │   │   ├── event_system.py     # 旧版事件系统 [已完成]
 │   │   ├── types.py            # 核心类型定义 [已完成]
+│   │   ├── errors.py           # 核心错误和异常定义 [新创建]
 │   │   ├── logging/            # 增强日志系统 [已完成]
 │   │   │   ├── __init__.py     # 包初始化文件
 │   │   │   └── log_manager.py  # 日志管理器实现 [已完成]
@@ -89,6 +90,9 @@
 │   │   ├── __init__.py         # 包初始化文件
 │   │   ├── event_manager.py    # 事件管理器实现，包含优先级、过滤和节流功能 [已完成]
 │   │   └── event_types.py      # 事件类型定义 [已完成]
+│   │                           # - 新增: ResourceLoadingBatchStartEvent
+│   │                           # - 新增: ResourceLoadingProgressEvent
+│   │                           # - 新增: ResourceLoadingBatchCompleteEvent
 │   ├── interaction/            # 基于PySide6的用户交互处理 (鼠标、键盘、系统托盘等)。 [进行中]
 │   │   ├── __init__.py
 │   │   ├── base_interaction_handler.py # 交互处理基类 [待补全]
@@ -140,6 +144,7 @@
 │   │   └── ... [待补全]
 │   ├── resources/              # 运行时资源管理 [进行中]
 │   │   └── ... [待补全]
+│   │   # - AssetManager.py (或类似模块) 将包含 load_assets_batch 方法
 │   ├── scenes/                 # 场景管理 [进行中]
 │   │   └── ... [待补全]
 │   ├── ui/                     # 基于PySide6的用户界面元素和逻辑 (如设置面板、信息面板、系统托盘)。 [进行中]
@@ -231,9 +236,4 @@
 - **描述**: 包含桌宠应用 (`Status-Ming`) 的主要逻辑代码，包括核心引擎、渲染、交互、行为、资源管理、UI等，UI层基于PySide6。
 - **子模块**:
     - `behavior/`: 管理和实现桌宠（猫咪占位符）的各种行为状态和逻辑，响应系统参数。包含时间驱动行为及农历日期处理 (`time_based_behavior.py`)。`[进行中]`
-    - `components/`: 包含可复用的应用组件，如系统状态适配器 (`SystemStateAdapter`)、用户交互处理器 (`InteractionHandler`)、交互追踪器 (`InteractionTracker`) 和时间行为系统 (`TimeBasedBehaviorSystem`)。这些组件通常继承自 `ComponentBase`。`[进行中]`
-    - `core/`: 提供项目范围内的核心基础服务，如旧版事件系统 (`event_system.py`)、核心类型定义 (`types.py`)、增强日志系统 (`logging/`)、错误恢复机制 (`recovery/`) 以及应用组件基类 (`component_base.py`)。`[进行中]`
-        - `component_base.py`: 定义了应用组件的基础接口和生命周期管理（例如 `activate`, `deactivate`, `_initialize`, `_setup_events`, `_connect_signals`）。组件的激活现在由应用主逻辑（如 `StatusPet.initialize`）显式控制。 `[已完成]`
-        - `logging/`: 实现增强的日志系统，支持多日志级别、多输出目标和文件轮转功能。`[已完成]`
-        - `recovery/`: 提供错误恢复机制，包括状态持久化、崩溃检测和异常处理功能。`[已完成]`
-    - `events/`: 实现增强的事件系统 (`event_manager.py`, `event_types.py`)，包括优先级、过滤、节流和异步处理功能。`
+    - `components/`: 包含可复用的应用组件，如系统状态适配器 (`SystemStateAdapter`)、用户交互处理器 (`

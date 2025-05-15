@@ -25,6 +25,7 @@ class ResourceType(Enum):
     SPRITE_SHEET = "sprite_sheet"
     ANIMATION = "animation"
     AUDIO = "audio"  # 音频类型，与SOUND兼容
+    BINARY = "binary" # 新增二进制类型
     OTHER = "other"  # 其他类型
 
 class ImageFormat(Enum):

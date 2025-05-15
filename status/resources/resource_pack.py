@@ -9,6 +9,7 @@ Description:                资源包管理，提供资源包加载和切换功�
 Changed history:            
                             2025/04/03: 初始创建;
                             2025/05/12: 修复类型提示;
+                            2025/05/15: 添加热加载功能;
 ----
 """
 
@@ -20,9 +21,17 @@ import shutil
 from typing import Dict, Any, List, Optional, Set, Tuple, cast, TypeVar, Type
 from enum import Enum, auto
 import threading
+import time
 
 from status.core.config import config_manager
 from status.core.types import PathLike
+
+# 尝试导入事件系统
+try:
+    from status.core.events import EventManager
+    HAS_EVENT_SYSTEM = True
+except ImportError:
+    HAS_EVENT_SYSTEM = False
 
 
 class ResourcePackFormat(Enum):
@@ -455,39 +464,51 @@ class ResourcePackManager:
         Returns:
             ResourcePackManager: 单例实例
         """
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = cls()
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = cls()
+                
         return cls._instance
     
     def __init__(self):
         """初始化资源包管理器"""
-        # 是否已初始化
-        self.initialized: bool = False
-        
-        # 资源包目录
-        self.builtin_dir: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets")
-        self.user_dir: str = os.path.join(os.path.expanduser("~"), ".status", "resources", "packs")
-        
-        # 资源包列表
-        self.resource_packs: Dict[str, ResourcePack] = {}
-        
-        # 激活的资源包列表（ID），顺序代表优先级，索引越小优先级越高
-        self.active_packs: List[str] = []
-        
-        # 资源路径映射（资源相对路径 -> 实际文件路径）
-        self.resource_path_map: Dict[str, str] = {}
-        
-        # 日志
+        # 日志记录器
         self.logger: logging.Logger = logging.getLogger("Status.ResourcePackManager")
         
-        # 确保用户资源包目录存在
-        if self.user_dir:
-            os.makedirs(self.user_dir, exist_ok=True)
+        # 资源包目录
+        self.base_dir: str = ""  # 资源包基础目录
+        self.user_dir: str = ""  # 用户资源包目录
+        self.builtin_dir: str = ""  # 内置资源包目录
         
-        # 初始化锁
-        self._init_lock = threading.Lock()
+        # 资源包列表
+        self.resource_packs: Dict[str, ResourcePack] = {}  # 所有已加载的资源包，键为pack_id
+        
+        # 激活的资源包列表（有序，优先级高的在前）
+        self.active_packs: List[str] = []  # 激活的资源包ID列表
+        
+        # 资源路径映射，用于快速查找资源
+        self.resource_path_map: Dict[str, str] = {}  # 资源相对路径 -> 资源包ID
+        
+        # 初始化状态
+        self.initialized: bool = False
+        
+        # 热加载相关属性
+        self._monitoring: bool = False  # 是否正在监控文件变化
+        self._monitor_thread: Optional[threading.Thread] = None  # 监控线程
+        self._monitor_interval: float = 5.0  # 监控间隔（秒）
+        self._last_check_time: float = 0.0  # 上次检查时间
+        self._directory_state: Dict[str, Any] = {}  # 目录状态缓存
+        self._stop_event: threading.Event = threading.Event()  # 用于停止监控线程的事件
+        
+        self._instance_init_lock = threading.Lock() # Add instance-level lock
+
+        # 事件系统集成
+        self._event_system = None
+        if HAS_EVENT_SYSTEM:
+            try:
+                self._event_system = EventManager.get_instance()
+            except Exception as e:
+                self.logger.warning(f"无法获取事件管理器实例: {e}")
     
     def initialize(self) -> bool:
         """初始化资源包管理器
@@ -498,7 +519,7 @@ class ResourcePackManager:
         if self.initialized:
             return True
         
-        with self._init_lock:
+        with self._instance_init_lock: # Use instance-level lock
             if self.initialized:
                 return True # type: ignore[unreachable]
             
@@ -1241,6 +1262,278 @@ class ResourcePackManager:
                 raise
             else:
                 raise ResourcePackError(f"导出资源包失败: {str(e)}")
+    
+    def start_monitoring(self) -> bool:
+        """开始监控资源包目录变化
+        
+        Returns:
+            bool: 是否成功启动监控
+        """
+        # 如果已经在监控中，则直接返回
+        if self._monitoring:
+            self.logger.debug("资源包监控已经在运行")
+            return True
+        
+        # 确保已初始化
+        if not self.initialized:
+            self.initialize()
+        
+        # 标记为正在监控
+        self._monitoring = True
+        
+        # 记录当前时间
+        self._last_check_time = time.time()
+        
+        # 获取初始目录状态
+        self._directory_state = self._get_directory_state()
+        
+        # 重置停止事件
+        self._stop_event.clear()
+        
+        # 创建并启动监控线程
+        self._monitor_thread = threading.Thread(
+            target=self._monitor_worker,
+            name="ResourcePackMonitor",
+            daemon=True  # 守护线程，主线程退出时自动结束
+        )
+        self._monitor_thread.start()
+        
+        self.logger.info(f"已启动资源包目录监控，监控间隔: {self._monitor_interval}秒")
+        return True
+    
+    def stop_monitoring(self) -> bool:
+        """停止监控资源包目录变化
+        
+        Returns:
+            bool: 是否成功停止监控
+        """
+        # 如果没有在监控中，则直接返回
+        if not self._monitoring:
+            self.logger.debug("资源包监控未运行")
+            return True
+        
+        # 标记为不再监控
+        self._monitoring = False
+        
+        # 设置停止事件，通知监控线程退出
+        self._stop_event.set()
+        
+        # 等待监控线程结束
+        if self._monitor_thread and self._monitor_thread.is_alive():
+            self._monitor_thread.join(timeout=2.0)  # 最多等待2秒
+            
+            # 如果线程仍在运行，记录警告
+            if self._monitor_thread.is_alive():
+                self.logger.warning("资源包监控线程未能在2秒内正常退出")
+        
+        self._monitor_thread = None
+        self.logger.info("已停止资源包目录监控")
+        return True
+    
+    def set_monitor_interval(self, interval: float) -> None:
+        """设置监控间隔
+        
+        Args:
+            interval: 监控间隔（秒）
+        """
+        if interval < 0.5:
+            interval = 0.5  # 最小0.5秒
+        
+        self._monitor_interval = interval
+        self.logger.info(f"已设置资源包目录监控间隔为 {interval} 秒")
+    
+    def _monitor_worker(self) -> None:
+        """监控工作线程，定期检查目录变化"""
+        self.logger.debug("资源包监控线程已启动")
+        
+        try:
+            while self._monitoring and not self._stop_event.is_set():
+                # 检查目录变化
+                self._check_directory_changes()
+                
+                # 等待指定的间隔时间，同时检查停止事件
+                # 每0.5秒检查一次停止事件，以便及时响应停止请求
+                for _ in range(int(self._monitor_interval * 2)):
+                    if self._stop_event.is_set():
+                        break
+                    time.sleep(0.5)
+        except Exception as e:
+            self.logger.error(f"资源包监控线程发生异常: {str(e)}")
+        finally:
+            self.logger.debug("资源包监控线程已退出")
+    
+    def _get_directory_state(self) -> Dict[str, Any]:
+        """获取当前资源包目录状态
+        
+        Returns:
+            Dict[str, Any]: 目录状态
+        """
+        state = {}
+        
+        # 检查用户目录
+        if os.path.exists(self.user_dir):
+            user_state = {
+                "mtime": os.path.getmtime(self.user_dir),
+                "files": {}
+            }
+            
+            # 获取所有文件的修改时间
+            for file in os.listdir(self.user_dir):
+                file_path = os.path.join(self.user_dir, file)
+                if os.path.isfile(file_path):
+                    user_state["files"][file_path] = os.path.getmtime(file_path)
+            
+            state[self.user_dir] = user_state
+        
+        # 检查已加载的目录类型资源包
+        for pack_id, pack in self.resource_packs.items():
+            if pack.type == ResourcePackType.DIRECTORY:
+                dir_path = str(pack.path)
+                if os.path.exists(dir_path) and os.path.isdir(dir_path):
+                    dir_state = {
+                        "mtime": os.path.getmtime(dir_path),
+                        "files": {}
+                    }
+                    
+                    # 递归获取所有文件的修改时间
+                    for root, _, files in os.walk(dir_path):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            dir_state["files"][file_path] = os.path.getmtime(file_path)
+                    
+                    state[dir_path] = dir_state
+        
+        return state
+    
+    def _check_directory_changes(self) -> None:
+        """检查目录变化，必要时重新加载资源包"""
+        current_time = time.time()
+        
+        # 获取当前目录状态
+        current_state = self._get_directory_state()
+        
+        # 检查用户目录是否有新文件
+        user_dir = self.user_dir
+        if os.path.exists(user_dir):
+            # 获取上次检查时的用户目录状态
+            prev_user_state = self._directory_state.get(user_dir, {"mtime": 0, "files": {}})
+            
+            # 获取当前用户目录状态
+            curr_user_state = current_state.get(user_dir, {"mtime": 0, "files": {}})
+            
+            # 检查是否有新文件
+            prev_files = set(prev_user_state.get("files", {}).keys())
+            curr_files = set(curr_user_state.get("files", {}).keys())
+            
+            # 新增的文件
+            new_files = curr_files - prev_files
+            
+            # 处理新文件
+            for file_path in new_files:
+                if zipfile.is_zipfile(file_path):
+                    self.logger.info(f"发现新资源包: {file_path}")
+                    try:
+                        # 添加资源包
+                        pack_id = self.add_resource_pack(file_path)
+                        if pack_id:
+                            self.logger.info(f"已自动加载新资源包: {pack_id}")
+                            
+                            # 触发事件
+                            if self._event_system and hasattr(self._event_system, 'publish'):
+                                self._event_system.publish("resource_pack.added", {
+                                    "pack_id": pack_id,
+                                    "path": file_path
+                                })
+                    except Exception as e:
+                        self.logger.error(f"自动加载资源包失败: {file_path}, 错误: {str(e)}")
+        
+        # 检查目录类型资源包是否有变化
+        for pack_id, pack in list(self.resource_packs.items()):
+            if pack.type == ResourcePackType.DIRECTORY:
+                dir_path = str(pack.path)
+                if not os.path.exists(dir_path) or not os.path.isdir(dir_path):
+                    # 目录已被删除
+                    self.logger.warning(f"资源包目录已被删除: {dir_path}")
+                    continue
+                
+                # 获取上次检查时的目录状态
+                prev_dir_state = self._directory_state.get(dir_path, {"mtime": 0, "files": {}})
+                
+                # 获取当前目录状态
+                curr_dir_state = current_state.get(dir_path, {"mtime": 0, "files": {}})
+                
+                # 检查文件是否有变化
+                prev_files = prev_dir_state.get("files", {})
+                curr_files = curr_dir_state.get("files", {})
+                
+                # 检查修改的文件
+                changed = False
+                for file_path, curr_mtime in curr_files.items():
+                    prev_mtime = prev_files.get(file_path, 0)
+                    if curr_mtime > prev_mtime:
+                        # 文件已修改
+                        changed = True
+                        self.logger.debug(f"资源包文件已修改: {file_path}")
+                
+                if changed:
+                    self.logger.info(f"检测到资源包变更: {pack_id}")
+                    try:
+                        # 热重载资源包
+                        if self.hot_reload_pack(pack_id):
+                            self.logger.info(f"已自动重新加载资源包: {pack_id}")
+                    except Exception as e:
+                        self.logger.error(f"自动重新加载资源包失败: {pack_id}, 错误: {str(e)}")
+        
+        # 更新目录状态
+        self._directory_state = current_state
+        self._last_check_time = current_time
+    
+    def hot_reload_pack(self, pack_id: str) -> bool:
+        """热重载指定的资源包
+        
+        Args:
+            pack_id: 资源包ID
+            
+        Returns:
+            bool: 重载是否成功
+        """
+        # 检查资源包是否存在
+        if pack_id not in self.resource_packs:
+            self.logger.warning(f"热重载资源包失败: 资源包不存在 {pack_id}")
+            return False
+        
+        # 获取资源包
+        pack = self.resource_packs[pack_id]
+        
+        # 清空资源文件列表缓存
+        pack.files = []
+        pack.file_mapping = {}
+        
+        # 标记为未加载
+        pack.loaded = False
+        
+        # 重新加载资源包
+        try:
+            # 调用资源包的load方法
+            if not pack.load():
+                self.logger.error(f"热重载资源包失败: 无法加载资源包 {pack_id}")
+                return False
+            
+            # 更新资源路径映射
+            self._update_resource_path_map()
+            
+            self.logger.info(f"已热重载资源包: {pack_id}")
+            
+            # 触发事件
+            if self._event_system and hasattr(self._event_system, 'publish'):
+                self._event_system.publish("resource_pack.reloaded", {
+                    "pack_id": pack_id
+                })
+            
+            return True
+        except Exception as e:
+            self.logger.error(f"热重载资源包失败: {pack_id}, 错误: {str(e)}")
+            return False
 
 
 # 创建资源包管理器实例

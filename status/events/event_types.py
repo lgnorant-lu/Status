@@ -11,7 +11,7 @@ Changed history:
 ----
 """
 
-from typing import Dict, Any, Callable, List, Set, Optional, Union
+from typing import Dict, Any, Callable, List, Set, Optional, Union, Tuple
 from enum import Enum, auto
 
 # 事件类型定义
@@ -111,3 +111,61 @@ class ThrottleMode(Enum):
     RATE = auto()
     # 不进行节流
     NONE = auto()
+
+
+# 资源加载相关事件
+# 将它们定义为普通类或 dataclass，而不是 Enum，以便实例化并携带数据
+
+class ResourceLoadingBatchStartEvent:
+    """资源批量加载开始事件的数据类。"""
+    TYPE = "resource.loading.batch.start" # 事件类型字符串
+
+    def __init__(self, batch_id: str, total_resources: int, description: Optional[str] = None):
+        self.batch_id = batch_id
+        self.total_resources = total_resources
+        self.description = description
+        # self.type = ResourceLoadingBatchStartEvent.TYPE # 实例也携带类型，方便处理器识别
+
+class ResourceLoadingProgressEvent:
+    """资源加载进度事件的数据类。"""
+    TYPE = "resource.loading.progress"
+
+    def __init__(self, batch_id: str, resource_path: str, loaded_count: int, total_resources: int):
+        self.batch_id = batch_id
+        self.resource_path = resource_path
+        self.loaded_count = loaded_count
+        self.total_resources = total_resources
+        # self.type = ResourceLoadingProgressEvent.TYPE
+        # progress_percent 可以作为一个属性动态计算，或者在事件发布前计算并传入
+        # 这里我们让事件的消费者自己计算，或者 AssetManager 在发布前计算好并放入 event_data
+        # 为了与测试对齐，让事件自身计算
+        self.progress_percent: float = (loaded_count / total_resources) if total_resources > 0 else 0.0
+
+class ResourceLoadingBatchCompleteEvent:
+    """资源批量加载完成事件的数据类。"""
+    TYPE = "resource.loading.batch.complete"
+
+    def __init__(self, batch_id: str, loaded_count: int, total_resources: int, succeeded: bool, errors: Optional[List[Tuple[str, str]]] = None):
+        self.batch_id = batch_id
+        self.loaded_count = loaded_count
+        self.total_resources = total_resources
+        self.succeeded = succeeded
+        self.errors: List[Tuple[str, str]] = errors if errors is not None else []
+        # self.type = ResourceLoadingBatchCompleteEvent.TYPE
+
+
+# 可以考虑将这些新的事件类型字符串也加入到一个集中的资源事件类型枚举中
+class ResourceEventType(str, Enum):
+    """资源相关事件类型"""
+    RESOURCE_LOADED = "resource.loaded"
+    RESOURCE_UNLOADED = "resource.unloaded"
+    RESOURCE_MODIFIED = "resource.modified"
+    RESOURCE_PACK_LOADED = "resource.pack.loaded"
+    RESOURCE_PACK_UNLOADED = "resource.pack.unloaded"
+    # 新增的批量加载事件类型
+    BATCH_LOADING_START = ResourceLoadingBatchStartEvent.TYPE
+    BATCH_LOADING_PROGRESS = ResourceLoadingProgressEvent.TYPE
+    BATCH_LOADING_COMPLETE = ResourceLoadingBatchCompleteEvent.TYPE
+    # 压缩相关 (如果需要事件通知)
+    RESOURCE_COMPRESSED = "resource.compressed"
+    RESOURCE_DECOMPRESSED = "resource.decompressed"

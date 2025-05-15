@@ -39,6 +39,7 @@ MVP阶段主要包含以下核心模块：
 3.  **`Resources` (资源管理器)**:
     *   **职责**: 加载、管理和提供应用所需的资源，MVP阶段主要是占位符图像 (如PNG序列帧图)。
     *   **交互**: 被 `Renderer` 调用以获取图像数据。
+    *   **新增进度监控**: `AssetManager` (作为 `Resources` 模块的一部分或其上层) 将提供 `load_assets_batch` 方法，支持批量加载资源并发布进度事件 (如 `ResourceLoadingBatchStartEvent`, `ResourceLoadingProgressEvent`, `ResourceLoadingBatchCompleteEvent`)，以便UI或其他模块订阅并展示加载状态。
 
 4.  **`SystemMonitor` (系统监控模块)**:
     *   **职责**: 独立、定期地获取关键系统性能参数，如CPU使用率、内存使用率。未来可扩展至GPU、磁盘、网络等。

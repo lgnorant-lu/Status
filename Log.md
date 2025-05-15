@@ -52,6 +52,8 @@
   - 编写了全面的单元测试和集成测试，所有测试用例通过
 - [2025-05-15] [资源管理] 为特殊日期/节气创建L4占位符动画 - 详见 [Logs/pet_assets/2025-05-15_special_date_animations.md]
 - [2025-05-15] [资源管理] 核心占位符动画L4质量提升 - 详见 [Logs/pet_assets/2025-05-15_core_animations_L4_enhancement.md]
+- [2025-05-15] [资源管理] 资源压缩与优化 - 详见 [Logs/resources/2025-05-15_resource_compression_optimization.md]
+- [2025-05-15] [资源管理] 资源加载进度监控机制设计 - 详见 [Logs/resources/2025-05-15_resource_loading_progress.md]
 
 ## 交互系统
 - [2025-04-03] [交互系统] 交互管理器实现 - 详见 [Logs/2025-04-03_interaction_manager.md]
@@ -247,6 +249,18 @@
   - 集成GPU监控功能，包括负载率、显存使用和温度
   - 优化UI显示效果，根据各指标负载动态调整颜色
   - 改进数据采集逻辑，确保实时性和准确性
+
+- [2025-05-15] [核心][事件系统] 事件系统统一与增强 - 详见 [Logs/core/2025-05-15_event_system_integration.md]
+  - 解决EventSystem和EventManager API不一致问题
+  - 添加publish/subscribe/unsubscribe兼容方法
+  - 增强事件系统调用点的防御性和健壮性
+  - 保持API兼容性，避免大规模系统重构
+  - 所有相关测试通过，确保功能完整性
+
+- [2025-05-15] [资源管理][功能] 资源压缩与优化机制开发 - 详见 [Logs/resources/2025-05-15_resource_compression_optimization.md]
+  - 目标：实现通用资源压缩/解压缩，优化内存和存储，保持API兼容。
+  - 技术方案：评估zlib、optipng等，并在ResourceLoader/AssetManager中集成。
+  - TDD计划：编写压缩/解压缩、加载、保存及缓存处理的测试用例。
 
 - [2025-05-15] [开发流程] TDD开发模式实施计划 - 详见 [Logs/development/2025-05-15_tdd_implementation_plan.md]
   - 制定测试先行策略，明确测试覆盖率目标(>80%)
@@ -458,5 +472,12 @@
 - [2025-05-15] [资源管理] 实现可插拔的宠物状态占位符系统 - 详见 [Logs/pet_assets/2025-05-15_placeholder_system_implementation.md]
 - [2025-05-15] [行为系统] 完善桌宠行为丰富功能 - 详见 [Logs/behavior/2025-05-15.md]
 - [2025-05-15] [监控][功能] 增强系统监控功能 - 详见 [Logs/Status-Ming/2025-05-15_enhanced_monitoring.md]
+
+## pet_assets 模块日志
+- [2025-05-15] TDD实现PlaceholderFactory缓存机制 - [查看详情](./Logs/pet_assets/2025-05-15_cache_mechanism_implementation.md)
+- [2025-05-15] TDD实现PlaceholderFactory缓存统计功能 - [查看详情](./Logs/pet_assets/2025-05-15_cache_stats_implementation.md)
+
+## resources 模块日志
+- [2025-05-15] TDD实现资源包热加载功能 - [查看详情](./Logs/resources/2025-05-15_resource_hot_loading_implementation.md)
 
 

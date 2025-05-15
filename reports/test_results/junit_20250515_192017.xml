@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="5" time="0.386" timestamp="2025-05-15T19:20:17.849620+08:00" hostname="LAPTOP-1L02S2N9"><testcase classname="tests.unit.test_placeholder_factory_cache.TestPlaceholderFactoryCache" name="test_animation_is_cached" time="0.178" /><testcase classname="tests.unit.test_placeholder_factory_cache.TestPlaceholderFactoryCache" name="test_different_states_not_cached_together" time="0.003" /><testcase classname="tests.unit.test_placeholder_factory_cache.TestPlaceholderFactoryCache" name="test_cache_size_limit" time="0.003" /><testcase classname="tests.unit.test_placeholder_factory_cache.TestPlaceholderFactoryCache" name="test_clear_cache" time="0.002" /><testcase classname="tests.unit.test_placeholder_factory_cache_stats.TestPlaceholderFactoryCacheStats" name="test_cache_stats_basic" time="0.001"><failure message="AttributeError: 'PlaceholderFactory' object has no attribute 'get_cache_stats'">Traceback (most recent call last):
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\_pytest\runner.py", line 341, in from_call
+    result: TResult | None = func()
+                             ^^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\_pytest\runner.py", line 242, in &lt;lambda&gt;
+    lambda: runtest_hook(item=item, **kwds), when=when, reraise=reraise
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_hooks.py", line 513, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_callers.py", line 182, in _multicall
+    return outcome.get_result()
+           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_result.py", line 100, in get_result
+    raise exc.with_traceback(exc.__traceback__)
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_callers.py", line 167, in _multicall
+    teardown.throw(outcome._exception)
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pytestqt\plugin.py", line 189, in pytest_runtest_call
+    result = yield
+             ^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_callers.py", line 167, in _multicall
+    teardown.throw(outcome._exception)
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\_pytest\threadexception.py", line 92, in pytest_runtest_call
+    yield from thread_exception_runtest_hook()
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\_pytest\threadexception.py", line 68, in thread_exception_runtest_hook
+    yield
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_callers.py", line 167, in _multicall
+    teardown.throw(outcome._exception)
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\_pytest\unraisableexception.py", line 95, in pytest_runtest_call
+    yield from unraisable_exception_runtest_hook()
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\_pytest\unraisableexception.py", line 70, in unraisable_exception_runtest_hook
+    yield
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_callers.py", line 167, in _multicall
+    teardown.throw(outcome._exception)
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\_pytest\logging.py", line 846, in pytest_runtest_call
+    yield from self._runtest_for(item, "call")
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\_pytest\logging.py", line 829, in _runtest_for
+    yield
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_callers.py", line 167, in _multicall
+    teardown.throw(outcome._exception)
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\_pytest\capture.py", line 898, in pytest_runtest_call
+    return (yield)
+            ^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_callers.py", line 167, in _multicall
+    teardown.throw(outcome._exception)
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\_pytest\skipping.py", line 257, in pytest_runtest_call
+    return (yield)
+            ^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_callers.py", line 103, in _multicall
+    res = hook_impl.function(*args)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\_pytest\runner.py", line 174, in pytest_runtest_call
+    item.runtest()
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\_pytest\python.py", line 1627, in runtest
+    self.ihook.pytest_pyfunc_call(pyfuncitem=self)
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_hooks.py", line 513, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_callers.py", line 182, in _multicall
+    return outcome.get_result()
+           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_result.py", line 100, in get_result
+    raise exc.with_traceback(exc.__traceback__)
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\pluggy\_callers.py", line 103, in _multicall
+    res = hook_impl.function(*args)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python311\Lib\site-packages\_pytest\python.py", line 159, in pytest_pyfunc_call
+    result = testfunction(**testargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\狗py\pythonProject\Sm_intes\Status\tests\unit\test_placeholder_factory_cache_stats.py", line 31, in test_cache_stats_basic
+    stats = factory.get_cache_stats()
+            ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'PlaceholderFactory' object has no attribute 'get_cache_stats'</failure></testcase></testsuite></testsuites>

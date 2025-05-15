@@ -517,8 +517,8 @@ class StatusPet:
                     self.current_animation = self.idle_animation
                     if not self.current_animation.is_playing: # 确保idle动画在播放
                         self.current_animation.reset()
-                        self.current_animation.play()
-                    
+                    self.current_animation.play()
+
                     current_frame_image = self.current_animation.current_frame()
                     if current_frame_image and not current_frame_image.isNull():
                         self.main_window.set_image(current_frame_image)
