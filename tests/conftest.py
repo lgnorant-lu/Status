@@ -19,6 +19,8 @@ import logging
 import pytest
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Callable
+import threading
+from status.resources.asset_manager import AssetManager
 
 # 将项目根目录添加到系统路径
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
@@ -338,3 +340,29 @@ def handle_custom_options(request):
         logger.setLevel(logging.DEBUG)
     
     yield 
+
+@pytest.fixture(autouse=True)
+def cleanup_asset_manager_singleton():
+    """Ensures AssetManager singleton is reset before and after each test globally."""
+    
+    def reset_singleton_state():
+        # No lock needed here, direct manipulation for testing purposes
+        if AssetManager._instance is not None:
+            if hasattr(AssetManager._instance, '_initialized'):
+                try:
+                    # Attempt to delete to allow re-initialization if necessary
+                    delattr(AssetManager._instance, '_initialized')
+                except AttributeError:
+                    pass # If _initialized doesn't exist, that's fine
+            AssetManager._instance = None # Clear the instance
+        
+        # Also clear the class-level _initialized flag if it exists (older pattern)
+        if hasattr(AssetManager, '_initialized'):
+            try:
+                delattr(AssetManager, '_initialized')
+            except AttributeError:
+                pass
+
+    reset_singleton_state() # Reset before test
+    yield
+    reset_singleton_state() # Reset after test 

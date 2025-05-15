@@ -39,7 +39,7 @@ class PlaceholderFactory:
             "cache_misses": 0,
             "hit_rate": 0.0
         }
-    
+
     def get_animation(self, state: PetState) -> Animation | None:
         """根据状态获取对应的占位符动画
         
@@ -95,7 +95,7 @@ class PlaceholderFactory:
             return None
         except Exception as e:
             logger.error(f"加载状态{state.name}的占位符时发生意外错误: {e}")
-            return None
+            return None 
             
     def _add_to_cache(self, state: PetState, animation: Animation) -> None:
         """将动画添加到缓存中，如果缓存已满则移除最久未使用的项

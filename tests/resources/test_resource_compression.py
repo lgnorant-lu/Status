@@ -158,9 +158,9 @@ class TestResourceCompression:
         loader = resource_loader_instance
         mock_resource_manager.get_resource_content.side_effect = lambda path: \
             SAMPLE_TEXT_CONTENT.encode('utf-8') if path == "not_really_compressed.txt" else None
-        with pytest.raises(zlib.error):
-            # This assumes that if compressed=True, an attempt to decompress will be made.
-            loader.load_resource("not_really_compressed.txt", resource_type=ResourceType.TEXT, compressed=True, compression_type='zlib')
+        # The load_resource method should handle the zlib.error internally and return None
+        result = loader.load_resource("not_really_compressed.txt", resource_type=ResourceType.TEXT, compressed=True, compression_type='zlib')
+        assert result is None
 
     def test_asset_manager_load_compressed_text(self, asset_manager_instance):
         am = asset_manager_instance
@@ -242,20 +242,22 @@ class TestResourceCompression:
 
     def test_resource_loader_load_corrupted_compressed_data(self, resource_loader_instance, mock_resource_manager):
         loader = resource_loader_instance
-        corrupted_data = zlib.compress(SAMPLE_TEXT_CONTENT.encode('utf-8'))[:10]
+        corrupted_data = zlib.compress(SAMPLE_TEXT_CONTENT.encode('utf-8'))[:10] # Create some corrupted data
         mock_resource_manager.get_resource_content.side_effect = lambda path: \
             corrupted_data if path == "corrupted.txt.gz" else None
-        with pytest.raises((zlib.error, EOFError)):
-            # This assumes loader.load_resource will attempt decompression if compressed=True
-            loader.load_resource(
-                "corrupted.txt.gz", 
-                resource_type=ResourceType.TEXT, 
-                compressed=True, 
-                compression_type='zlib'
-            )
+        
+        # The load_resource method should handle the zlib.error internally and return None
+        result = loader.load_resource(
+            "corrupted.txt.gz", 
+            resource_type=ResourceType.TEXT, 
+            compressed=True, 
+            compression_type='zlib'
+        )
+        assert result is None
 
 # 注释掉第278行附近可能存在的未闭合表达式或语法问题，因为它没有在linter输出中明确指出，但在之前的linter提示中提及。实际修复需要查看具体代码。
 # 如果278行附近是类似如下的未完成的测试或注释，我会这样处理：
 # class TestSomethingElse:
 #     pass # Ensure class is not empty
 
+ 

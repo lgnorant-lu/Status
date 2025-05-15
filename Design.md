@@ -41,6 +41,24 @@ MVP阶段主要包含以下核心模块：
     *   **交互**: 被 `Renderer` 调用以获取图像数据。
     *   **新增进度监控**: `AssetManager` (作为 `Resources` 模块的一部分或其上层) 将提供 `load_assets_batch` 方法，支持批量加载资源并发布进度事件 (如 `ResourceLoadingBatchStartEvent`, `ResourceLoadingProgressEvent`, `ResourceLoadingBatchCompleteEvent`)，以便UI或其他模块订阅并展示加载状态。
 
+#### 2.1.3.1 缓存策略详细说明 (ResourceLoader & AssetManager)
+
+- **核心原则**: 为了消除潜在的双重缓存并明确职责，缓存管理主要集中在 `AssetManager`。
+- **`ResourceLoader`**: 
+    - `ResourceLoader` 本身不持有长期缓存。它的主要职责是按需从源（如文件系统、资源包）加载原始资源数据并进行必要的初始解析（例如，将JSON字符串解析为字典，将图像文件字节解码为图像对象）。
+    - `load_resource` 等核心加载方法在被 `AssetManager` 调用时，其内部的临时或短期缓存（如果存在，例如用于避免在单次复杂加载操作中重复读取文件）会被旁路或其结果不会被长期保留在 `ResourceLoader` 层面。
+    - `ResourceLoader` 专注于将原始数据转换为可用的运行时对象。
+- **`AssetManager`**:
+    - `AssetManager` 是应用中所有资源缓存的唯一权威。它维护多种类型的缓存实例（如图像缓存、音频缓存、其他数据缓存），这些缓存实例基于 `status.resources.cache.Cache` 类，支持LRU、大小限制等策略。
+    - 当 `AssetManager.load_asset` 被调用时：
+        1.  它首先检查其自身的缓存。如果命中，则直接返回缓存的资源。
+        2.  如果未命中，它会调用 `ResourceLoader` 的相应方法来加载原始资源。
+        3.  `ResourceLoader` 返回原始或初步解析的资源后，`AssetManager` 可能会对其进行进一步转换（例如，应用图像变换）。
+        4.  最终（可能已转换的）资源被存入 `AssetManager` 的缓存中，然后返回给调用者。
+    - 这种设计确保了 `AssetManager` 可以缓存最终形态的、立即可用的资源对象，同时也避免了 `ResourceLoader` 和 `AssetManager` 之间的数据冗余。
+    - `AssetManager` 还负责处理更复杂的缓存键生成逻辑，可能包括转换参数、缩放选项等，以确保不同版本的同一原始资源能够被独立缓存。
+- **参数传递**: `AssetManager.load_asset` 方法中的 `compressed` 和 `compression_type` 参数直接传递给 `ResourceLoader.load_resource` 作为命名参数，而不是通过 `**loader_kwargs`，以避免参数名冲突和确保显式处理。
+
 4.  **`SystemMonitor` (系统监控模块)**:
     *   **职责**: 独立、定期地获取关键系统性能参数，如CPU使用率、内存使用率。未来可扩展至GPU、磁盘、网络等。
     *   **技术**: 主要使用 `psutil`库，按需考虑 `GPUtil` 等。

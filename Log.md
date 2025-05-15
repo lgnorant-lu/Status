@@ -54,6 +54,7 @@
 - [2025-05-15] [资源管理] 核心占位符动画L4质量提升 - 详见 [Logs/pet_assets/2025-05-15_core_animations_L4_enhancement.md]
 - [2025-05-15] [资源管理] 资源压缩与优化 - 详见 [Logs/resources/2025-05-15_resource_compression_optimization.md]
 - [2025-05-15] [资源管理] 资源加载进度监控机制设计 - 详见 [Logs/resources/2025-05-15_resource_loading_progress.md]
+- [2025-05-16] [资源管理] 资源缓存优化 (完善ResourceLoader与AssetManager集成) - 详见 [Logs/resources/2025-05-16_cache_optimization.md]
 
 ## 交互系统
 - [2025-04-03] [交互系统] 交互管理器实现 - 详见 [Logs/2025-04-03_interaction_manager.md]

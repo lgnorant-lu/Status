@@ -363,17 +363,22 @@
 - [待完善] **Task 2.3.X (TDD): 添加资源压缩和优化** (注意: tests/resources/test_resource_compression.py 中的 test_cache_with_compressed_resources 测试用例由于未知原因的缓存失效问题已被临时跳过，详见 Issues.md)
     - **Status**: [待完善]
     - **Description**: 实现资源加载和保存时的压缩/解压缩功能，优化内存和存储占用。
-- [正实现] **Task 2.3.Y (TDD): 实现资源加载进度监控**
-    - **Status**: [正实现]
+- [已完成] **Task 2.3.Y (TDD): 实现资源加载进度监控**
+    - **Status**: [已完成]
     - **Description**: 为批量资源加载和大型资源包提供加载进度反馈机制。
     - **Sub-tasks**:
-        - [计划中] 定义进度相关事件类 (`ResourceLoadingBatchStartEvent`, `ResourceLoadingProgressEvent`, `ResourceLoadingBatchCompleteEvent`)。
-        - [计划中] 在 `AssetManager` 中实现 `load_assets_batch` 方法，用于处理批量加载并发布进度事件。
-        - [计划中] 编写测试用例 (`tests/resources/test_asset_manager_progress.py`) 验证事件发布和进度计算的正确性。
-        - [计划中] 更新相关文档 (`Design.md`, `Structure.md`, `Logs/resources/2025-05-15_resource_loading_progress.md`)。
-- [计划中] **Task 2.3.Z (TDD): 完善ResourceLoader与AssetManager的集成**
-    - **Status**: [计划中]
-    - **Description**: 明确职责边界，优化API调用，增强类型安全和可维护性。
+        - [已完成] 定义进度相关事件类 (`ResourceLoadingBatchStartEvent`, `ResourceLoadingProgressEvent`, `ResourceLoadingBatchCompleteEvent`)。
+        - [已完成] 在 `AssetManager` 中实现 `load_assets_batch` 方法，用于处理批量加载并发布进度事件。
+        - [已完成] 编写测试用例 (`tests/resources/test_asset_manager_progress.py`) 验证事件发布和进度计算的正确性。
+        - [已完成] 更新相关文档 (`Design.md`, `Structure.md`, `Logs/resources/2025-05-15_resource_loading_progress.md`)。
+- [正实现] **Task 2.3.Z (TDD): 资源缓存优化 (完善ResourceLoader与AssetManager集成)**
+    - **Status**: [正实现]
+    - **Description**: 优化 ResourceLoader 和 AssetManager 的集成，消除双重缓存，将缓存职责主要集中在 AssetManager，提高资源加载效率和可维护性。
+    - **Sub-tasks**:
+        - [进行中] 修改 `ResourceLoader` 以支持旁路其内部缓存。
+        - [进行中] 修改 `AssetManager` 在调用 `ResourceLoader` 时指示其旁路内部缓存。
+        - [计划中] 编写单元测试验证新的缓存策略。
+        - [计划中] 更新相关文档 (`Design.md`, `Structure.md`, `Logs/resources/2025-05-16_cache_optimization.md`)。
 
 ## 特性模块
 
@@ -392,4 +397,5 @@
 ## 四、Phase 3: 测试与文档完善 [计划中]
 
 ## 五、会话日志
+
 

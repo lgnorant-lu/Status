@@ -248,107 +248,111 @@ class AssetManager:
         """
         # 基本键是路径
         key = path
-        
-        # 如果有额外参数，将其添加到键中
+        # 将kwargs中的项排序后加入key，保证顺序一致性
         if kwargs:
-            # 按字母顺序排序键以确保一致性
-            sorted_items = sorted(kwargs.items())
-            params = ";".join(f"{k}={v}" for k, v in sorted_items)
-            key = f"{key}?{params}"
-        
+            # 过滤掉内部使用的或不应影响缓存键的参数
+            filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['use_cache', 'transform', 'cache_decision', 'resource_type', 'use_internal_cache']}
+            if filtered_kwargs:
+                sorted_kwargs = "&".join(f"{k}={v}" for k, v in sorted(filtered_kwargs.items()))
+                key = f"{key}##{sorted_kwargs}" # 使用##来区分路径和参数，避免潜在冲突
         return key
     
     def load_asset(self, path: str, resource_type: Optional[ResourceType] = None,
                  use_cache: bool = True, transform: Optional[Callable[[Any], Any]] = None,
-                 cache_decision: Optional[Callable[[Any, ResourceType], bool]] = None, **kwargs) -> Any:
-        """加载资源
-        
+                 cache_decision: Optional[Callable[[Any, ResourceType], bool]] = None, 
+                 compressed: bool = False, # 显式定义compressed
+                 compression_type: str = 'zlib', # 显式定义compression_type
+                 **kwargs) -> Any:
+        """加载指定路径的资源，并应用可选的转换和缓存策略。
+
         Args:
-            path: 资源路径（相对于基础路径）
-            resource_type: 资源类型，如果为None则自动判断
-            use_cache: 是否使用缓存
-            transform: 资源转换回调，在资源加载后应用
-            cache_decision: 缓存决策回调，决定是否缓存此资源
-            **kwargs: 额外参数，传递给特定的加载函数
-            
+            path: 资源路径。
+            resource_type: 资源类型 (ResourceType枚举)。如果为None，将尝试自动推断。
+            use_cache: 是否使用AssetManager自身的缓存。默认为True。
+            transform: 一个可选函数，用于在资源加载后、缓存前对其进行转换。
+            cache_decision: 一个可选函数，决定是否应缓存加载（并转换后）的资源。
+                            它接收加载的资源和资源类型，返回True则缓存，False则不缓存。
+            compressed: 资源是否已压缩。
+            compression_type: 压缩算法 (如 'zlib')。
+            **kwargs: 传递给底层ResourceLoader.load_resource的其他参数。
+
         Returns:
-            Any: 加载的资源对象
-            
-        Raises:
-            ResourceError: 资源加载失败时抛出
-            ValueError: 当resource_type无效时抛出
-            FileNotFoundError: 当文件不存在时抛出
+            加载并可能转换后的资源，或在失败时返回None。
         """
-        # 检查初始化状态
         if not self.initialized:
-            self.initialize()
+            self.logger.warning("AssetManager尚未初始化。请先调用initialize()方法。")
         
-        # 确定最终的资源类型 (确保非None)
-        final_resource_type: ResourceType
-        if resource_type is not None:
-            final_resource_type = resource_type
-        else:
-            inferred_type = self.loader._get_resource_type(path)
-            if inferred_type is not None:
-                final_resource_type = inferred_type
-            else:
-                self.logger.warning(f"load_asset: 无法从路径 \'{path}\' 推断资源类型，将使用 OTHER 类型。")
-                final_resource_type = ResourceType.OTHER
+        effective_resource_type = resource_type or self.loader._get_resource_type(path)
+        if not effective_resource_type:
+            self.logger.error(f"无法确定资源 '{path}' 的类型，无法加载。")
+            return None
+
+        # 使用显式传递的compressed和compression_type生成缓存键，并传递给ResourceLoader。其他kwargs仍然用于缓存键。
+        cache_key_kwargs = kwargs.copy() # 制作副本以避免修改原始kwargs
+        if compressed: # 仅在实际压缩时添加到缓存键
+            cache_key_kwargs['compressed'] = compressed
+            cache_key_kwargs['compression_type'] = compression_type
         
-        # 获取对应的缓存
-        cache = self._get_cache_for_type(final_resource_type)
-        
-        # 生成缓存键
-        cache_key = self._make_cache_key(path, **kwargs)
-        
-        # 如果使用缓存，尝试从缓存获取
+        cache_key = self._make_cache_key(path, **cache_key_kwargs)
+        target_cache = self._get_cache_for_type(effective_resource_type)
+
         if use_cache:
-            def load_func():
+            cached_asset = target_cache.get(cache_key)
+            if cached_asset is not None:
+                self.logger.debug(f"AssetManager缓存命中: {cache_key} (类型: {effective_resource_type.value})")
+                return cached_asset
+            else:
+                self.logger.debug(f"AssetManager缓存未命中: {cache_key} (类型: {effective_resource_type.value})")
+
+        def load_func() -> Any:
+            # 从kwargs中移除不应直接传递给ResourceLoader.load_resource的参数
+            # 特别是 'transform' 和 'cache_decision' 是AssetManager层面处理的
+            # 'compressed' 和 'compression_type' 应作为命名参数直接传递给load_resource，而不是通过**loader_kwargs
+            loader_kwargs = {k: v for k, v in kwargs.items() if k not in [
+                'transform', 'cache_decision', 'compressed', 'compression_type' 
+            ]}
+            
+            raw_resource = self.loader.load_resource(
+                path, 
+                resource_type=effective_resource_type, 
+                use_cache=True, # AM控制RL是否应尝试使用其内部缓存；这里为True意味着RL可以考虑其内部缓存，但AM通过use_internal_cache=False强制RL不使用其内部缓存
+                use_internal_cache=False, # AssetManager控制自己的缓存，所以ResourceLoader不应使用其内部缓存
+                compressed=compressed, # 直接使用传递给load_asset的参数
+                compression_type=compression_type, # 直接使用传递给load_asset的参数
+                **loader_kwargs
+            )
+
+            if raw_resource is None:
+                self.logger.warning(f"通过ResourceLoader加载资源 '{path}' 失败。")
+                return None
+
+            asset_to_cache = raw_resource
+            if transform:
                 try:
-                    # 注意：传递 final_resource_type 给 loader
-                    resource_loaded = self.loader.load_resource(path, resource_type=final_resource_type, use_cache=use_cache, **kwargs)
-                    
-                    # 应用资源转换
-                    if transform and callable(transform):
-                        resource_loaded = transform(resource_loaded)
-                    
-                    return resource_loaded
-                except ResourceError as e:
-                    if "文件不存在" in str(e):
-                        self.logger.error(f"文件不存在: {path}")
-                        raise FileNotFoundError(f"文件不存在: {path}")
-                    raise
+                    asset_to_cache = transform(raw_resource)
+                    if asset_to_cache is None:
+                        self.logger.warning(f"资源 '{path}' 的转换函数返回了None。")
+                        return None 
+                except Exception as e:
+                    self.logger.error(f"转换资源 '{path}' 失败: {e}")
+                    return None
             
-            # 获取资源
-            resource = cache.get(cache_key, loader=load_func)
-            
-            # 检查是否应该缓存 - final_resource_type is not None here
-            if cache_decision and not cache_decision(resource, final_resource_type):
-                # 如果不应缓存，从缓存中删除
-                cache.remove_method(cache_key)
-            
-            return resource
+            return asset_to_cache
+
+        if not use_cache:
+            self.logger.debug(f"AssetManager不使用缓存加载: {path}")
+            return load_func()
+
+        final_asset = target_cache.get(cache_key, loader=load_func, ttl=kwargs.get('ttl'))
+        
+        if final_asset is not None:
+            if cache_decision and not cache_decision(final_asset, effective_resource_type):
+                self.logger.debug(f"自定义缓存决策拒绝缓存资源: {cache_key}")
+                target_cache.remove_method(cache_key)
         else:
-            # 直接加载 (use_cache is False here)
-            try:
-                # 注意：传递 final_resource_type 给 loader
-                resource = self.loader.load_resource(path, resource_type=final_resource_type, use_cache=False, **kwargs)
-                
-                # 应用资源转换
-                if transform and callable(transform):
-                    resource = transform(resource)
-                
-                # 当 use_cache is False 时，不应该有放入缓存的逻辑
-                # 移除以下错误的缓存块:
-                # if use_cache and (cache_decision is None or cache_decision(resource, final_resource_type)):
-                #     cache.put(cache_key, resource)
-                
-                return resource
-            except ResourceError as e:
-                if "文件不存在" in str(e):
-                    self.logger.error(f"文件不存在: {path}")
-                    raise FileNotFoundError(f"文件不存在: {path}")
-                raise
+            self.logger.warning(f"AssetManager最终未能加载或获取资源: {path}")
+
+        return final_asset
     
     def load_image(self, path: str, format: Optional[ImageFormat] = None,
                  scale: float = 1.0, size: Optional[Tuple[int, int]] = None,

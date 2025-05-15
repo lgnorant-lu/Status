@@ -17,34 +17,42 @@ from status.events.event_types import ResourceEventType, ResourceLoadingBatchSta
 def mock_event_manager():
     """提供一个EventManager的模拟实例。"""
     manager = Mock(spec=EventManager)
-    # 为 emit 方法设置一个 mock，以便我们可以检查它是否被调用以及如何被调用
     manager.emit = Mock()
     return manager
 
 @pytest.fixture
-def mock_resource_loader():
+def mock_resource_loader(): # This fixture might not be directly used if AssetManager instantiates its own
     """提供一个ResourceLoader的模拟实例。"""
     loader = Mock(spec=ResourceLoader)
-    loader.load_resource = Mock() # 模拟加载单个资源的方法
+    loader.load_resource = Mock()
     return loader
 
 @pytest.fixture
-def asset_manager_instance(mock_event_manager, mock_resource_loader):
-    """创建一个AssetManager实例，并注入模拟的EventManager和ResourceLoader。"""
-    # 假设 AssetManager 构造函数或初始化方法接受 EventManager 和 ResourceLoader
-    # 或者通过 setter 方法注入
-    # 这里我们直接在测试中设置它们，模拟注入
-    
-    # 确保 __init__ 可以被安全调用多次以进行模拟对象注入
-    with patch.object(AssetManager, '__init__', return_value=None) as mock_init:
-        am = AssetManager() # 调用构造函数，但 __init__ 被模拟了
-        
-    am._event_manager = mock_event_manager # 手动注入模拟的EventManager
-    am.loader = mock_resource_loader # 手动注入模拟的ResourceLoader
-    am._initialized = True # 确保其他依赖此标志的方法能正常工作
-    
-    # 如果 AssetManager 有自己的缓存，可能也需要模拟或清空
-    am.clear_all_caches() # 假设有这样的方法来确保测试的纯净性
+def asset_manager_instance(monkeypatch): # Simplified fixture
+    """创建一个AssetManager实例，并注入模拟的EventManager。"""
+    # Relies on global cleanup_asset_manager_singleton from conftest.py for instance reset.
+    am = AssetManager.get_instance() # This will call the actual __init__
+
+    # AssetManager.__init__ creates its own EventManager instance.
+    # We need to mock the EventManager class if we want to intercept calls globally before AM uses it,
+    # or mock the instance on 'am' after it's created.
+    # For these tests, mocking the instance on 'am' is fine.
+    mock_event_manager_instance = Mock(spec=EventManager)
+    mock_event_manager_instance.emit = Mock() # Ensure the mock has an emit method
+    monkeypatch.setattr(am, '_event_manager', mock_event_manager_instance)
+
+    # AssetManager.__init__ also creates its own ResourceLoader instance (am.loader).
+    # The tests for batch loading primarily mock `am.load_asset` itself, so direct
+    # interaction with `am.loader` might not need extensive mocking in this fixture,
+    # as long as `am.load_asset` is properly patched in the tests.
+    # However, ensure `am.loader` exists if any part of AM not being tested relies on it.
+    if not hasattr(am, 'loader') or am.loader is None:
+        # This case should ideally not happen if __init__ runs correctly.
+        am.loader = Mock(spec=ResourceLoader) 
+
+    # Call initialize to complete setup, self.logger is used here.
+    am.initialize(base_path="dummy_base_for_progress_tests") 
+    am.clear_all_caches() # Ensure clean state for caches
     
     return am
 
@@ -52,10 +60,11 @@ def asset_manager_instance(mock_event_manager, mock_resource_loader):
 class TestAssetManagerProgress:
     """测试AssetManager的资源加载进度监控功能。"""
 
-    def test_load_assets_batch_success_events(self, asset_manager_instance: AssetManager, mock_event_manager: Mock, mock_resource_loader: Mock):
+    def test_load_assets_batch_success_events(self, asset_manager_instance: AssetManager, mock_resource_loader: Mock):
         """
         测试成功加载一批资源时，是否正确发布了 Start, Progress 和 Complete 事件。
         """
+        mock_event_manager = asset_manager_instance._event_manager # Get the patched mock
         asset_paths = ["path/to/asset1.png", "path/to/asset2.json", "path/to/asset3.txt"]
         batch_description = "Test Batch Loading"
         
@@ -134,10 +143,11 @@ class TestAssetManagerProgress:
             mock_load_asset_method.assert_any_call(path)
 
 
-    def test_load_assets_batch_partial_failure_events(self, asset_manager_instance: AssetManager, mock_event_manager: Mock, mock_resource_loader: Mock):
+    def test_load_assets_batch_partial_failure_events(self, asset_manager_instance: AssetManager, mock_resource_loader: Mock):
         """
         测试批量加载中部分资源失败时，事件是否正确发布，特别是 Complete 事件的 succeeded 和 errors 字段。
         """
+        mock_event_manager = asset_manager_instance._event_manager # Get the patched mock
         asset_paths = ["path/to/asset_ok.png", "path/to/asset_fail.json", "path/to/asset_ok_too.txt"]
         fail_path = "path/to/asset_fail.json"
         batch_description = "Test Batch Partial Failure"
@@ -202,10 +212,11 @@ class TestAssetManagerProgress:
         # 验证 AssetManager.load_asset 被正确调用次数
         assert mock_load_asset_method.call_count == len(asset_paths)
 
-    def test_load_assets_batch_empty_list(self, asset_manager_instance: AssetManager, mock_event_manager: Mock, mock_resource_loader: Mock):
+    def test_load_assets_batch_empty_list(self, asset_manager_instance: AssetManager, mock_resource_loader: Mock):
         """
         测试当传入一个空资源列表时，是否正确发布 Start 和 Complete 事件，且没有 Progress 事件。
         """
+        mock_event_manager = asset_manager_instance._event_manager # Get the patched mock
         asset_paths = []
         batch_description = "Test Empty Batch"
 
@@ -239,10 +250,11 @@ class TestAssetManagerProgress:
         # 确保 load_asset 没有被调用
         mock_load_asset_method.assert_not_called()
 
-    def test_load_assets_batch_all_fail(self, asset_manager_instance: AssetManager, mock_event_manager: Mock, mock_resource_loader: Mock):
+    def test_load_assets_batch_all_fail(self, asset_manager_instance: AssetManager, mock_resource_loader: Mock):
         """
         测试批量加载中所有资源都失败时，事件是否正确发布。
         """
+        mock_event_manager = asset_manager_instance._event_manager # Get the patched mock
         asset_paths = ["path/to/asset1.png", "path/to/asset2.json"]
         batch_description = "Test Batch All Failures"
         error_message_template = "Failed to load asset at {path}"

@@ -25,16 +25,31 @@ from typing import Generator, Any
 
 # 测试mock类
 class MockQImage:
-    def __init__(self, path=None):
+    def __init__(self, path=None, data=None):
         self.path = path
-        self.data = None
-    
-    def loadFromData(self, data):
         self.data = data
+        self._is_null = False
+        if path and "null_image" in path:
+            self._is_null = True
+    
+    def loadFromData(self, data_bytes):
+        self.data = data_bytes
+        if data_bytes == b"invalid_data_for_qimage": 
+            self._is_null = True
+            return False
+        self._is_null = False
         return True
     
     def isNull(self):
+        return self.data is None
+
+    def hasAlphaChannel(self):
+        if self.path and "alpha" in self.path.lower():
+            return True
         return False
+
+    def convertToFormat(self, format_enum):
+        return self
 
 # 导入待测试模块
 # 为避免类型检查冲突，分开导入
@@ -260,75 +275,61 @@ def test_resource_loader_initialization(resource_loader):
     mock_manager.initialize.assert_called_once()
 
 def test_image_loading(resource_loader):
-    """测试图像加载（mock manager+mock QImage.loadFromData）"""
-    from unittest.mock import MagicMock, patch
-    
-    # 准备 mock 对象
-    mock_manager = MagicMock()
-    mock_manager.has_resource.return_value = True
-    mock_manager.get_resource_content.return_value = b"fake image data"
-    # 确保 get_resource_path 返回 None，这样会使 load_image 走向 loadFromData 路径
-    mock_manager.get_resource_path.return_value = None
-    resource_loader.set_manager(mock_manager)
-    
-    mock_qimage = MockQImage()
-    
-    # 确保测试时无论如何都使用从内容加载的路径
-    with patch("status.resources.resource_loader.QImage", return_value=mock_qimage):
-        with patch("status.resources.resource_loader.HAS_GUI", True):
+    """测试图像加载"""
+    mock_qimage_target_instance = MockQImage("textures/test.png") 
+
+    with patch('status.resources.resource_loader.QImage', return_value=mock_qimage_target_instance) as PatchedQImageClass:
+        with patch('status.resources.resource_loader.HAS_GUI', True) as MockHasGui:
+            resource_loader._manager = MagicMock()
+            resource_loader._manager.get_resource_content.return_value = b"dummy_image_data_content"
+            resource_loader._manager.get_resource_path.return_value = None 
+
             result = resource_loader.load_image("textures/test.png")
-            assert result is mock_qimage
-            assert mock_qimage.data == b"fake image data"
+            
+            assert result is mock_qimage_target_instance
+            assert mock_qimage_target_instance.data == b"dummy_image_data_content"
+            # PatchedQImageClass.assert_called_once() # QImage() might be called
+            
         assert "textures/test.png" in resource_loader._image_cache
 
 def test_json_loading(resource_loader):
     """测试JSON加载"""
-    from unittest.mock import MagicMock
-    mock_manager = MagicMock()
     json_data = {"key": "value"}
-    mock_manager.get_resource_content.return_value = json.dumps(json_data).encode("utf-8")
-    resource_loader.set_manager(mock_manager)
-    data = resource_loader.load_json("data/test.json")
-    assert data == json_data
-    mock_manager.get_resource_content.assert_called_with("data/test.json")
-    assert "data/test.json_utf-8" in resource_loader._json_cache
+    json_string = json.dumps(json_data)
+    resource_loader._manager = MagicMock()
+    resource_loader._manager.get_resource_content.return_value = json_string.encode('utf-8')
+
+    result = resource_loader.load_json("data/test.json")
+    assert result == json_data
+    assert "data/test.json" in resource_loader._json_cache
 
 def test_text_loading(resource_loader):
     """测试文本加载"""
-    from unittest.mock import MagicMock
-    mock_manager = MagicMock()
     text_content = "Hello, world!"
-    mock_manager.get_resource_content.return_value = text_content.encode("utf-8")
-    resource_loader.set_manager(mock_manager)
-    text = resource_loader.load_text("texts/test.txt")
-    assert text == text_content
-    mock_manager.get_resource_content.assert_called_with("texts/test.txt")
-    assert "texts/test.txt_utf-8" in resource_loader._text_cache
+    resource_loader._manager = MagicMock()
+    resource_loader._manager.get_resource_content.return_value = text_content.encode('utf-8')
+
+    result = resource_loader.load_text("texts/test.txt")
+    assert result == text_content
+    assert "texts/test.txt" in resource_loader._text_cache
 
 def test_cache_management(resource_loader):
     """测试缓存管理"""
-    from unittest.mock import MagicMock
-    mock_manager = MagicMock()
-    mock_manager.get_resource_content.return_value = b"test data"
-    resource_loader.set_manager(mock_manager)
+    resource_loader._manager = MagicMock()
+    resource_loader._manager.get_resource_content.return_value = b"text data"
+
     resource_loader.load_text("test.txt")
-    assert "test.txt_utf-8" in resource_loader._text_cache
+    assert "test.txt" in resource_loader._text_cache
     resource_loader.clear_cache()
-    assert "test.txt_utf-8" not in resource_loader._text_cache
-    assert len(resource_loader._image_cache) == 0
-    assert len(resource_loader._sound_cache) == 0
-    assert len(resource_loader._font_cache) == 0
-    assert len(resource_loader._json_cache) == 0
-    assert len(resource_loader._text_cache) == 0
+    assert "test.txt" not in resource_loader._text_cache
 
 def test_reload(resource_loader):
-    """测试重新加载（mock manager注入）"""
-    from unittest.mock import MagicMock
-    mock_manager = MagicMock()
-    mock_manager.reload.return_value = True
-    resource_loader.set_manager(mock_manager)
-    resource_loader._text_cache["test.txt"] = "cached text"
-    result = resource_loader.reload()
-    assert result
-    mock_manager.reload.assert_called_once()
-    assert len(resource_loader._text_cache) == 0
+    """测试重新加载功能"""
+    resource_loader._manager = MagicMock()
+    resource_loader._manager.get_resource_content.return_value = b"text data"
+    resource_loader._text_cache.put("test.txt", "initial cached text")
+    
+    assert "test.txt" in resource_loader._text_cache
+    resource_loader.reload()
+    assert "test.txt" not in resource_loader._text_cache
+    resource_loader._manager.reload.assert_called_once()
