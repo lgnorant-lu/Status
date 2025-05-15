@@ -65,7 +65,20 @@
 │   ├── __init__.py             # 包初始化文件
 │   ├── behavior/               # 桌宠（猫咪占位符）行为逻辑，响应系统参数，基于PySide6事件。 [进行中]
 │   │   ├── __init__.py
-│   │   └── time_based_behavior.py # 时间驱动行为及农历助手 [进行中]
+│   │   ├── basic_behaviors.py # 基础行为定义及行为基类 [进行中]
+│   │   ├── behavior_manager.py # 行为管理器 [进行中]
+│   │   ├── decision_maker.py # 决策系统 [进行中]
+│   │   ├── emotion_system.py # 情绪系统 [进行中]
+│   │   ├── environment_sensor.py # 环境感知器 [进行中]
+│   │   ├── interaction_state_adapter.py # 交互状态适配器 [进行中]
+│   │   ├── interaction_tracker.py # 用户交互追踪器 (与behavior紧密相关) [进行中]
+│   │   ├── pet_state.py # 宠物状态定义枚举 [进行中]
+│   │   ├── pet_state_machine.py # 宠物状态机 [进行中]
+│   │   ├── reaction_system.py # 反应系统 [进行中]
+│   │   ├── system_state_adapter.py # 系统状态适配器 [进行中]
+│   │   ├── time_based_behavior.py # 时间驱动行为及农历助手 [进行中]
+│   │   ├── time_state_adapter.py # 时间状态适配器 [待移除 - 功能将整合到 TimeStateBridge]
+│   │   └── time_state_bridge.py # 时间状态桥接器 [进行中]
 │   ├── components/             # 可复用的应用组件 (例如 SystemStateAdapter, InteractionHandler) [进行中]
 │   │   ├── __init__.py
 │   │   ├── system_state_adapter.py # 系统状态适配器 [进行中]

@@ -125,7 +125,7 @@ class PetStateMachine:
             PetState.NETWORK_VERY_BUSY: 87, # 网络极度繁忙状态
             PetState.NETWORK_BUSY: 70,      # 网络繁忙状态
             
-            PetState.SYSTEM_IDLE: 5,        # 系统完全空闲状态
+            PetState.SYSTEM_IDLE: 15,        # 系统完全空闲状态 (原为5, 调高使其优先于普通IDLE)
             
             # 特殊日期状态优先级
             PetState.BIRTHDAY: 95,          # 生日状态
@@ -503,30 +503,26 @@ class PetStateMachine:
         """
         if self.event_system:
             try:
-                # 准备事件数据
+                # 构建事件数据
                 event_data = {
-                    "previous_state": previous_state.value if previous_state else None,
-                    "current_state": current_state.value if current_state else None,
-                    "previous_state_name": previous_state.name if previous_state else None,
-                    "current_state_name": current_state.name if current_state else None,
-                    "timestamp": time.time()
+                    "previous_state": previous_state.name if previous_state else None,
+                    "current_state": current_state.name if current_state else None,
+                    "all_active_states": {k.name: v.name if v else None for k, v in self.active_states.items()}
                 }
                 
-                # 记录到状态历史
-                history_entry = event_data.copy()
-                history_entry["datetime"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(history_entry["timestamp"]))
-                self.state_history.append(history_entry)
+                # 创建事件对象 (虽然 dispatch_event 不需要完整的 Event 对象，但保持一致性或未来需要时有益)
+                # 注意：旧的 EventSystem.dispatch_event(type, data) 并不直接接收 Event 实例
+                # 所以我们直接传递 type 和 data
                 
                 # 发布状态变更事件
                 self.event_system.dispatch_event(
-                    EventType.STATE_CHANGED,  # 使用状态变化事件类型
-                    sender=self,
+                    EventType.STATE_CHANGED,  # 使用原始的状态变化事件类型
+                    sender=self, # 保持 sender，如果旧的 dispatch_event 支持的话
                     data=event_data
                 )
-                self.logger.debug(f"已发布状态变化事件: {previous_state.name if previous_state else 'None'} -> {current_state.name if current_state else 'None'}")
+                self.logger.info(f"宠物状态变更: {previous_state.name if previous_state else 'None'} -> {current_state.name if current_state else 'None'}")
             except Exception as e:
                 self.logger.error(f"发布状态变化事件时出错: {e}")
-                # 不抛出异常，避免影响状态机核心逻辑
 
     def get_state_history(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """获取状态变化历史

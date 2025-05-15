@@ -84,9 +84,11 @@ class BehaviorManager:
             return True
         except ValueError as e:
             self.logger.error(f"执行行为失败: {e}")
+            self.current_behavior = None
             return False
         except Exception as e:
             self.logger.error(f"执行行为时发生未知错误: {e}")
+            self.current_behavior = None
             return False
             
     def update(self, dt):
@@ -97,8 +99,8 @@ class BehaviorManager:
         """
         if self.current_behavior and self.current_behavior.is_running:
             try:
-                # 使用内部的_update_behavior方法获取完成状态
-                is_completed = self.current_behavior._update_behavior(dt)
+                # 调用公有的 update 方法
+                is_completed = self.current_behavior.update(dt) 
                 if is_completed:
                     self.logger.debug(f"行为完成: {self.current_behavior.name}")
                     self.current_behavior = None

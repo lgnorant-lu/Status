@@ -219,6 +219,28 @@
       - 添加动画帧管理，支持循环播放和反向播放
       - 实现占位符动画自动创建，保证即使缺少资源也能平滑运行
 
+*   **Task 2.2.12 (TDD): 修复优化 Behavior 模块**
+    *   **Status**: [正实现]
+    *   **Description**: 对整个 behavior 模块进行全面的TDD修复、优化和测试覆盖。
+    *   **Key Sub-tasks**:
+        *   [已完成] 全局重构与清理 (DecisionMaker重构, TimeStateBridge/Adapter整合)
+        *   [已完成] 统一 BehaviorManager/Base 更新方法调用机制
+        *   [已完成] `pet_state.py` TDD 审核
+        *   [计划中] `basic_behaviors.py` TDD 与优化
+        *   [计划中] `behavior_manager.py` TDD 与优化
+        *   [计划中] `pet_state_machine.py` TDD 与优化
+        *   [计划中] `emotion_system.py` TDD 与优化
+        *   [计划中] `reaction_system.py` TDD 审计与优化 (已完成 2025/05/16)
+        *   [计划中] `system_state_adapter.py` TDD 审计与优化 (已完成 2025/05/16)
+        *   [计划中] `interaction_state_adapter.py` TDD 与优化
+        *   [计划中] `time_based_behavior.py` TDD 与优化
+        *   [计划中] `time_state_bridge.py` (最终版) TDD 与优化
+        *   [计划中] `decision_maker.py` (重构后) TDD 与优化
+        *   [计划中] `environment_sensor.py` TDD 审计与优化 (计划中)
+        *   [计划中] 行为动画资源接口定义与占位符测试
+        *   [计划中] 行为模块集成测试 (概念与手动验证)
+        *   [计划中] 完成所有相关文档更新
+
 ### Sub-phase 2.3: 核心模块化重构 [进行中]
 
 *   **Task 2.3.1 (TDD): 设计插件接口 (Plugin API)**

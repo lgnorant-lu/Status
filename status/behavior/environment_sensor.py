@@ -35,6 +35,7 @@ import time
 from enum import Enum, auto
 
 from status.core.events import EventManager, Event, EventType
+from status.core.event_system import EventType as OldEventType
 
 # 移除循环导入
 # from status.behavior.environment_sensor import WindowsEnvironmentSensor, MacEnvironmentSensor, LinuxEnvironmentSensor
@@ -271,15 +272,22 @@ class EnvironmentSensor(QObject, ABC, metaclass=qt_abc_metaclass()): # type: ign
             event_manager (EventManager, optional): 事件管理器
             active_window: 活动窗口或桌面区域
         """
-        if self._initialized:
-            return
+        logger.info("环境传感器初始化中...")
+        if event_manager:
+            self._event_manager = event_manager
+        self.set_active_window(active_window)
         
-        self._event_manager = event_manager
-        self._active_window = active_window
-        self._update_screen_info()
-        self._update_window_info()
-        self._update_desktop_objects()
-        
+        # 获取初始环境数据并计算哈希值
+        # 在模拟模式下，_get_environment_data 将使用预设的 mock 数据
+        initial_data = self._get_environment_data()
+        if initial_data:
+            self._last_screen_hash = hash(repr(initial_data.screen_info))
+            self._last_desktop_hash = hash(repr(initial_data.desktop_objects))
+            self._last_screen_details = dict(initial_data.screen_info)
+            logger.debug(f"环境传感器初始化: _last_screen_hash={self._last_screen_hash}, _last_desktop_hash={self._last_desktop_hash}")
+        else:
+            logger.warning("环境传感器初始化: _get_environment_data 返回 None")
+
         self._initialized = True
         logger.info("环境传感器初始化完成")
     
@@ -348,24 +356,20 @@ class EnvironmentSensor(QObject, ABC, metaclass=qt_abc_metaclass()): # type: ign
         logger.debug("更新桌面对象 (默认实现)")
     
     def _notify_environment_change(self, event_type: EnvironmentEventType, data=None):
-        """
-        通知环境变化
+        """通知环境变化事件"""
+        # logger.debug(f"环境传感器准备通知事件: {event_type}")
+        event = EnvironmentEvent(event_type, data)
+        if self._event_manager:
+            # logger.debug(f"环境传感器正在分发事件: {event.type}, data: {event.data}")
+            # self._event_manager.dispatch(event) # 旧的调用
+            self._event_manager.emit(OldEventType.SYSTEM_STATUS_UPDATE, event) # 新的调用
         
-        Args:
-            event_type (EnvironmentEventType): 事件类型
-            data (dict, optional): 事件相关数据
-        """
-        # 通知回调函数
+        # 调用已注册的回调函数
         for callback in self._callbacks:
             try:
                 callback(event_type, data)
             except Exception as e:
                 logger.error(f"通知回调函数失败: {e}")
-        
-        # 通知事件管理器
-        if self._event_manager:
-            event = EnvironmentEvent(event_type, data)
-            self._event_manager.dispatch(event)
         
         logger.debug(f"环境变化: {event_type}")
     
