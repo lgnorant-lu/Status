@@ -150,111 +150,47 @@
 │       └── ... [待补全]
 ├── tests/                      # 测试代码 [测试模块] [进行中]
 │   ├── __init__.py             # 包初始化文件
-│   ├── conftest.py             # Pytest配置文件和fixtures [配置模块]
+│   ├── conftest.py             # Pytest配置文件和fixtures [配置模块] [进行中]
+│   │   ├── 包含标准测试夹具，支持模块化测试环境
+│   │   ├── 集成pytest-cov配置，用于生成测试覆盖率报告
+│   │   ├── 提供Qt/PySide6测试环境支持
+│   │   └── 支持模拟和存根对象创建
 │   ├── events/                 # 事件系统测试 [已完成]
-│   │   ├── __init__.py         # 包初始化文件
-│   │   └── test_event_manager.py  # 事件管理器测试 [已完成]
 │   ├── mocks.py                # Mock对象定义 [待补全]
 │   ├── pet_assets/             # 宠物资源管理模块测试 [已完成]
-│   │   ├── __init__.py         # 包初始化文件 [已完成]
-│   │   ├── test_placeholder_factory.py # 占位符工厂测试 [已完成]
-│   │   └── placeholders/       # 各状态占位符实现测试 [已完成]
-│   │       ├── __init__.py     # 包初始化文件 [已完成]
-│   │       ├── test_happy_placeholder.py # "开心"状态占位符测试 (L2/L3) [已完成]
-│   │       ├── test_idle_placeholder.py # "空闲"状态占位符测试 (旧版L2/L3) [已完成]
-│   │       ├── test_busy_placeholder.py # "忙碌"状态占位符测试 (旧版L2/L3) [已完成]
-│   │       ├── test_memory_warning_placeholder.py # "内存警告"状态占位符测试 (L2/L3) [已完成]
-│   ├── main.py                 # 应用主入口, 依赖PlaceholderFactory加载动画 [核心模块] [进行中]
-│   ├── monitoring/             # 系统监控模块 [计划中]
-│   │   └── ... [待补全]
-│   ├── pet_assets/             # 宠物资源管理模块 [已完成]
-│   │   ├── __init__.py         # 包初始化文件 [已完成]
-│   │   ├── placeholder_factory.py # 占位符工厂，负责动态加载状态占位符 [已完成]
-│   │   └── placeholders/       # 各状态的占位符实现目录 [已完成]
-│   │       ├── __init__.py     # 包初始化文件 [已完成]
-│   │       ├── happy_placeholder.py # \"开心\"状态占位符实现 [已完成]
-│   │       ├── idle_placeholder.py # \"空闲\"状态占位符实现 (L4 质量) [已完成]
-│   │       ├── busy_placeholder.py # \"忙碌\"状态占位符实现 (L4 质量) [已完成]
-│   │       ├── memory_warning_placeholder.py # \"内存警告\"状态占位符实现 [已完成]
-│   │       ├── error_placeholder.py # \"错误\"状态占位符实现 [已完成]
-│   │       ├── clicked_placeholder.py # \"点击\"状态占位符实现 (L4 质量) [已完成]
-│   │       ├── dragged_placeholder.py # \"拖拽\"状态占位符实现 [已完成]
-│   │       ├── petted_placeholder.py # \"抚摸\"状态占位符实现 [已完成]
-│   │       ├── hover_placeholder.py # \"悬停\"状态占位符实现 [已完成]
-│   │       ├── morning_placeholder.py # \"早晨\"状态占位符实现 (L4 质量) [已完成]
-│   │       ├── noon_placeholder.py # \"中午\"状态占位符实现 [已完成]
-│   │       ├── afternoon_placeholder.py # \"下午\"状态占位符实现 [已完成]
-│   │       ├── evening_placeholder.py # \"傍晚\"状态占位符实现 [已完成]
-│   │       └── night_placeholder.py # \"夜晚\"状态占位符实现 (L4 质量) [已完成]
-│   │       ├── spring_festival_placeholder.py # \"春节\"L4占位符实现 [已完成]
-│   │       └── lichun_placeholder.py # \"立春\"L4占位符实现 [已完成]
-│   ├── plugin/                 # 插件系统模块 [核心模块] [已完成]
-│   │   ├── __init__.py         # 包初始化文件
-│   │   ├── plugin_base.py      # 插件基类定义 [已完成]
-│   │   ├── plugin_manager.py   # 插件管理器实现 [已完成]
-│   │   ├── plugin_registry.py  # 插件注册表实现 [已完成]
-│   │   └── ... [待补全]
-│   ├── renderer/               # 基于PySide6的渲染逻辑 (猫咪占位符动画、未来UI元素等)。 [进行中]
-│   │   └── ... [待补全]
-│   ├── resources/              # 运行时资源管理 [进行中]
-│   │   └── ... [待补全]
-│   ├── scenes/                 # 场景管理 [进行中]
-│   │   └── ... [待补全]
-│   ├── ui/                     # 基于PySide6的用户界面元素和逻辑 (如设置面板、信息面板等)。 [进行中]
-│   │   └── ... [待补全]
-│   └── utils/                  # 通用工具函数 [进行中]
-│       └── ... [待补全]
-├── tests/                      # 测试代码 [测试模块] [进行中]
-│   ├── __init__.py             # 包初始化文件
-│   ├── conftest.py             # Pytest配置文件和fixtures [配置模块]
-│   ├── events/                 # 事件系统测试 [已完成]
-│   │   ├── __init__.py         # 包初始化文件
-│   │   └── test_event_manager.py  # 事件管理器测试 [已完成]
-│   ├── mocks.py                # Mock对象定义 [待补全]
-│   ├── pet_assets/             # 宠物资源管理模块测试 [已完成]
-│   │   ├── __init__.py         # 包初始化文件 [已完成]
-│   │   ├── test_placeholder_factory.py # 占位符工厂测试 [已完成]
-│   │   └── placeholders/       # 各状态占位符实现测试 [已完成]
-│   │       ├── __init__.py     # 包初始化文件 [已完成]
-│   │       ├── test_happy_placeholder.py # \"开心\"状态占位符测试 (L2/L3) [已完成]
-│   │       ├── test_idle_placeholder.py # \"空闲\"状态占位符测试 (旧版L2/L3) [已完成]
-│   │       ├── test_busy_placeholder.py # \"忙碌\"状态占位符测试 (旧版L2/L3) [已完成]
-│   │       ├── test_memory_warning_placeholder.py # \"内存警告\"状态占位符测试 (L2/L3) [已完成]
-│   │       ├── test_error_placeholder.py # \"错误\"状态占位符测试 (L2/L3) [已完成]
-│   │       ├── test_clicked_placeholder.py # \"点击\"状态占位符测试 (旧版L2/L3) [已完成]
-│   │       ├── test_dragged_placeholder.py # \"拖拽\"状态占位符测试 (L2/L3) [已完成]
-│   │       ├── test_petted_placeholder.py # \"抚摸\"状态占位符测试 (L2/L3) [已完成]
-│   │       ├── test_hover_placeholder.py # \"悬停\"状态占位符测试 (L2/L3) [已完成]
-│   │       ├── test_morning_placeholder.py # \"早晨\"状态占位符测试 (旧版L2/L3) [已完成]
-│   │       ├── test_noon_placeholder.py # \"中午\"状态占位符测试 (L2/L3) [已完成]
-│   │       ├── test_afternoon_placeholder.py # \"下午\"状态占位符测试 (L2/L3) [已完成]
-│   │       ├── test_evening_placeholder.py # \"傍晚\"状态占位符测试 (L2/L3) [已完成]
-│   │       ├── test_night_placeholder.py # \"夜晚\"状态占位符测试 (旧版L2/L3) [已完成]
-│   │       ├── test_idle_placeholder_core.py # \"空闲\"核心L4动画单元测试 [已完成]
-│   │       ├── test_busy_placeholder_core.py # \"忙碌\"核心L4动画单元测试 [已完成]
-│   │       ├── test_clicked_placeholder_core.py # \"点击\"核心L4动画单元测试 [已完成]
-│   │       ├── test_morning_placeholder_core.py # \"早晨\"核心L4动画单元测试 [已完成]
-│   │       └── test_night_placeholder_core.py # \"夜晚\"核心L4动画单元测试 [已完成]
-│   │       ├── test_spring_festival_placeholder.py # \"春节\"L4占位符测试 [已完成]
-│   │       └── test_lichun_placeholder.py # \"立春\"L4占位符测试 [已完成]
 │   ├── plugin/                 # 插件系统测试 [已完成]
-│   │   ├── __init__.py         # 包初始化文件
-│   │   ├── test_plugin_manager.py  # 插件管理器测试 [已完成]
-│   │   └── test_plugin_registry.py # 插件注册表测试 [已完成]
-│   ├── run_tests.py            # 测试运行脚本 [工具模块]
+│   ├── run_tests.py            # 测试运行脚本 [工具模块] [进行中]
+│   │   ├── 支持运行单元、集成和系统测试
+│   │   ├── 提供测试覆盖率报告生成
+│   │   ├── 集成测试结果可视化
+│   │   └── 支持并行测试执行
 │   ├── behavior/               # 行为模块测试 [待补全]
 │   ├── core/                   # 核心模块测试 [待补全]
 │   ├── interaction/            # 交互模块测试 [待补全]
-│   ├── integration/            # 集成测试 [待补全]
-│   ├── mocks/                  # (目录结构重复?) [待补全]
+│   ├── integration/            # 集成测试 [进行中]
+│   │   ├── 测试多个组件的协同工作
+│   │   ├── 验证跨模块功能和数据流
+│   │   └── 模拟真实使用场景
+│   ├── mocks/                  # 模拟对象目录 [进行中]
+│   │   ├── 提供标准化的模拟对象
+│   │   ├── 支持复杂场景模拟
+│   │   └── 包含测试数据生成器
 │   ├── monitoring/             # 监控模块测试 [待补全]
 │   ├── renderer/               # 渲染模块测试 [进行中]
-│   │   ├── test_drawable.py    # Drawable对象测试 [待补全]
-│   │   └── test_effects.py     # 特效测试 [待补全]
 │   ├── resources/              # 资源模块测试 [待补全]
 │   ├── scenes/                 # 场景模块测试 [进行中]
-│   │   └── test_scene_manager_transition.py # 场景切换测试 [待补全]
-│   └── unit/                   # 单元测试 [待补全]
+│   ├── system/                 # 系统测试 [计划中]
+│   │   ├── 端到端测试流程
+│   │   ├── 用户场景测试
+│   │   └── 性能基准测试
+│   ├── unit/                   # 单元测试 [进行中]
+│   │   ├── 按模块组织的独立单元测试
+│   │   ├── 使用标准命名规范：test_{被测函数}_{测试场景}_{预期结果}
+│   │   └── 遵循TDD开发模式
+│   └── utils/                  # 测试工具 [计划中]
+│       ├── 测试辅助函数
+│       ├── 测试数据生成器
+│       └── 自定义断言函数
 ├── tools/                      # 辅助工具和脚本 [工具模块] [进行中]
 │   ├── .git/                   # (嵌套Git仓库?)
 │   ├── .gitignore              # 工具目录的Git忽略配置
@@ -300,50 +236,4 @@
         - `component_base.py`: 定义了应用组件的基础接口和生命周期管理（例如 `activate`, `deactivate`, `_initialize`, `_setup_events`, `_connect_signals`）。组件的激活现在由应用主逻辑（如 `StatusPet.initialize`）显式控制。 `[已完成]`
         - `logging/`: 实现增强的日志系统，支持多日志级别、多输出目标和文件轮转功能。`[已完成]`
         - `recovery/`: 提供错误恢复机制，包括状态持久化、崩溃检测和异常处理功能。`[已完成]`
-    - `events/`: 实现增强的事件系统 (`event_manager.py`, `event_types.py`)，包括优先级、过滤、节流和异步处理功能。`[已完成]`
-    - `interaction/`: 处理所有用户输入和系统交互（基于PySide6），如鼠标点击/移动、键盘输入、系统命令等。`[进行中]`
-    - `main.py`: 应用程序的主入口点 (`StatusPet` 类)，负责应用的整体初始化（包括有序激活各个组件）、主事件循环驱动、状态管理和动画更新。依赖 `PlaceholderFactory` 来加载所有状态动画。`[核心模块] [进行中]`
-    - `monitoring/`: (新规划) 负责监控系统性能、应用状态等。`[计划中]`
-    - `pet_assets/`: 宠物资源管理模块，负责动态加载状态占位符。其子目录 `placeholders/` 存放了各个具体状态（如 idle, busy, morning, clicked, moderate_load, low_battery, charging, fully_charged, system_update, sleep 等）的动画实现模块。`[已完成]`
-    - `plugin/`: 实现基于生命周期管理的插件系统 (`plugin_base.py`, `plugin_manager.py`, `plugin_registry.py`)，支持动态加载、启用和卸载插件。`[已完成]`
-    - `renderer/`: 处理所有视觉元素的渲染（基于PySide6），包括桌宠精灵（猫咪占位符）、动画、未来UI组件等。`[进行中]`
-    - `resources/`: 负责运行时资源的加载、管理和缓存。`[进行中]`
-    - `scenes/`: 管理不同的应用场景或状态（如果项目需要）。`[进行中]`
-    - `ui/`: 包含基于PySide6的用户界面的构建块和特定于UI的逻辑，例如系统托盘图标和菜单 (`system_tray.py`)。`[进行中]`
-    - `utils/`: 提供项目内各模块可复用的通用工具函数和类。`[进行中]`
-
-### 2. `tests/` - 测试代码
-- **描述**: 包含项目的所有测试代码，包括单元测试、集成测试和功能测试。
-- **子模块**:
-    - `events/`: 包含对增强事件系统的测试用例。`[已完成]`
-    - `plugin/`: 包含对插件系统各组件的测试用例。`[已完成]`
-    - `pet_assets/`: 包含对宠物资源管理模块的测试用例，包括工厂和所有具体的状态占位符。`[已完成]`
-- **结构**: 通常会按照 `status/` 目录结构镜像组织测试文件。`[进行中]`
-
-### 3. `plugins/` - 插件目录
-- **描述**: 存放应用的所有插件，包括官方插件和第三方插件。`[已完成]`
-- **子模块**:
-    - `example_plugin/`: 作为插件开发参考的示例插件实现。`[已完成]`
-
-### 4. `assets/` - 静态资源
-- **描述**: 存放项目所需的所有静态资源。当前主要使用 `assets/placeholders/` 下的占位符图像，未来将替换为正式的猫咪主题资源（规划存放于 `assets/cat_theme/`）。`[进行中]`
-
-### 5. `Diagrams/` - 项目图表
-- **描述**: 存放使用 Python Graphviz 库创建的各种项目图表，用于可视化架构、模块依赖、流程等。所有图表均需基于 `Status-Ming` 项目重新设计。`[待重新设计-Status-Ming]`
-
-### 6. `docs/` - 项目文档
-- **描述**: 包含所有详细的项目文档，如API文档、用户手册、开发者指南、设计决策等。大部分文档源于旧项目，正在针对 `Status-Ming` 进行全面审查、更新或重写。`[进行中-内容重构]`
-- **子模块**:
-    - `developer/plugin_development_guide.md`: 插件开发指南，详细说明如何为Status-Ming开发插件。`[已完成]`
-
-### 7. `Logs/` - 开发日志
-- **描述**: 记录详细的开发过程、变更历史、遇到的问题和解决方案。`[进行中]`
-
-### 8. `tools/` - 辅助工具
-- **描述**: 包含用于辅助开发、构建、资源处理等的脚本和工具。例如，精灵编辑器、资源编译脚本等。`[进行中]`
-
----
-**注意**:
-- `__pycache__/` 目录存在于多个位置，是Python解释器自动生成的字节码缓存，已在 `.gitignore` 中配置忽略，此处不详细列出。
-- 标记为 `[待补全]` 的部分需要后续根据开发进度进行详细补充。
-- `status/interaction/interaction_manager.py` 文件目前存在较多linter错误，已在 `Thread.md` 和详细日志中记录，需后续修复。
+    - `events/`: 实现增强的事件系统 (`event_manager.py`, `event_types.py`)，包括优先级、过滤、节流和异步处理功能。`
