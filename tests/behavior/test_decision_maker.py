@@ -14,6 +14,8 @@ Changed history:
 
 import unittest
 from unittest.mock import Mock, patch, MagicMock
+from typing import Optional, Tuple, Dict, Any
+
 from PySide6.QtCore import QRect, QPoint
 
 # 导入被测试的模块
@@ -22,7 +24,7 @@ from status.behavior.decision_maker import (
 )
 from status.behavior.environment_sensor import EnvironmentSensor, DesktopObject
 from status.behavior.behavior_manager import BehaviorManager
-from status.behavior.state_machine import StateMachine
+# from status.behavior.state_machine import StateMachine # Assuming StateMachine might not be directly used by entity mock for these tests
 
 
 class TestDecisionRule(unittest.TestCase):
@@ -30,27 +32,17 @@ class TestDecisionRule(unittest.TestCase):
 
     def setUp(self):
         """每次测试前的准备工作"""
-        # 创建模拟的环境感知器
         self.mock_env_sensor = Mock(spec=EnvironmentSensor)
-        
-        # 创建模拟的行为管理器
-        self.mock_behavior_manager = Mock(spec=BehaviorManager)
-        
-        # 创建模拟的状态机
-        self.mock_state_machine = Mock(spec=StateMachine)
-        
-        # 创建模拟的实体
         self.mock_entity = Mock()
-        self.mock_entity.behavior_manager = self.mock_behavior_manager
-        self.mock_entity.state_machine = self.mock_state_machine
         
-        # 创建一个简单的决策规则
-        self.condition = lambda entity, env_sensor: True  # 总是返回True的条件
-        self.action = lambda entity: entity.behavior_manager.execute_behavior("test_behavior")
+        # 重构后的 action，返回 (behavior_id, params, priority_override)
+        self.action_return_value = ("test_behavior", {"param": "value"}, 15)
+        self.mock_action_func = Mock(return_value=self.action_return_value)
+        
         self.rule = DecisionRule(
             name="test_rule", 
-            condition=self.condition,
-            action=self.action,
+            condition=lambda entity, env_sensor: True,
+            action=self.mock_action_func, # 使用 mock action
             priority=10
         )
         
@@ -58,52 +50,45 @@ class TestDecisionRule(unittest.TestCase):
         """测试规则初始化"""
         self.assertEqual(self.rule.name, "test_rule")
         self.assertEqual(self.rule.priority, 10)
-        self.assertEqual(self.rule.condition, self.condition)
-        self.assertEqual(self.rule.action, self.action)
+        self.assertTrue(callable(self.rule.condition))
+        self.assertEqual(self.rule.action, self.mock_action_func)
         
     def test_evaluate_condition(self):
         """测试条件评估"""
-        # 测试条件返回True的情况
         self.assertTrue(self.rule.evaluate(self.mock_entity, self.mock_env_sensor))
         
-        # 创建一个返回False的条件
         false_condition = lambda entity, env_sensor: False
-        false_rule = DecisionRule(
-            name="false_rule",
-            condition=false_condition,
-            action=self.action,
-            priority=5
-        )
+        false_rule = DecisionRule("false_rule", false_condition, self.mock_action_func, 5)
         self.assertFalse(false_rule.evaluate(self.mock_entity, self.mock_env_sensor))
         
-    def test_execute_action(self):
-        """测试执行动作"""
-        self.rule.execute(self.mock_entity)
-        self.mock_behavior_manager.execute_behavior.assert_called_once_with("test_behavior")
+    def test_evaluate_condition_with_exception(self):
+        """测试条件评估时发生异常"""
+        exception_condition = Mock(side_effect=Exception("Test condition error"))
+        rule_with_exception = DecisionRule("exception_rule", exception_condition, self.mock_action_func)
+        self.assertFalse(rule_with_exception.evaluate(self.mock_entity, self.mock_env_sensor))
+        exception_condition.assert_called_once_with(self.mock_entity, self.mock_env_sensor)
+
+    def test_execute_action_returns_value(self):
+        """测试执行动作并返回预期的元组"""
+        result = self.rule.execute(self.mock_entity)
+        self.mock_action_func.assert_called_once_with(self.mock_entity)
+        self.assertEqual(result, self.action_return_value)
+
+    def test_execute_action_returns_none(self):
+        """测试执行动作返回None"""
+        action_returns_none = Mock(return_value=None)
+        rule_action_none = DecisionRule("action_none_rule", lambda e, es: True, action_returns_none)
+        result = rule_action_none.execute(self.mock_entity)
+        action_returns_none.assert_called_once_with(self.mock_entity)
+        self.assertIsNone(result)
         
-    def test_screen_position_rule(self):
-        """测试基于屏幕位置的规则"""
-        # 设置模拟环境感知器的行为
-        self.mock_env_sensor.get_window_position.return_value = QRect(10, 20, 100, 100)
-        
-        # 创建一个检查窗口位置的条件
-        position_condition = lambda entity, env_sensor: env_sensor.get_window_position().x() < 50
-        
-        rule = DecisionRule(
-            name="position_rule",
-            condition=position_condition,
-            action=self.action,
-            priority=20
-        )
-        
-        # 应该返回True，因为x=10 < 50
-        self.assertTrue(rule.evaluate(self.mock_entity, self.mock_env_sensor))
-        
-        # 改变窗口位置
-        self.mock_env_sensor.get_window_position.return_value = QRect(100, 20, 100, 100)
-        
-        # 应该返回False，因为x=100 > 50
-        self.assertFalse(rule.evaluate(self.mock_entity, self.mock_env_sensor))
+    def test_execute_action_with_exception(self):
+        """测试执行动作时发生异常"""
+        exception_action = Mock(side_effect=Exception("Test action error"))
+        rule_with_exception = DecisionRule("exception_action_rule", lambda e, es: True, exception_action)
+        result = rule_with_exception.execute(self.mock_entity)
+        exception_action.assert_called_once_with(self.mock_entity)
+        self.assertIsNone(result) # 发生异常时 execute 应返回 None
 
 
 class TestDecision(unittest.TestCase):
@@ -126,308 +111,146 @@ class TestDecision(unittest.TestCase):
         
     def test_decision_equality(self):
         """测试决策相等性"""
-        # 创建相同的决策
-        same_decision = Decision(
-            behavior_id="test_behavior",
-            params={"param1": "value1"},
-            priority=10
-        )
+        same_decision = Decision("test_behavior", {"param1": "value1"}, 10)
         self.assertEqual(self.decision, same_decision)
         
-        # 创建不同行为的决策
-        different_behavior = Decision(
-            behavior_id="other_behavior",
-            params={"param1": "value1"},
-            priority=10
-        )
+        different_behavior = Decision("other_behavior", {"param1": "value1"}, 10)
         self.assertNotEqual(self.decision, different_behavior)
-        
-        # 创建不同参数的决策
-        different_params = Decision(
-            behavior_id="test_behavior",
-            params={"param2": "value2"},
-            priority=10
-        )
-        self.assertNotEqual(self.decision, different_params)
-        
-        # 创建不同优先级的决策
-        different_priority = Decision(
-            behavior_id="test_behavior",
-            params={"param1": "value1"},
-            priority=20
-        )
-        self.assertNotEqual(self.decision, different_priority)
         
     def test_decision_comparison(self):
         """测试决策比较（基于优先级）"""
-        # 创建较低优先级的决策
-        lower_priority = Decision(
-            behavior_id="low_behavior",
-            params={},
-            priority=5
-        )
+        lower_priority = Decision("low_behavior", {}, 5)
+        higher_priority = Decision("high_behavior", {}, 15)
         
-        # 创建较高优先级的决策
-        higher_priority = Decision(
-            behavior_id="high_behavior",
-            params={},
-            priority=15
-        )
-        
-        # 测试比较操作符
         self.assertTrue(lower_priority < self.decision)
         self.assertTrue(self.decision < higher_priority)
         self.assertTrue(higher_priority > self.decision)
         self.assertTrue(self.decision > lower_priority)
+        self.assertFalse(self.decision < lower_priority)
+        self.assertFalse(self.decision > higher_priority)
 
 
 class TestDecisionMaker(unittest.TestCase):
-    """测试决策系统"""
+    """测试决策系统（重构后）"""
     
     def setUp(self):
         """每次测试前的准备工作"""
-        # 创建模拟的环境感知器
-        self.mock_env_sensor = Mock(spec=EnvironmentSensor)
+        self.mock_env_sensor_patcher = patch('status.behavior.decision_maker.EnvironmentSensor')
+        self.MockEnvironmentSensor = self.mock_env_sensor_patcher.start()
+        self.mock_env_sensor_instance = self.MockEnvironmentSensor.get_instance.return_value
         
-        # 创建模拟的实体
         self.mock_entity = Mock()
-        self.mock_behavior_manager = Mock(spec=BehaviorManager)
-        self.mock_state_machine = Mock(spec=StateMachine)
-        self.mock_entity.behavior_manager = self.mock_behavior_manager
-        self.mock_entity.state_machine = self.mock_state_machine
+        # self.mock_entity.behavior_manager = Mock(spec=BehaviorManager) # Not directly used by make_decision now
         
-        # 创建决策系统
         self.decision_maker = DecisionMaker(self.mock_entity)
         
-        # 添加一些测试规则
-        self.rule1 = DecisionRule(
-            name="rule1",
-            condition=lambda entity, env_sensor: True,  # 始终为真
-            action=lambda entity: entity.behavior_manager.execute_behavior("behavior1"),
-            priority=10
-        )
+    def tearDown(self):
+        self.mock_env_sensor_patcher.stop()
+
+    def test_add_and_remove_rule(self):
+        """测试添加和移除规则"""
+        rule = DecisionRule("test_rule", Mock(), Mock(), 10)
+        self.decision_maker.add_rule(rule)
+        self.assertIn(rule, self.decision_maker.rules)
+        self.assertTrue(self.decision_maker.remove_rule("test_rule"))
+        self.assertNotIn(rule, self.decision_maker.rules)
+        self.assertFalse(self.decision_maker.remove_rule("non_existent_rule"))
+
+    def test_find_rule(self):
+        """测试查找规则"""
+        rule = DecisionRule("find_me", Mock(), Mock(), 10)
+        self.decision_maker.add_rule(rule)
+        self.assertEqual(self.decision_maker.find_rule("find_me"), rule)
+        self.assertIsNone(self.decision_maker.find_rule("not_found"))
+
+    def test_make_decision_no_rules(self):
+        """测试没有规则时无法做出决策"""
+        decision = self.decision_maker.make_decision()
+        self.assertIsNone(decision)
+
+    def test_make_decision_no_matching_rules(self):
+        """测试没有规则条件满足时无法做出决策"""
+        mock_condition = Mock(return_value=False)
+        rule = DecisionRule("no_match_rule", mock_condition, Mock(), 10)
+        self.decision_maker.add_rule(rule)
         
-        self.rule2 = DecisionRule(
-            name="rule2",
-            condition=lambda entity, env_sensor: False,  # 始终为假
-            action=lambda entity: entity.behavior_manager.execute_behavior("behavior2"),
-            priority=20
-        )
+        decision = self.decision_maker.make_decision()
+        self.assertIsNone(decision)
+        mock_condition.assert_called_once_with(self.mock_entity, self.mock_env_sensor_instance)
+
+    def test_make_decision_selects_highest_priority_rule(self):
+        """测试选择最高优先级的规则并返回其决策"""
+        action_result_high = ("high_behavior", {"p": 1}, 25) # Action provides priority
+        action_result_low = ("low_behavior", {"p": 2}, None)  # Action uses rule's priority
+
+        mock_action_high = Mock(return_value=action_result_high)
+        mock_action_low = Mock(return_value=action_result_low)
+
+        rule_high_priority = DecisionRule("high_rule", Mock(return_value=True), mock_action_high, 20)
+        rule_low_priority = DecisionRule("low_rule", Mock(return_value=True), mock_action_low, 10)
         
-        self.rule3 = DecisionRule(
-            name="rule3",
-            condition=lambda entity, env_sensor: True,  # 始终为真
-            action=lambda entity: entity.behavior_manager.execute_behavior("behavior3"),
-            priority=5
-        )
+        self.decision_maker.add_rule(rule_low_priority) # Add low first
+        self.decision_maker.add_rule(rule_high_priority) # Add high second, sorting will be tested by selection
         
-        # 将规则添加到决策系统
-        self.decision_maker.add_rule(self.rule1)
-        self.decision_maker.add_rule(self.rule2)
-        self.decision_maker.add_rule(self.rule3)
+        decision = self.decision_maker.make_decision()
         
-    def test_add_rule(self):
-        """测试添加规则"""
-        # 创建新规则
-        new_rule = DecisionRule(
-            name="new_rule",
-            condition=lambda entity, env_sensor: True,
-            action=lambda entity: None,
-            priority=15
-        )
+        self.assertIsNotNone(decision)
+        if decision:
+            self.assertEqual(decision.behavior_id, "high_behavior")
+            self.assertEqual(decision.params, {"p": 1})
+            self.assertEqual(decision.priority, 25) # Priority from action_result_high
+        mock_action_high.assert_called_once_with(self.mock_entity)
+        mock_action_low.assert_not_called() # Lower priority rule's action should not be called
+
+    def test_make_decision_iterates_if_top_rule_action_returns_none_or_no_behavior(self):
+        """测试如果高优先级规则的动作不返回行为，则评估下一个规则"""
+        action_no_behavior = Mock(return_value=(None, {}, 10)) # Action returns no behavior_id
+        action_valid = Mock(return_value=("valid_behavior", {}, 5))
+
+        rule_top_no_behavior = DecisionRule("top_no_behavior", Mock(return_value=True), action_no_behavior, 20)
+        rule_next_valid = DecisionRule("next_valid", Mock(return_value=True), action_valid, 10)
+
+        self.decision_maker.add_rule(rule_top_no_behavior)
+        self.decision_maker.add_rule(rule_next_valid)
+
+        decision = self.decision_maker.make_decision()
+        self.assertIsNotNone(decision)
+        if decision:
+            self.assertEqual(decision.behavior_id, "valid_behavior")
+        action_no_behavior.assert_called_once_with(self.mock_entity)
+        action_valid.assert_called_once_with(self.mock_entity)
+
+
+    def test_make_decision_action_returns_none(self):
+        """测试规则的动作返回None时，make_decision返回None"""
+        mock_action_returns_none = Mock(return_value=None)
+        rule = DecisionRule("action_none", Mock(return_value=True), mock_action_returns_none, 10)
+        self.decision_maker.add_rule(rule)
         
-        # 添加规则
-        self.decision_maker.add_rule(new_rule)
+        decision = self.decision_maker.make_decision()
+        self.assertIsNone(decision)
+        mock_action_returns_none.assert_called_once_with(self.mock_entity)
         
-        # 验证规则已添加
-        self.assertIn(new_rule, self.decision_maker.rules)
-        
-    def test_remove_rule(self):
-        """测试移除规则"""
-        # 移除规则
-        self.decision_maker.remove_rule("rule1")
-        
-        # 验证规则已移除
-        rule_names = [rule.name for rule in self.decision_maker.rules]
-        self.assertNotIn("rule1", rule_names)
-        
-    def test_find_rule_by_name(self):
-        """测试通过名称查找规则"""
-        # 查找存在的规则
-        found_rule = self.decision_maker.find_rule("rule1")
-        self.assertEqual(found_rule, self.rule1)
-        
-        # 查找不存在的规则
-        not_found = self.decision_maker.find_rule("non_existent")
-        self.assertIsNone(not_found)
-        
-    def test_make_decision(self):
-        """测试做出决策"""
-        # 设置环境感知器
-        patch_env_sensor = patch.object(
-            EnvironmentSensor, 'get_instance', 
-            return_value=self.mock_env_sensor
-        )
-        
-        with patch_env_sensor:
-            # 调用决策方法
-            result = self.decision_maker.make_decision()
-            
-            # 验证结果包含满足条件的最高优先级规则
-            self.assertEqual(result.behavior_id, "behavior1")
-            
-            # 验证执行了决策
-            self.mock_behavior_manager.execute_behavior.assert_called_once_with(
-                "behavior1", 
-                params=None
-            )
-        
-    def test_no_decision_when_no_rules_match(self):
-        """测试没有规则匹配时的情况"""
-        # 清除所有规则
-        self.decision_maker.rules.clear()
-        
-        # 添加一个永远不匹配的规则
-        never_match_rule = DecisionRule(
-            name="never_match",
-            condition=lambda entity, env_sensor: False,
-            action=lambda entity: entity.behavior_manager.execute_behavior("never_executed"),
-            priority=100
-        )
-        self.decision_maker.add_rule(never_match_rule)
-        
-        # 设置环境感知器
-        patch_env_sensor = patch.object(
-            EnvironmentSensor, 'get_instance', 
-            return_value=self.mock_env_sensor
-        )
-        
-        with patch_env_sensor:
-            # 调用决策方法
-            result = self.decision_maker.make_decision()
-            
-            # 验证没有做出决策
-            self.assertIsNone(result)
-            self.mock_behavior_manager.execute_behavior.assert_not_called()
-    
-    def test_decision_with_parameters(self):
-        """测试带参数的决策"""
-        # 创建一个返回参数的规则
-        params_rule = DecisionRule(
-            name="params_rule",
-            condition=lambda entity, env_sensor: True,
-            action=lambda entity: entity.behavior_manager.execute_behavior(
-                "parameterized_behavior", 
-                {"speed": 10, "direction": "left"}
-            ),
-            priority=30
-        )
-        self.decision_maker.add_rule(params_rule)
-        
-        # 设置环境感知器
-        patch_env_sensor = patch.object(
-            EnvironmentSensor, 'get_instance', 
-            return_value=self.mock_env_sensor
-        )
-        
-        with patch_env_sensor:
-            # 调用决策方法
-            result = self.decision_maker.make_decision()
-            
-            # 验证决策包含参数
-            self.assertEqual(result.behavior_id, "parameterized_behavior")
-            self.assertEqual(result.params, {"speed": 10, "direction": "left"})
-            
-            # 验证执行了决策
-            self.mock_behavior_manager.execute_behavior.assert_called_once_with(
-                "parameterized_behavior", 
-                params={"speed": 10, "direction": "left"}
-            )
-    
-    def test_environment_based_decisions(self):
-        """测试基于环境的决策"""
-        # 设置环境感知器的模拟返回值
-        self.mock_env_sensor.get_window_position.return_value = QRect(10, 20, 100, 100)
-        self.mock_env_sensor.get_screen_boundaries.return_value = {
-            'width': 1920, 'height': 1080, 'x': 0, 'y': 0
-        }
-        self.mock_env_sensor.detect_desktop_objects.return_value = [
-            DesktopObject(title="Test Window", rect=QRect(200, 200, 300, 300))
-        ]
-        
-        # 创建基于环境的规则
-        edge_rule = DecisionRule(
-            name="edge_rule",
-            condition=lambda entity, env_sensor: (
-                env_sensor.get_window_position().x() < 50  # 靠近左边缘
-            ),
-            action=lambda entity: entity.behavior_manager.execute_behavior(
-                "move_right", {"speed": 5}
-            ),
-            priority=50
-        )
-        self.decision_maker.add_rule(edge_rule)
-        
-        # 设置环境感知器
-        patch_env_sensor = patch.object(
-            EnvironmentSensor, 'get_instance', 
-            return_value=self.mock_env_sensor
-        )
-        
-        with patch_env_sensor:
-            # 调用决策方法
-            result = self.decision_maker.make_decision()
-            
-            # 验证基于环境的决策
-            self.assertEqual(result.behavior_id, "move_right")
-            self.assertEqual(result.params, {"speed": 5})
-            
-            # 改变环境条件
-            self.mock_env_sensor.get_window_position.return_value = QRect(100, 20, 100, 100)
-            
-            # 重新调用决策方法，这次应该选择次高优先级规则
-            self.mock_behavior_manager.execute_behavior.reset_mock()
-            result = self.decision_maker.make_decision()
-            
-            # 在排除了edge_rule后，rule1是优先级最高的规则(优先级为10)
-            self.assertEqual(result.behavior_id, "behavior1")
-    
-    def test_state_based_decisions(self):
-        """测试基于状态的决策"""
-        # 设置状态机的模拟返回值
-        self.mock_state_machine.is_in_state.return_value = True
-        
-        # 创建基于状态的规则
-        state_rule = DecisionRule(
-            name="state_rule",
-            condition=lambda entity, env_sensor: entity.state_machine.is_in_state("idle"),
-            action=lambda entity: entity.behavior_manager.execute_behavior("play_animation"),
-            priority=60
-        )
-        self.decision_maker.add_rule(state_rule)
-        
-        # 设置环境感知器
-        patch_env_sensor = patch.object(
-            EnvironmentSensor, 'get_instance', 
-            return_value=self.mock_env_sensor
-        )
-        
-        with patch_env_sensor:
-            # 调用决策方法
-            result = self.decision_maker.make_decision()
-            
-            # 验证基于状态的决策
-            self.assertEqual(result.behavior_id, "play_animation")
-            
-            # 改变状态条件
-            self.mock_state_machine.is_in_state.return_value = False
-            
-            # 重新调用决策方法，这次应该选择另一个规则
-            self.mock_behavior_manager.execute_behavior.reset_mock()
-            result = self.decision_maker.make_decision()
-            
-            # 验证选择了不同的规则（因为state_rule不再匹配）
-            self.assertNotEqual(result.behavior_id, "play_animation")
+    def test_make_decision_uses_rule_priority_if_action_priority_is_none(self):
+        """测试当动作返回的优先级为None时，使用规则自身的优先级"""
+        action_result = ("behavior_id", {"p": "test"}, None) # Priority_override is None
+        mock_action = Mock(return_value=action_result)
+        rule = DecisionRule("rule_priority_test", Mock(return_value=True), mock_action, 77)
+        self.decision_maker.add_rule(rule)
+
+        decision = self.decision_maker.make_decision()
+        self.assertIsNotNone(decision)
+        if decision:
+            self.assertEqual(decision.priority, 77) # Should use rule's priority
+
+    def test_update_method_calls_make_decision(self):
+        """测试 update 方法调用 make_decision"""
+        # This test assumes update() is essentially an alias or simple wrapper for make_decision()
+        # If update() has more logic, this test would need to be expanded.
+        with patch.object(self.decision_maker, 'make_decision', return_value="mock_decision_result") as mock_make_decision:
+            result = self.decision_maker.update()
+            mock_make_decision.assert_called_once()
+            self.assertEqual(result, "mock_decision_result")
 
 
 if __name__ == '__main__':

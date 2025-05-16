@@ -18,6 +18,7 @@ import os
 import tempfile
 import json
 import shutil
+import logging
 
 from status.behavior.interaction_tracker import InteractionTracker, InteractionPattern
 from status.interaction.interaction_zones import InteractionType
@@ -244,20 +245,31 @@ class TestInteractionTracker(unittest.TestCase):
         with open(storage_path, 'w') as f:
             json.dump(test_data, f)
         
-        # 创建新的跟踪器实例
         with patch('status.core.event_system.EventSystem') as mock_event_system:
             mock_instance = MagicMock()
             mock_event_system.get_instance.return_value = mock_instance
             
             tracker = InteractionTracker(
+                decay_factor=0.5, 
                 storage_file=self.storage_file,
                 storage_dir=self.temp_dir
             )
+            # Temporarily set logger level to DEBUG for this test
+            original_level = tracker.logger.level
+            tracker.logger.setLevel(logging.DEBUG)
         
-        # 验证数据已加载
+        # 手动调用加载数据
+        result = tracker.load_interaction_data()
+        self.assertTrue(result)
+        
+        # 验证数据是否已加载
         self.assertIn("CLICK", tracker.interaction_history)
-        self.assertIn("test_zone", tracker.interaction_history["CLICK"])
+        self.assertEqual(tracker.interaction_history["CLICK"]["test_zone"][0], test_data["interaction_history"]["CLICK"]["test_zone"][0])
+        self.assertIn("CLICK", tracker.interaction_counts)
         self.assertEqual(tracker.interaction_counts["CLICK"]["test_zone"], 1)
+
+        # Restore original logger level
+        tracker.logger.setLevel(original_level)
     
     def test_clear_interaction_data(self):
         """测试清除交互数据"""

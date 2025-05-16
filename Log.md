@@ -513,4 +513,15 @@
 - 实现了修复画布指针偏移的功能，统一所有显示模式下的pixmap绘制逻辑，确保与坐标换算一致
 - 相关日志链接: [Logs/2025-04-16_sprite_editor_pointer_offset_fix.md]
 
+- [2025-05-16] [行为模块][TDD] `DecisionMaker` 和 `TimeStateBridge` 重构与测试 - 详见 [Logs/behavior/2025-05-16_tdd_refactor_optimization.md]
+  - 重构 `DecisionMaker` 的决策返回机制，使其返回更详细的决策对象或元组。
+  - 更新 `DecisionMaker` 的单元测试以覆盖新的返回类型和逻辑。
+  - 整合 `TimeStateBridge` 和 `TimeStateAdapter` 的功能到 `TimeStateBridge`。
+  - 更新 `TimeStateBridge` 以使用 `PetStateMachine` 的特定状态设置方法 (`update_time_state`, `set_special_date`)。
+  - 更新 `TimeStateBridge` 的单元测试以反映重构和新的API调用。
+  - 删除了冗余的 `TimeStateAdapter.py` 文件。
+- [2025-05-16] [行为模块][TDD] `pet_state.py` TDD 审核与文档更新 - 详见 [Logs/behavior/2025-05-16_tdd_refactor_optimization.md]
+  - 为 `PetState` 枚举创建单元测试，验证关键成员存在性、兼容性映射及值的唯一性。
+  - 修正 `PetState.CPU_CRITICAL` 的值以符合其注释说明，与 `PetState.VERY_HEAVY_LOAD` 一致。
+
 

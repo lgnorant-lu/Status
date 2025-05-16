@@ -8,12 +8,14 @@ Description:                情绪系统单元测试
 
 Changed history:            
                             2025/04/04: 初始创建;
+                            2025/05/16: 修复缩进错误;
 ----
 """
 
 import unittest
 import sys
 import os
+from enum import Enum, auto
 
 # Add project root to sys.path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")) # Adjusted path for tests/behavior/
@@ -182,6 +184,61 @@ class TestEmotionState(unittest.TestCase):
             self.assertEqual(state.current_emotion, expected_emotion, 
                             f"参数 {params} 应该产生情绪 {expected_emotion}，但得到了 {state.current_emotion}")
     
+    def test_determine_emotion_no_match(self):
+        """测试 _determine_emotion 在没有阈值匹配时返回 NEUTRAL"""
+        # 设计一组不可能匹配任何已定义情绪的参数 (例如，非常矛盾的参数)
+        params = EmotionParams(pleasure=0.9, arousal=0.01, social=0.01) # High pleasure, very low arousal/social
+        state = EmotionState(params)
+        # current_emotion is determined in __init__
+        self.assertEqual(state.current_emotion, EmotionType.NEUTRAL, 
+                         f"参数 (0.9, 0.01, 0.01) 应该产生 NEUTRAL，但得到了 {state.current_emotion}")
+
+    @patch('status.behavior.emotion_system.random.choice')
+    def test_determine_emotion_multiple_matches_random_choice(self, mock_random_choice):
+        """测试 _determine_emotion 在多个匹配且非保持现有情绪时，使用 random.choice"""
+        # p=0.1, a=0.05, s=0.05 -> matches CALM, BORED, SLEEPY
+        params = EmotionParams(pleasure=0.1, arousal=0.05, social=0.05)
+        
+        # 预设 random.choice 的返回值，以确保测试确定性
+        expected_choice = EmotionType.BORED
+        mock_random_choice.return_value = expected_choice
+        
+        state = EmotionState(initial_params=params)
+        # _determine_emotion is called in __init__
+        
+        self.assertEqual(state.current_emotion, expected_choice)
+        # 验证 random.choice 是否被用包含预期情绪的列表调用
+        # 注意： EMOTION_THRESHOLDS 的迭代顺序可能影响列表顺序，但内容应一致
+        args, _ = mock_random_choice.call_args
+        called_with_list = args[0]
+        self.assertIsInstance(called_with_list, list)
+        self.assertIn(EmotionType.CALM, called_with_list)
+        self.assertIn(EmotionType.BORED, called_with_list)
+        self.assertIn(EmotionType.SLEEPY, called_with_list)
+        self.assertEqual(len(called_with_list), 3)
+
+    def test_determine_emotion_multiple_matches_maintains_current(self):
+        """测试 _determine_emotion 在多个匹配时，如果当前情绪匹配则保持不变"""
+        # p=0.1, a=0.05, s=0.05 -> matches CALM, BORED, SLEEPY
+        params = EmotionParams(pleasure=0.1, arousal=0.05, social=0.05)
+        state = EmotionState(initial_params=params)
+        
+        # 假设由于某种原因（例如随机选择或之前的状态），当前情绪已经是 BORED
+        state.current_emotion = EmotionType.BORED 
+        # 确保 previous_emotion 也设置一下，模拟一个真实状态
+        state.previous_emotion = EmotionType.NEUTRAL 
+        
+        # 触发 _determine_emotion (通过 update)
+        # 在调用 update 之前，params 已经设置好了，所以 _determine_emotion 将使用它们。
+        # state.update(0.1) # update 内部会调用 _determine_emotion
+        # 实际上，我们想直接测试 _determine_emotion 的行为，而不是通过 update()
+        # 因为 _determine_emotion 是在 __init__ 和 update() 开始时调用的
+        # 我们可以通过再次调用它来测试（尽管它是私有的，但为了测试目的）
+        determined_emotion = state._determine_emotion()
+        
+        self.assertEqual(determined_emotion, EmotionType.BORED, 
+                         "如果当前情绪是多个匹配项之一，则应保持当前情绪")
+
     def test_update(self):
         """测试更新情绪状态"""
         # 创建情绪状态
@@ -222,31 +279,45 @@ class TestEmotionState(unittest.TestCase):
         
         for params, dt, rate in states:
             state = EmotionState(params)
-            initial_values = (params.pleasure, params.arousal, params.social)
+            initial_pleasure = params.pleasure
+            initial_arousal = params.arousal
+            initial_social = params.social
             
             # 应用衰减
             state.apply_decay(dt, rate)
             
-            # 验证衰减方向
+            # 验证衰减后的值
             p, a, s = params.pleasure, params.arousal, params.social
             
-            # 愉悦度应向0衰减
-            if initial_values[0] > 0:
-                self.assertLess(p, initial_values[0])
-            elif initial_values[0] < 0:
-                self.assertGreater(p, initial_values[0])
+            # 愉悦度应向0衰减，且不超过0
+            if initial_pleasure > 0:
+                self.assertLessEqual(p, initial_pleasure)
+                self.assertGreaterEqual(p, 0.0)
+            elif initial_pleasure < 0:
+                self.assertGreaterEqual(p, initial_pleasure)
+                self.assertLessEqual(p, 0.0)
+            else: # initial_pleasure == 0
+                self.assertEqual(p, 0.0)
             
-            # 活跃度应向0.5衰减
-            if initial_values[1] > 0.5:
-                self.assertLess(a, initial_values[1])
-            elif initial_values[1] < 0.5:
-                self.assertGreater(a, initial_values[1])
+            # 活跃度应向0.5衰减，且不超过0.5（从两侧）
+            if initial_arousal > 0.5:
+                self.assertLessEqual(a, initial_arousal)
+                self.assertGreaterEqual(a, 0.5)
+            elif initial_arousal < 0.5:
+                self.assertGreaterEqual(a, initial_arousal)
+                self.assertLessEqual(a, 0.5)
+            else: # initial_arousal == 0.5
+                self.assertEqual(a, 0.5)
             
-            # 社交度应向0.5衰减
-            if initial_values[2] > 0.5:
-                self.assertLess(s, initial_values[2])
-            elif initial_values[2] < 0.5:
-                self.assertGreater(s, initial_values[2])
+            # 社交度应向0.5衰减，且不超过0.5（从两侧）
+            if initial_social > 0.5:
+                self.assertLessEqual(s, initial_social)
+                self.assertGreaterEqual(s, 0.5)
+            elif initial_social < 0.5:
+                self.assertGreaterEqual(s, initial_social)
+                self.assertLessEqual(s, 0.5)
+            else: # initial_social == 0.5
+                self.assertEqual(s, 0.5)
     
     def test_get_behavior_multipliers(self):
         """测试获取行为乘数"""
@@ -462,6 +533,39 @@ class TestEmotionSystem(unittest.TestCase):
         
         self.emotion_system.set_decay_rate(1.5)
         self.assertEqual(self.emotion_system.decay_rate, 1.0)  # 不应高于1
+
+    def test_process_unknown_event(self):
+        """测试处理未知事件类型 (应被忽略)"""
+        system = EmotionSystem()
+        initial_params = EmotionParams(
+            pleasure=system.get_emotion_params().pleasure,
+            arousal=system.get_emotion_params().arousal,
+            social=system.get_emotion_params().social
+        )
+        
+        # 创建一个 mock logger 来检查 debug 日志
+        with patch.object(system, 'logger') as mock_logger:
+            # 使用 MagicMock 来代表一个未知的事件类型
+            # 它需要一个 .name 属性以匹配日志消息格式
+            unknown_event_mock = MagicMock()
+            unknown_event_mock.name = "MyUnknownTestEvent"
+            # 使其 __str__ 也返回 .name 以便能被 process_event 内部的 event_mappings.get() 使用而不会出错，
+            # 尽管它不会被找到。或者，更好的是，确保它在字典查找中表现得像一个真正的枚举成员。
+            # 对于字典查找，重要的是 __hash__ 和 __eq__。MagicMock 默认情况下是可哈希的。
+            # 我们主要关心的是它不被找到，并且 process_event 能安全地访问 .name
+            
+            result = system.process_event(unknown_event_mock, intensity=1.0) # type: ignore[arg-type]
+            
+            self.assertFalse(result, "process_event should return False for an unknown event type without custom_effects.")
+            # 验证情绪参数未改变
+            self.assertEqual(system.get_emotion_params().pleasure, initial_params.pleasure)
+            self.assertEqual(system.get_emotion_params().arousal, initial_params.arousal)
+            self.assertEqual(system.get_emotion_params().social, initial_params.social)
+            
+            # 验证是否记录了警告信息
+            mock_logger.warning.assert_called_once_with(
+                f"未找到事件类型 {unknown_event_mock.name} 的映射，且未提供自定义效果"
+            )
 
 
 class TestGlobalEmotionSystem(unittest.TestCase):

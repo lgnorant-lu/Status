@@ -51,12 +51,12 @@ class SystemStateAdapter(ComponentBase):
         Returns:
             bool: 初始化是否成功
         """
-        # 注册事件监听器
-        if self.event_system:
+        # 使用在 __init__ 中获取的事件系统实例
+        if self.event_system: # Use the instance variable set in __init__
             self.event_system.register_handler(EventType.SYSTEM_STATS_UPDATED, self._on_system_stats_updated)
             # self.event_system.register_handler(EventType.DESKTOP_OBJECT_DETECTED, self._on_desktop_object_detected)
         else:
-            self.logger.error("事件系统未初始化，无法注册处理器")
+            self.logger.error("事件系统未在初始化时获得，无法注册处理器") # Modified error message
             return False
         
         # 尝试立即获取状态机

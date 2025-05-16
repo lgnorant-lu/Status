@@ -56,7 +56,7 @@ class PetState(Enum):
     GPU_VERY_BUSY = 41     # GPU极度繁忙状态
     
     SYSTEM_IDLE = 45       # 系统完全空闲状态
-    CPU_CRITICAL = 46      # CPU临界状态 (等同于VERY_HEAVY_LOAD)
+    CPU_CRITICAL = VERY_HEAVY_LOAD # CPU临界状态 (等同于VERY_HEAVY_LOAD)
     
     # 特殊系统事件状态
     LOW_BATTERY = 51       # 低电量状态

@@ -140,10 +140,10 @@ class BehaviorBase(ComponentBase):
         # 检查持续时间
         if self.duration is not None and self.start_time is not None:
             if time.time() - self.start_time >= self.duration:
-                # 如果是循环行为，重置开始时间
                 if self.loop:
-                    self.start_time = time.time()
-                    return self._on_update(dt)
+                    self.start_time = time.time() # 重置开始时间
+                    self._on_update(dt)  # 调用 _on_update 以执行其逻辑
+                    return False  # 返回 False 表示行为仍在继续（新循环）
                 else:
                     # 完成行为
                     self.is_running = False
@@ -389,44 +389,46 @@ class JumpBehavior(BehaviorBase):
             height: 跳跃高度
             **kwargs: 传递给父类的参数
         """
-        duration = kwargs.pop('duration', 1.0)
+        duration = kwargs.pop('duration', 1.0) # Default duration 1.0s if not specified
         params = kwargs.pop('params', None)
         
         super().__init__(name="跳跃", duration=duration, params=params)
-        # 直接设置属性
         self.behavior_type = BehaviorType.LOCOMOTION
         self.height = height
         self.original_y: float = 0.0
-        self.current_y: float = 0.0
-        self.start_time: Optional[float] = None
+        # self.current_y is implicitly managed by entity's position, no need for separate state here
+        # self.start_time: Optional[float] = None # start_time from BehaviorBase is used for duration checks, elapsed_time for progress
     
     def _on_start(self) -> None:
         """开始行为"""
-        self.start_time = time.time()
+        # self.start_time is managed by BehaviorBase.start()
+        # self.elapsed_time is reset to 0.0 by BehaviorBase.start()
         
         if self.entity:
             try:
                 if hasattr(self.entity, 'get_position'):
                     pos = self.entity.get_position()
-                    # 安全地访问元组或列表元素
                     if isinstance(pos, (list, tuple)) and len(pos) >= 2:
                         self.original_y = float(pos[1])
-                        self.current_y = self.original_y
-                    elif hasattr(pos, 'y'):  # 如果是QPoint或类似对象
+                    elif hasattr(pos, 'y'):
                         self.original_y = float(pos.y())  # type: ignore[attr-defined]
-                        self.current_y = self.original_y
                     else:
-                        logging.warning("无法获取实体位置的Y坐标")
+                        logging.warning("跳跃行为：无法获取实体位置的Y坐标，默认为0.0")
                         self.original_y = 0.0
-                        self.current_y = 0.0
+                else:
+                    logging.warning("跳跃行为：实体没有get_position方法，original_y默认为0.0")
+                    self.original_y = 0.0
                 
                 if hasattr(self.entity, 'play_animation'):
                     self.entity.play_animation('jump', loop=False)
             except Exception as e:
                 logging.error(f"跳跃开始失败: {e}")
+        else:
+            logging.warning("跳跃行为：未设置实体.")
+            self.original_y = 0.0 # Default if no entity
                 
-        # 获取环境传感器
-        self.environment_sensor = EnvironmentSensor.get_instance()
+        # No need for EnvironmentSensor for basic jump mechanics
+        # self.environment_sensor = EnvironmentSensor.get_instance()
     
     def _on_update(self, dt: float) -> bool:
         """更新行为
@@ -437,60 +439,60 @@ class JumpBehavior(BehaviorBase):
         Returns:
             bool: 是否继续行为
         """
-        # 如果没有设置实体，无法执行
         if not self.entity or not hasattr(self.entity, 'set_position') or not hasattr(self.entity, 'get_position'):
-            return False
+            return False # Cannot operate without entity or its methods, complete immediately
         
-        # 如果没有传感器，尝试获取
-        if self.environment_sensor is None:
-            self.environment_sensor = EnvironmentSensor.get_instance()
-            
-        # 计算当前位置
-        position = self.entity.get_position()
-        current_x: float = 0.0
-        
-        if isinstance(position, (list, tuple)) and len(position) >= 2:
-            current_x = float(position[0])
-        elif hasattr(position, 'x') and hasattr(position, 'y'):
-            current_x = float(position.x())  # type: ignore[attr-defined]
+        current_pos = self.entity.get_position()
+        current_x: float
+        if isinstance(current_pos, (list, tuple)) and len(current_pos) >= 2:
+            current_x = float(current_pos[0])
+        elif hasattr(current_pos, 'x'):
+            current_x = float(current_pos.x()) # type: ignore[attr-defined]
         else:
-            # 无法获取位置
-            return False
+            logging.warning("跳跃行为更新：无法获取实体当前X坐标.")
+            return False # Complete if cannot get X
             
-        # 计算跳跃进度
-        if self.start_time is None:
-            progress = 0.0
-        else:
-            if self.duration is not None:
-                progress = (time.time() - self.start_time) / self.duration if self.duration > 0 else 1.0
-            else:
-                progress = 0.0
-        
-        if progress <= 1.0:
-            jump_factor = math.sin(progress * math.pi)
-            self.current_y = self.original_y - self.height * jump_factor
-            
-            # 设置新位置
-            self.entity.set_position(current_x, self.current_y)
-            return True
-        else:
-            # 跳跃结束，恢复原始位置
-            self.entity.set_position(current_x, self.original_y)
-            return False
+        progress = 0.0
+        if self.duration is not None and self.duration > 0:
+            progress = min(self.elapsed_time / self.duration, 1.0)
+        elif self.duration == 0: # Consider 0 duration as instant if not None
+             progress = 1.0
+        # If self.duration is None, it means infinite. Jump behavior should have a duration.
+        # For safety, if duration is None, we might make it complete instantly or log an error.
+        # For now, an infinite duration jump doesn't make sense, so it completes based on duration check in BehaviorBase.update
+        # The BehaviorBase.update() will handle completion if duration is met.
+        # This _on_update should only return True if its own logic deems it incomplete within the duration timeframe.
+
+        # The actual completion due to duration is handled by BehaviorBase.update() method.
+        # This method just calculates the position based on progress.
+        # It should return True if the animation/physics part of the jump is ongoing.
+        # BehaviorBase.update will return True (completed) when duration is up.
+
+        jump_y_offset = 0.0
+        if progress < 1.0: # Still in the upward or downward motion of the jump arc
+            jump_factor = math.sin(progress * math.pi) # Parabolic path (0 -> 1 -> 0)
+            jump_y_offset = self.height * jump_factor
+            self.entity.set_position(current_x, self.original_y - jump_y_offset)
+            return True # Continue behavior (jump arc is in progress)
+        else: # Progress is 1.0 or more, jump arc is finished or duration exceeded
+            # Ensure final position is back at original_y (handled by _on_complete)
+            # This _on_update should indicate its part is done if progress is 1.0
+            return False # Indicate this update cycle considers the jump arc complete
     
-    def _on_finish(self) -> None:
-        """完成行为"""
+    def _on_complete(self) -> None:
+        """完成行为时的回调 (原 _on_finish 逻辑)"""
         # 恢复原始位置
         if self.entity and hasattr(self.entity, 'set_position') and hasattr(self.entity, 'get_position'):
-            position = self.entity.get_position()
-            current_x: float = 0.0
-            
-            if isinstance(position, (list, tuple)) and len(position) >= 2:
-                current_x = float(position[0])
-                self.entity.set_position(current_x, self.original_y)
-            elif hasattr(position, 'x'):
-                current_x = float(position.x())  # type: ignore[attr-defined]
-                self.entity.set_position(current_x, self.original_y)
+            current_pos = self.entity.get_position()
+            current_x: float
+            if isinstance(current_pos, (list, tuple)) and len(current_pos) >=2:
+                current_x = float(current_pos[0])
+            elif hasattr(current_pos, 'x'):
+                current_x = float(current_pos.x()) # type: ignore[attr-defined]
+            else: # Should not happen if update worked, but for safety
+                return 
+            self.entity.set_position(current_x, self.original_y)
+            logging.debug(f"跳跃行为完成，实体恢复到 Y: {self.original_y}")
 
 
 class MoveBehavior(BehaviorBase):
@@ -529,6 +531,9 @@ class MoveBehavior(BehaviorBase):
         # 获取环境传感器
         self.environment_sensor = EnvironmentSensor.get_instance()
         
+        # elapsed_time is reset to 0.0 by super().start(), which is called before this _on_start
+        # So, we don't need to record elapsed_time_at_start, as it would be 0.
+
         # 获取当前位置
         if self.entity:
             try:
@@ -588,8 +593,8 @@ class MoveBehavior(BehaviorBase):
         else:
             self.time_needed = 1.0  # 默认1秒
             
-        # 记录开始时间
-        self.start_time = time.time()
+        # 记录开始时间 (elapsed_time will be used for progress calculation)
+        # self.start_time = time.time() # No longer relying on wall clock time for progress
     
     def _choose_random_direction(self) -> None:
         """选择随机方向"""
@@ -642,18 +647,20 @@ class MoveBehavior(BehaviorBase):
         if self.target_x is None or self.target_y is None:
             return False
         
-        # 获取当前位置
-        position = None
-        if hasattr(self.entity, 'get_position'):
-            position = self.entity.get_position()
+        # 获取当前位置 (not strictly needed for calculation if start_x/y are reliable)
+        # position = None
+        # if hasattr(self.entity, 'get_position'):
+        #     position = self.entity.get_position()
             
-        # 计算移动进度
+        # 计算移动进度 using elapsed_time from BehaviorBase
+        # elapsed_time is updated by BehaviorBase.update() before this _on_update is called.
         progress = 0.0
-        if self.start_time is not None:
-            if self.time_needed is not None and self.time_needed > 0:
-                progress = min((time.time() - self.start_time) / self.time_needed, 1.0)
-            else:
-                progress = 1.0
+        if self.time_needed is not None and self.time_needed > 0:
+            # self.elapsed_time is managed by BehaviorBase and accumulates dt
+            progress = min(self.elapsed_time / self.time_needed, 1.0)
+        else:
+            # If time_needed is 0 or None, consider progress complete instantly if target exists
+            progress = 1.0 
         
         if (self.start_x is not None and 
             self.start_y is not None and 
